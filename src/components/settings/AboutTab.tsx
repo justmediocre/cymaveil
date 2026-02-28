@@ -2,20 +2,48 @@ import { useState, useEffect, useCallback } from 'react'
 import useUpdateChecker from '../../hooks/useUpdateChecker'
 import type { UpdateInfo } from '../../types'
 
+function Linkify({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s)]+)/)
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline"
+            style={{ color: 'var(--text-tertiary)', textDecoration: 'none' }}
+            onClick={(e) => { e.preventDefault(); window.electronAPI?.openReleasePage(part) }}
+          >
+            {part}
+          </a>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  )
+}
+
 const LICENSES = [
   {
     name: 'Outfit',
     license: 'SIL Open Font License 1.1',
+    licenseUrl: 'https://openfontlicense.org',
     copyright: 'Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)',
   },
   {
     name: 'JetBrains Mono',
     license: 'SIL Open Font License 1.1',
+    licenseUrl: 'https://openfontlicense.org',
     copyright: 'Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)',
   },
   {
     name: 'Bricolage Grotesque',
     license: 'SIL Open Font License 1.1',
+    licenseUrl: 'https://openfontlicense.org',
     copyright: 'Copyright 2022 The Bricolage Grotesque Project Authors (https://github.com/ateliertriay/bricolage)',
   },
   {
@@ -115,6 +143,16 @@ export default function AboutTab() {
         <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
           Copyright (c) 2026 Cymaveil. Released under the MIT License.
         </p>
+        <a
+          href="https://github.com/justmediocre/cymaveil"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs hover:underline mt-1 inline-block"
+          style={{ color: 'var(--text-tertiary)', textDecoration: 'none' }}
+          onClick={(e) => { e.preventDefault(); window.electronAPI?.openReleasePage('https://github.com/justmediocre/cymaveil') }}
+        >
+          github.com/justmediocre/cymaveil
+        </a>
 
         {/* Update controls */}
         <div className="mt-4 flex flex-col gap-3">
@@ -188,7 +226,7 @@ export default function AboutTab() {
         </p>
 
         <div className="flex flex-col gap-1">
-          {LICENSES.map(({ name, license, copyright }) => (
+          {LICENSES.map(({ name, license, licenseUrl, copyright }) => (
             <div
               key={name}
               className="py-3 px-4 rounded-xl transition-colors"
@@ -200,15 +238,28 @@ export default function AboutTab() {
                 <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                   {name}
                 </span>
-                <span
-                  className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded"
-                  style={{ color: 'var(--text-tertiary)', background: 'var(--bg-elevated)' }}
-                >
-                  {license}
-                </span>
+                {licenseUrl ? (
+                  <a
+                    href={licenseUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded hover:underline"
+                    style={{ color: 'var(--text-tertiary)', background: 'var(--bg-elevated)', textDecoration: 'none' }}
+                    onClick={(e) => { e.preventDefault(); window.electronAPI?.openReleasePage(licenseUrl) }}
+                  >
+                    {license}
+                  </a>
+                ) : (
+                  <span
+                    className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded"
+                    style={{ color: 'var(--text-tertiary)', background: 'var(--bg-elevated)' }}
+                  >
+                    {license}
+                  </span>
+                )}
               </div>
               <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                {copyright}
+                <Linkify text={copyright} />
               </span>
             </div>
           ))}
