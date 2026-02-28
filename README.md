@@ -22,7 +22,7 @@ Cymaveil turns your local music library into a visual experience — album artwo
 - **Library scanning** — point it at your music folders and it indexes metadata, artwork, and album structure automatically
 - **Virtualized track lists** — smooth scrolling through large libraries with alphabetical quick-nav
 - **Playlists** — create, edit, and manage playlists with M3U8 import/export
-- **Queue management** — drag tracks, shuffle, repeat, and see what's coming next
+- **Queue management** — shuffle, repeat, and see what's coming next
 - **Album view** — browse by album with grid layout and detail pages
 - **Search** — filter across tracks, albums, and artists
 - **Now Playing view** — full-screen player with album art, visualizer, and playback controls; press F11 for immersive fullscreen that hides all chrome
