@@ -1,0 +1,58 @@
+THIRD-PARTY SOFTWARE NOTICES
+
+This file lists third-party software included in or used by this project,
+along with their respective licenses and copyright notices.
+
+--------------------------------------------------------------------------------
+
+Outfit
+License: OFL-1.1
+Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)
+
+--------------------------------------------------------------------------------
+
+JetBrains Mono
+License: OFL-1.1
+Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+
+--------------------------------------------------------------------------------
+
+Bricolage Grotesque
+License: OFL-1.1
+Copyright 2022 The Bricolage Grotesque Project Authors (https://github.com/ateliertriay/bricolage)
+
+--------------------------------------------------------------------------------
+
+Depth Anything v2
+License: Apache-2.0
+Copyright 2024 Depth Anything v2 Authors (https://github.com/DepthAnything/Depth-Anything-V2)
+
+--------------------------------------------------------------------------------
+
+React
+License: MIT
+Copyright (c) Meta Platforms, Inc. and affiliates
+
+--------------------------------------------------------------------------------
+
+Electron
+License: MIT
+Copyright (c) Electron contributors, Copyright (c) GitHub Inc.
+
+--------------------------------------------------------------------------------
+
+Motion (Framer Motion)
+License: MIT
+Copyright (c) 2018 Framer B.V.
+
+--------------------------------------------------------------------------------
+
+Hugging Face Transformers.js
+License: Apache-2.0
+Copyright 2023 Xenova, Copyright 2024 Hugging Face
+
+--------------------------------------------------------------------------------
+
+music-metadata
+License: MIT
+Copyright (c) 2017 Borewit

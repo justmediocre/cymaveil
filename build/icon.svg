@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#141416"/>
+      <stop offset="100%" stop-color="#0a0a0b"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#d4a574" stop-opacity="0.2"/>
+      <stop offset="60%" stop-color="#d4a574" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#d4a574" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bronze2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e8c49a"/>
+      <stop offset="100%" stop-color="#9a6b3a"/>
+    </linearGradient>
+    <clipPath id="rs2">
+      <rect x="16" y="16" width="480" height="480" rx="96" ry="96"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bg2)"/>
+
+  <!-- Center glow -->
+  <circle cx="256" cy="256" r="200" fill="url(#glow)" clip-path="url(#rs2)"/>
+
+  <!-- Concentric ripple rings - like cymbal vibrations or sound propagation -->
+  <g clip-path="url(#rs2)">
+    <circle cx="256" cy="256" r="180" fill="none" stroke="#d4a574" stroke-width="1" stroke-opacity="0.12"/>
+    <circle cx="256" cy="256" r="145" fill="none" stroke="#d4a574" stroke-width="1.5" stroke-opacity="0.18"/>
+    <circle cx="256" cy="256" r="110" fill="none" stroke="#d4a574" stroke-width="2" stroke-opacity="0.25"/>
+    <circle cx="256" cy="256" r="75" fill="none" stroke="#d4a574" stroke-width="2.5" stroke-opacity="0.35"/>
+  </g>
+
+  <!-- Stylized "C" formed from an arc - the Cymaveil initial -->
+  <g clip-path="url(#rs2)">
+    <path d="M 310 160 A 110 110 0 1 0 310 352"
+          fill="none" stroke="url(#bronze2)" stroke-width="28" stroke-linecap="round"/>
+  </g>
+
+  <!-- Small accent dot at center -->
+  <circle cx="256" cy="256" r="8" fill="#d4a574"/>
+
+  <!-- Border -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="none" stroke="#d4a574" stroke-opacity="0.12" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,104 @@
+{
+  "name": "cymaveil",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": {
+    "name": "justmediocre",
+    "email": "raishy@gmail.com"
+  },
+  "description": "A refined music player with living album art",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justmediocre/cymaveil.git"
+  },
+  "homepage": "https://github.com/justmediocre/cymaveil",
+  "bugs": {
+    "url": "https://github.com/justmediocre/cymaveil/issues"
+  },
+  "keywords": [
+    "music-player",
+    "electron",
+    "audio",
+    "visualizer",
+    "depth-estimation",
+    "album-art"
+  ],
+  "main": "electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dist": "vite build && electron-builder --win",
+    "dist:linux": "vite build && electron-builder --linux",
+    "dist:mac": "vite build && electron-builder --mac",
+    "dist:all": "vite build && electron-builder --win --linux",
+    "dist:perf": "cross-env PERF_HUD=1 vite build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.cymaveil.player",
+    "productName": "Cymaveil",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "!**/node_modules/onnxruntime-node/**/*",
+      "!**/node_modules/onnxruntime-node",
+      "!**/node_modules/sharp/**/*",
+      "!**/node_modules/sharp",
+      "!**/node_modules/@img/**/*",
+      "!**/node_modules/@img"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Audio"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png"
+    }
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.2.10",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/outfit": "^5.2.8",
+    "@huggingface/transformers": "^3.8.1",
+    "@tanstack/react-virtual": "^3.13.19",
+    "chokidar": "^5.0.0",
+    "electron-store": "^11.0.2",
+    "motion": "^12.34.3",
+    "music-metadata": "^11.12.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
+    "@types/node": "^25.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^40.6.1",
+    "electron-builder": "^26.8.1",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "wait-on": "^9.0.4"
+  }
+}
