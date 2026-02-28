@@ -69,7 +69,12 @@
       "category": "Audio"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
       "icon": "build/icon.png"
     }
   },
