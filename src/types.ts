@@ -187,6 +187,8 @@ export interface VisualSettings {
   visualizerColorMode: VisualizerColorMode
   visualizerCustomColor: string
   maskDefaults: Partial<MaskPostProcessParams>
+  /** Bumped when mask cache is cleared or imported — triggers re-evaluation */
+  maskCacheVersion: number
 }
 
 /** Performance snapshot */

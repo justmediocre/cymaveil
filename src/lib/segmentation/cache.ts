@@ -111,6 +111,60 @@ function getDB(): Promise<IDBDatabase> {
 
 export { getDB, OVERRIDES_STORE, COLORS_STORE, CONTOUR_STORE }
 
+/**
+ * Count unique art hashes with any user customization
+ * (union of user-edited masks and parameter overrides).
+ */
+export async function countAllCustomized(): Promise<number> {
+  try {
+    const db = await getDB()
+    const artHashes = new Set<string>()
+
+    // Collect art hashes from user-edited masks
+    // Key format: v${ALGO_VERSION}:${backend}:${hash}
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly')
+      const cursor = tx.objectStore(STORE_NAME).openCursor()
+      cursor.onsuccess = () => {
+        const c = cursor.result
+        if (c) {
+          const rec = c.value as IDBRecord
+          if (rec.userEdited) {
+            const parts = rec.key.split(':')
+            if (parts.length >= 3) {
+              artHashes.add(parts.slice(2).join(':'))
+            }
+          }
+          c.continue()
+        } else {
+          resolve()
+        }
+      }
+      cursor.onerror = () => resolve()
+    })
+
+    // Collect art hashes from overrides
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(OVERRIDES_STORE, 'readonly')
+      const cursor = tx.objectStore(OVERRIDES_STORE).openCursor()
+      cursor.onsuccess = () => {
+        const c = cursor.result
+        if (c) {
+          artHashes.add((c.value as { artHash: string }).artHash)
+          c.continue()
+        } else {
+          resolve()
+        }
+      }
+      cursor.onerror = () => resolve()
+    })
+
+    return artHashes.size
+  } catch {
+    return 0
+  }
+}
+
 interface IDBRecord {
   key: string
   backend: SegmentationBackend
@@ -224,6 +278,31 @@ async function idbGetRaw(key: string): Promise<IDBRecord | null> {
   } catch {
     return null
   }
+}
+
+// --- Base64 helpers for export/import ---
+
+function bufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!)
+  return btoa(binary)
+}
+
+function base64ToBuffer(b64: string): ArrayBuffer {
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes.buffer as ArrayBuffer
+}
+
+export interface UserEditedMaskExport {
+  artHash: string
+  backend: SegmentationBackend
+  width: number
+  height: number
+  foregroundRGBA: string // base64
+  depthMap: string | null // base64
 }
 
 // --- Public API ---
@@ -382,6 +461,70 @@ export const segmentationCache = {
       })
     } catch {
       return 0
+    }
+  },
+
+  /** Serialize all user-edited masks for JSON export */
+  async exportUserEdited(): Promise<UserEditedMaskExport[]> {
+    try {
+      const db = await getDB()
+      return new Promise((resolve) => {
+        const results: UserEditedMaskExport[] = []
+        const tx = db.transaction(STORE_NAME, 'readonly')
+        const cursor = tx.objectStore(STORE_NAME).openCursor()
+        cursor.onsuccess = () => {
+          const c = cursor.result
+          if (c) {
+            const rec = c.value as IDBRecord
+            if (rec.userEdited) {
+              // Extract artHash from key: v${ALGO_VERSION}:${backend}:${hash}
+              const parts = rec.key.split(':')
+              if (parts.length >= 3) {
+                results.push({
+                  artHash: parts.slice(2).join(':'),
+                  backend: rec.backend,
+                  width: rec.width,
+                  height: rec.height,
+                  foregroundRGBA: bufferToBase64(rec.foregroundRGBA),
+                  depthMap: rec.depthMap ? bufferToBase64(rec.depthMap) : null,
+                })
+              }
+            }
+            c.continue()
+          } else {
+            resolve(results)
+          }
+        }
+        cursor.onerror = () => resolve([])
+      })
+    } catch {
+      return []
+    }
+  },
+
+  /** Restore user-edited masks from a JSON import */
+  async importUserEdited(masks: UserEditedMaskExport[]): Promise<void> {
+    if (masks.length === 0) return
+    try {
+      const db = await getDB()
+      const tx = db.transaction(STORE_NAME, 'readwrite')
+      const store = tx.objectStore(STORE_NAME)
+      for (const mask of masks) {
+        const key = cacheKey(mask.artHash, mask.backend)
+        const record: IDBRecord = {
+          key,
+          backend: mask.backend,
+          width: mask.width,
+          height: mask.height,
+          foregroundRGBA: base64ToBuffer(mask.foregroundRGBA),
+          depthMap: mask.depthMap ? base64ToBuffer(mask.depthMap) : null,
+          timestamp: Date.now(),
+          userEdited: true,
+        }
+        store.put(record)
+      }
+    } catch {
+      // Non-fatal
     }
   },
 }

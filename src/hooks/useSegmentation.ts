@@ -51,7 +51,8 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
   useEffect(() => () => disposeCurrentBackend(), [])
 
   useEffect(() => {
-    const key = `${backendId}:${artSrc}`
+    const cacheVer = settings.maskCacheVersion ?? 0
+    const key = `${backendId}:${artSrc}:${cacheVer}`
     if (key === prevKeyRef.current) return
     prevKeyRef.current = key
 
@@ -162,7 +163,7 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
     return () => {
       cancelled = true
     }
-  }, [artSrc, backendId, settings.maskDefaults, refreshKey])
+  }, [artSrc, backendId, settings.maskDefaults, settings.maskCacheVersion, refreshKey])
 
   return { segmentation, loading, depthMap, effectivePostProcessParams, effectiveModelParams, hasOverride, artHash, refresh }
 }

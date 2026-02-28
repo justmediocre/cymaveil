@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import useVisualSettings from '../../hooks/useVisualSettings'
-import { segmentationCache } from '../../lib/segmentation/cache'
+import { segmentationCache, countAllCustomized, type UserEditedMaskExport } from '../../lib/segmentation/cache'
 import { artCache } from '../../lib/artCache'
 import { maskOverrideStore } from '../../lib/segmentation/maskOverrideStore'
 import { DEFAULT_MASK_PARAMS } from '../../lib/segmentation/depthToMask'
@@ -65,8 +65,7 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
   const [cacheCleared, setCacheCleared] = useState(false)
   const [userCacheCleared, setUserCacheCleared] = useState(false)
   const [allCacheCleared, setAllCacheCleared] = useState(false)
-  const [userEditCount, setUserEditCount] = useState(0)
-  const [overrideCount, setOverrideCount] = useState(0)
+  const [customizedCount, setCustomizedCount] = useState(0)
   const [exportStatus, setExportStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const [importStatus, setImportStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
@@ -78,18 +77,25 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
   }, [])
 
   useEffect(() => {
-    segmentationCache.countUserEdited().then(setUserEditCount).catch(() => {})
-    maskOverrideStore.count().then(setOverrideCount).catch(() => {})
+    countAllCustomized().then(setCustomizedCount).catch(() => {})
   }, [cacheCleared, userCacheCleared, allCacheCleared, importStatus])
+
+  const bumpCacheVersion = () => {
+    setSetting('maskCacheVersion', (settings.maskCacheVersion ?? 0) + 1)
+  }
 
   const handleExport = async () => {
     try {
-      const overrides = await maskOverrideStore.getAll()
+      const [overrides, userEditedMasks] = await Promise.all([
+        maskOverrideStore.getAll(),
+        segmentationCache.exportUserEdited(),
+      ])
       const payload = {
         version: 1,
         exportedAt: new Date().toISOString(),
         maskDefaults: settings.maskDefaults,
         overrides,
+        userEditedMasks,
       }
       const json = JSON.stringify(payload, null, 2)
       const api = window.electronAPI
@@ -155,6 +161,12 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
         await maskOverrideStore.putBatch(records)
       }
 
+      // Restore user-edited mask pixel data (brush-painted masks)
+      if (Array.isArray(data.userEditedMasks) && data.userEditedMasks.length > 0) {
+        await segmentationCache.importUserEdited(data.userEditedMasks as UserEditedMaskExport[])
+      }
+
+      bumpCacheVersion()
       setImportStatus('done')
       const id = setTimeout(() => { setImportStatus('idle'); timersRef.current.delete(id) }, 2000)
       timersRef.current.add(id)
@@ -493,6 +505,7 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
             onClick={async () => {
               await segmentationCache.clear()
               await artCache.clear()
+              bumpCacheVersion()
               setCacheCleared(true)
               const id = setTimeout(() => { setCacheCleared(false); timersRef.current.delete(id) }, 2000)
               timersRef.current.add(id)
@@ -519,12 +532,12 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
               <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                 User-edited masks
               </span>
-              {userEditCount > 0 && (
+              {customizedCount > 0 && (
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded"
                   style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
                 >
-                  {userEditCount}
+                  {customizedCount}
                 </span>
               )}
             </div>
@@ -536,12 +549,12 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
           <div className="shrink-0 flex items-center gap-1.5">
             <button
               onClick={handleExport}
-              disabled={overrideCount === 0}
+              disabled={customizedCount === 0}
               className="text-sm px-3 py-1.5 rounded-lg transition-colors"
               style={{
                 color: exportStatus === 'done' ? 'var(--text-secondary)' : exportStatus === 'error' ? '#f87171' : 'var(--accent)',
                 background: exportStatus === 'idle' ? 'var(--accent-dim)' : 'var(--bg-elevated)',
-                opacity: overrideCount === 0 ? 0.5 : 1,
+                opacity: customizedCount === 0 ? 0.5 : 1,
               }}
             >
               {exportStatus === 'done' ? 'Exported' : exportStatus === 'error' ? 'Error' : 'Export'}
@@ -560,16 +573,17 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
               onClick={async () => {
                 await segmentationCache.clearUserEdited()
                 await maskOverrideStore.clearAll()
+                bumpCacheVersion()
                 setUserCacheCleared(true)
                 const id = setTimeout(() => { setUserCacheCleared(false); timersRef.current.delete(id) }, 2000)
                 timersRef.current.add(id)
               }}
-              disabled={userEditCount === 0}
+              disabled={customizedCount === 0}
               className="text-sm px-3 py-1.5 rounded-lg transition-colors"
               style={{
                 color: userCacheCleared ? 'var(--text-secondary)' : 'var(--accent)',
                 background: userCacheCleared ? 'var(--bg-elevated)' : 'var(--accent-dim)',
-                opacity: userEditCount === 0 ? 0.5 : 1,
+                opacity: customizedCount === 0 ? 0.5 : 1,
               }}
             >
               {userCacheCleared ? 'Cleared' : 'Clear'}
@@ -598,6 +612,7 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
               await segmentationCache.clearAll()
               await maskOverrideStore.clearAll()
               await artCache.clear()
+              bumpCacheVersion()
               setAllCacheCleared(true)
               const id = setTimeout(() => { setAllCacheCleared(false); timersRef.current.delete(id) }, 2000)
               timersRef.current.add(id)

@@ -27,6 +27,7 @@ const DEFAULTS: VisualSettings = {
   visualizerColorMode: 'auto',
   visualizerCustomColor: '#00ffff',
   maskDefaults: {},
+  maskCacheVersion: 0,
 }
 
 function load(): VisualSettings {
