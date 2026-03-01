@@ -5,7 +5,7 @@
 - [x] **1. Context values not memoized — causes unnecessary re-renders**
   - `src/contexts/library/LibraryContext.tsx` and `src/contexts/playlist/PlaylistContext.tsx` pass a new object literal as the context value every render. All consumers re-render even when nothing they use changed. Compare to `ThemeContext.tsx` and `PlaybackContext.tsx` which correctly use `useMemo`.
 
-- [ ] **2. Missing `useCallback` on handlers passed to `TrackList` — breaks `TrackRow` memoization**
+- [x] **2. Missing `useCallback` on handlers passed to `TrackList` — breaks `TrackRow` memoization**
   - `src/components/views/PlaylistDetailView.tsx:44-76` — 6 handlers defined as plain functions, not `useCallback`. Passed to `TrackList` which has `memo`-wrapped `TrackRow` children, defeating the memoization.
   - `src/components/layout/QueuePanel.tsx:28` — `handleQueueTrackSelect` is also not wrapped in `useCallback`, same issue.
 

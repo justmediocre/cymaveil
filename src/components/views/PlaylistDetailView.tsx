@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { motion } from 'motion/react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
@@ -32,23 +32,33 @@ export default function PlaylistDetailView({
   const [editName, setEditName] = useState('')
 
   const playlist = playlists.find((p) => p.id === playlistId)
+
+  // Resolve track IDs to track objects
+  const playlistTracks = useMemo(() => {
+    if (!playlist) return []
+    return playlist.trackIds
+      .map((id) => allTracks.find((t) => t.id === id))
+      .filter((t): t is Track => Boolean(t))
+  }, [playlist, allTracks])
+
+  const handleTrackSelect = useCallback(
+    (idx: number) => selectTrack({ kind: 'playlist', playlistId }, idx),
+    [selectTrack, playlistId],
+  )
+
+  const handleRemoveTrack = useCallback(
+    (trackId: string) => removeTrackFromPlaylist(playlistId, trackId),
+    [removeTrackFromPlaylist, playlistId],
+  )
+
+  const handleShuffleAll = useCallback(() => {
+    shuffleAll(playlistTracks)
+    onNavigateToNowPlaying()
+  }, [shuffleAll, playlistTracks, onNavigateToNowPlaying])
+
   if (!playlist) return null
 
   const isFavorites = playlist.id === 'favorites'
-
-  // Resolve track IDs to track objects
-  const playlistTracks = playlist.trackIds
-    .map((id) => allTracks.find((t) => t.id === id))
-    .filter((t): t is Track => Boolean(t))
-
-  const handleTrackSelect = (idx: number) => {
-    selectTrack({ kind: 'playlist', playlistId }, idx)
-  }
-
-  const handleShuffleAll = () => {
-    shuffleAll(playlistTracks)
-    onNavigateToNowPlaying()
-  }
 
   const handleDelete = () => {
     if (confirm(`Delete "${playlist.name}"?`)) {
@@ -184,7 +194,7 @@ export default function PlaylistDetailView({
             onTrackSelect={handleTrackSelect}
             getAlbumForTrack={getAlbumForTrack}
             isPlaying={isPlaying}
-            onRemoveTrack={(trackId: string) => removeTrackFromPlaylist(playlist.id, trackId)}
+            onRemoveTrack={handleRemoveTrack}
             isTrackFavorited={isTrackFavorited}
             onToggleFavorite={toggleFavorite}
             onAddToPlaylist={addTrackToPlaylist}

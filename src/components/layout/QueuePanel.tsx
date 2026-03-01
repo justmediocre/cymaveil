@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
@@ -25,9 +25,10 @@ export default function QueuePanel({ show }: QueuePanelProps) {
     ? `Shuffle Queue \u00b7 ${state.playQueue.length} tracks`
     : `Now Playing \u00b7 ${currentAlbum?.title || ''}`
 
-  const handleQueueTrackSelect = (trackIndex: number) => {
-    selectTrack({ kind: 'queue' }, trackIndex)
-  }
+  const handleQueueTrackSelect = useCallback(
+    (trackIndex: number) => selectTrack({ kind: 'queue' }, trackIndex),
+    [selectTrack],
+  )
 
   return (
     <AnimatePresence>
