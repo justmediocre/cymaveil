@@ -22,9 +22,14 @@ export default function useUpdateChecker() {
   }, [])
 
   const checkNow = useCallback(async () => {
-    const info = await window.electronAPI?.checkForUpdate()
-    if (info) setUpdateInfo(info)
-    return info ?? null
+    try {
+      const info = await window.electronAPI?.checkForUpdate()
+      if (info) setUpdateInfo(info)
+      return info ?? null
+    } catch (err) {
+      console.error('Failed to check for updates:', err)
+      return null
+    }
   }, [])
 
   return { updateInfo, dismiss, openRelease, checkNow }

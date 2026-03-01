@@ -34,7 +34,7 @@ export default function useLibrary() {
           setFolders(data.folders || [])
         }
       } catch (err) {
-        if (import.meta.env.DEV) console.error('Failed to load library:', err)
+        console.error('Failed to load library:', err)
       } finally {
         // Mark as loaded so the save effect knows it can start persisting
         hasLoadedRef.current = true
@@ -57,7 +57,7 @@ export default function useLibrary() {
     clearTimeout(saveTimerRef.current!)
     saveTimerRef.current = setTimeout(() => {
       window.electronAPI!.saveLibrary({ albums, tracks, folders }).catch((err: unknown) => {
-        if (import.meta.env.DEV) console.error('Failed to save library:', err)
+        console.error('Failed to save library:', err)
       })
     }, 500)
 
@@ -171,7 +171,7 @@ export default function useLibrary() {
             return [...prev, result.album]
           })
         }).catch((err: unknown) => {
-          if (import.meta.env.DEV) console.error('Failed to scan new file:', err)
+          console.error('Failed to scan new file:', err)
         })
       } else if (event.type === 'unlink') {
         const remaining = tracksRef.current.filter((t) => t.filePath !== event.filePath)

@@ -38,7 +38,7 @@ export default function usePlaylists() {
 
         setPlaylists(data)
       } catch (err) {
-        if (import.meta.env.DEV) console.error('Failed to load playlists:', err)
+        console.error('Failed to load playlists:', err)
         setPlaylists([{ id: FAVORITES_ID, name: 'Favorites', trackIds: [], createdAt: 0 }])
       } finally {
         hasLoadedRef.current = true
@@ -55,7 +55,7 @@ export default function usePlaylists() {
     clearTimeout(saveTimerRef.current!)
     saveTimerRef.current = setTimeout(() => {
       window.electronAPI!.savePlaylists(playlists).catch((err: unknown) => {
-        if (import.meta.env.DEV) console.error('Failed to save playlists:', err)
+        console.error('Failed to save playlists:', err)
       })
     }, 500)
 

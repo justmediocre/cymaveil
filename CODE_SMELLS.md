@@ -25,7 +25,7 @@
 - [x] **7. Expensive computation without `useMemo`**
   - `src/components/views/AlbumDetailView.tsx:21-22` — `albums.find()` (O(n)) and `getTracksForAlbum()` (O(n log n) filter+sort) run every render without memoization. These re-execute on every playback tick.
 
-- [ ] **8. Inconsistent async error handling strategy**
+- [x] **8. Inconsistent async error handling strategy**
   - `useLibrary.ts` and `usePlaylists.ts`: DEV-only logging (`import.meta.env.DEV`)
   - `useUpdateChecker.ts:24`: no error handling at all
   - `electron/libraryStore.js`: always logs
