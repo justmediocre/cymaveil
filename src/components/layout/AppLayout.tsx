@@ -25,7 +25,7 @@ export default function AppLayout() {
   perfCountRender('App')
 
   const { albums, tracks } = useLibraryCtx()
-  const { state, currentTrack, currentAlbum, upNextTracks, isPlaying, handlePlayPause } = usePlayback()
+  const { state, currentTrack, currentAlbum, upNextTracks, isPlaying, handlePlayPause, handleNext, handlePrev } = usePlayback()
   const batchSeg = useBatchSegmentation(albums)
   const { updateInfo, dismiss: dismissUpdate, openRelease } = useUpdateChecker()
 
@@ -78,6 +78,28 @@ export default function AppLayout() {
       if (e.key === 'Escape' && isFullscreen) {
         window.electronAPI?.windowToggleFullscreen()
       }
+      // Tab → toggle queue panel
+      if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const el = e.target as HTMLElement
+        if (
+          el?.closest?.(
+            'input, textarea, select, [contenteditable="true"]',
+          )
+        )
+          return
+        e.preventDefault()
+        handleToggleQueue()
+      }
+      // Ctrl+Right → next track
+      if (e.key === 'ArrowRight' && e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault()
+        handleNext()
+      }
+      // Ctrl+Left → previous track
+      if (e.key === 'ArrowLeft' && e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault()
+        handlePrev()
+      }
       // Spacebar → play/pause (skip when focused on interactive UI elements)
       if (e.code === 'Space' && !e.ctrlKey && !e.altKey && !e.metaKey) {
         const el = e.target as HTMLElement
@@ -93,7 +115,7 @@ export default function AppLayout() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handlePlayPause, isFullscreen])
+  }, [handlePlayPause, handleNext, handlePrev, handleToggleQueue, isFullscreen])
 
   // Listen for fullscreen state changes from Electron
   useEffect(() => {
