@@ -18,7 +18,7 @@
 - [x] **5. `setAlbums` called inside `setTracks` updater — React anti-pattern**
   - `src/hooks/useLibrary.ts:177-183` — setState inside another setState updater is impure and breaks concurrent mode guarantees. The `removeFolder` callback on line 140 shows the correct pattern.
 
-- [ ] **6. Missing IPC input validation (security)**
+- [x] **6. Missing IPC input validation (security)**
   - `electron/main.js:241` — `playlists:save` passes `data` straight to `savePlaylists` with no shape validation (compare to `library:save` which validates).
   - `electron/main.js:258` — `maskOverrides:export` writes `jsonData` to disk without a `typeof` check.
 

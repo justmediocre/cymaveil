@@ -239,6 +239,7 @@ ipcMain.handle('playlists:load', async () => {
 })
 
 ipcMain.handle('playlists:save', async (_event, data) => {
+  if (!Array.isArray(data)) return
   const { savePlaylists } = await getStore()
   savePlaylists(data)
 })
@@ -256,6 +257,7 @@ ipcMain.handle('playlists:import', async () => {
 })
 
 ipcMain.handle('maskOverrides:export', async (_event, jsonData) => {
+  if (typeof jsonData !== 'string') return
   const win = /** @type {BrowserWindow} */ (mainWindow || BrowserWindow.getFocusedWindow())
   const { exportMaskOverrides } = await getMaskOverrideFile()
   return await exportMaskOverrides(win, jsonData)
