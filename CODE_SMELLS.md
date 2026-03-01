@@ -15,7 +15,7 @@
 - [x] **4. Duplicated visualizer logic across 4 files**
   - `src/lib/visualizers/{fullSurface,mirroredBars,contourBars,radialBurst}.ts` all copy the same smoothing expression (`smoothed[i]! * 0.4 + rawValue * 0.6`), FFT truncation (`dataArray.length * 0.93`), and log-scale mapping (`Math.pow(t, 1.5)`). These belong in `barHelpers.ts`.
 
-- [ ] **5. `setAlbums` called inside `setTracks` updater — React anti-pattern**
+- [x] **5. `setAlbums` called inside `setTracks` updater — React anti-pattern**
   - `src/hooks/useLibrary.ts:177-183` — setState inside another setState updater is impure and breaks concurrent mode guarantees. The `removeFolder` callback on line 140 shows the correct pattern.
 
 - [ ] **6. Missing IPC input validation (security)**

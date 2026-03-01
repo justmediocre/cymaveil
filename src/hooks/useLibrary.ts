@@ -174,13 +174,10 @@ export default function useLibrary() {
           if (import.meta.env.DEV) console.error('Failed to scan new file:', err)
         })
       } else if (event.type === 'unlink') {
-        setTracks((prev) => {
-          const remaining = prev.filter((t) => t.filePath !== event.filePath)
-          // Clean up albums that no longer have any tracks
-          const albumIdsWithTracks = new Set(remaining.map((t) => t.albumId))
-          setAlbums((prevAlbums) => prevAlbums.filter((a) => albumIdsWithTracks.has(a.id)))
-          return remaining
-        })
+        const remaining = tracksRef.current.filter((t) => t.filePath !== event.filePath)
+        const albumIdsWithTracks = new Set(remaining.map((t) => t.albumId))
+        setTracks(remaining)
+        setAlbums((prev) => prev.filter((a) => albumIdsWithTracks.has(a.id)))
       }
     })
 
