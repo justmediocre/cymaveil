@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { motion } from 'motion/react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
@@ -18,8 +18,8 @@ export default function AlbumDetailView({ albumId, onBack, onNavigateToNowPlayin
   const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists } = usePlaylistCtx()
   const { currentTrack, isPlaying, selectTrack, shuffleAll } = usePlayback()
 
-  const album = albums.find((a) => a.id === albumId) || null
-  const tracks = albumId ? getTracksForAlbum(albumId) : []
+  const album = useMemo(() => albums.find((a) => a.id === albumId) || null, [albums, albumId])
+  const tracks = useMemo(() => albumId ? getTracksForAlbum(albumId) : [], [albumId, getTracksForAlbum])
 
   const handleTrackSelect = useCallback(
     (idx: number) => selectTrack({ kind: 'album', albumTracks: tracks }, idx),

@@ -22,7 +22,7 @@
   - `electron/main.js:241` — `playlists:save` passes `data` straight to `savePlaylists` with no shape validation (compare to `library:save` which validates).
   - `electron/main.js:258` — `maskOverrides:export` writes `jsonData` to disk without a `typeof` check.
 
-- [ ] **7. Expensive computation without `useMemo`**
+- [x] **7. Expensive computation without `useMemo`**
   - `src/components/views/AlbumDetailView.tsx:21-22` — `albums.find()` (O(n)) and `getTracksForAlbum()` (O(n log n) filter+sort) run every render without memoization. These re-execute on every playback tick.
 
 - [ ] **8. Inconsistent async error handling strategy**
