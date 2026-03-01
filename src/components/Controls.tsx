@@ -18,7 +18,7 @@ export default memo(function Controls({ isPlaying, onPlayPause, onNext, onPrev, 
     <div className="flex items-center justify-center gap-2">
       {/* Shuffle */}
       <motion.button
-        onClick={onShuffleToggle}
+        onClick={(e: React.MouseEvent) => { (e.currentTarget as HTMLButtonElement).blur(); onShuffleToggle() }}
         className="no-drag relative flex items-center justify-center w-10 h-10 rounded-full"
         aria-label={shuffle ? 'Disable shuffle' : 'Enable shuffle'}
         style={{ color: shuffle ? 'var(--accent)' : 'var(--text-tertiary)' }}
@@ -36,7 +36,7 @@ export default memo(function Controls({ isPlaying, onPlayPause, onNext, onPrev, 
 
       {/* Previous */}
       <motion.button
-        onClick={onPrev}
+        onClick={(e: React.MouseEvent) => { (e.currentTarget as HTMLButtonElement).blur(); onPrev() }}
         className="no-drag flex items-center justify-center w-10 h-10 rounded-full"
         aria-label="Previous track"
         style={{ color: 'var(--text-secondary)' }}
@@ -48,7 +48,7 @@ export default memo(function Controls({ isPlaying, onPlayPause, onNext, onPrev, 
 
       {/* Play / Pause — the hero button */}
       <motion.button
-        onClick={onPlayPause}
+        onClick={(e: React.MouseEvent) => { (e.currentTarget as HTMLButtonElement).blur(); onPlayPause() }}
         className="no-drag flex items-center justify-center w-12 h-12 rounded-full"
         aria-label={isPlaying ? 'Pause' : 'Play'}
         style={{
@@ -70,7 +70,7 @@ export default memo(function Controls({ isPlaying, onPlayPause, onNext, onPrev, 
 
       {/* Next */}
       <motion.button
-        onClick={onNext}
+        onClick={(e: React.MouseEvent) => { (e.currentTarget as HTMLButtonElement).blur(); onNext() }}
         className="no-drag flex items-center justify-center w-10 h-10 rounded-full"
         aria-label="Next track"
         style={{ color: 'var(--text-secondary)' }}
@@ -82,7 +82,7 @@ export default memo(function Controls({ isPlaying, onPlayPause, onNext, onPrev, 
 
       {/* Repeat */}
       <motion.button
-        onClick={onRepeatToggle}
+        onClick={(e: React.MouseEvent) => { (e.currentTarget as HTMLButtonElement).blur(); onRepeatToggle() }}
         className="no-drag relative flex items-center justify-center w-10 h-10 rounded-full"
         aria-label={repeat === 'off' ? 'Enable repeat' : repeat === 'all' ? 'Repeat one' : 'Disable repeat'}
         style={{ color: repeat !== 'off' ? 'var(--accent)' : 'var(--text-tertiary)' }}

@@ -113,7 +113,7 @@ export default function MiniPlayer({ onExpand }: MiniPlayerProps) {
         {/* Controls */}
         <div className="flex items-center gap-1 shrink-0">
           <motion.button
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); handlePlayPause() }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); (e.currentTarget as HTMLButtonElement).blur(); handlePlayPause() }}
             className="no-drag flex items-center justify-center w-10 h-10 rounded-full"
             style={{ color: 'var(--text-primary)' }}
             aria-label={isPlaying ? 'Pause' : 'Play'}
@@ -123,7 +123,7 @@ export default function MiniPlayer({ onExpand }: MiniPlayerProps) {
             {isPlaying ? <PauseIcon size={20} /> : <PlayIcon size={20} />}
           </motion.button>
           <motion.button
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleNext() }}
+            onClick={(e: React.MouseEvent) => { e.stopPropagation(); (e.currentTarget as HTMLButtonElement).blur(); handleNext() }}
             className="no-drag flex items-center justify-center w-10 h-10 rounded-full"
             style={{ color: 'var(--text-secondary)' }}
             aria-label="Next track"
