@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 import useLibrary from '../../hooks/useLibrary'
 
 type LibraryContextValue = ReturnType<typeof useLibrary>
@@ -6,8 +6,23 @@ type LibraryContextValue = ReturnType<typeof useLibrary>
 const LibraryContext = createContext<LibraryContextValue | null>(null)
 
 export function LibraryProvider({ children }: { children: React.ReactNode }) {
-  const library = useLibrary()
-  return <LibraryContext.Provider value={library}>{children}</LibraryContext.Provider>
+  const {
+    albums, tracks, folders, isLoading, isScanning, scanError, scanProgress,
+    getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
+  } = useLibrary()
+
+  const value = useMemo<LibraryContextValue>(
+    () => ({
+      albums, tracks, folders, isLoading, isScanning, scanError, scanProgress,
+      getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
+    }),
+    [
+      albums, tracks, folders, isLoading, isScanning, scanError, scanProgress,
+      getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
+    ],
+  )
+
+  return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>
 }
 
 export function useLibraryCtx(): LibraryContextValue {

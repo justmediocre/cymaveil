@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 import usePlaylists from '../../hooks/usePlaylists'
 
 type PlaylistContextValue = ReturnType<typeof usePlaylists>
@@ -6,8 +6,26 @@ type PlaylistContextValue = ReturnType<typeof usePlaylists>
 const PlaylistContext = createContext<PlaylistContextValue | null>(null)
 
 export function PlaylistProvider({ children }: { children: React.ReactNode }) {
-  const playlists = usePlaylists()
-  return <PlaylistContext.Provider value={playlists}>{children}</PlaylistContext.Provider>
+  const {
+    playlists, createPlaylist, deletePlaylist, renamePlaylist,
+    addTrackToPlaylist, removeTrackFromPlaylist, reorderPlaylist,
+    isTrackFavorited, toggleFavorite, exportPlaylist, importPlaylist,
+  } = usePlaylists()
+
+  const value = useMemo<PlaylistContextValue>(
+    () => ({
+      playlists, createPlaylist, deletePlaylist, renamePlaylist,
+      addTrackToPlaylist, removeTrackFromPlaylist, reorderPlaylist,
+      isTrackFavorited, toggleFavorite, exportPlaylist, importPlaylist,
+    }),
+    [
+      playlists, createPlaylist, deletePlaylist, renamePlaylist,
+      addTrackToPlaylist, removeTrackFromPlaylist, reorderPlaylist,
+      isTrackFavorited, toggleFavorite, exportPlaylist, importPlaylist,
+    ],
+  )
+
+  return <PlaylistContext.Provider value={value}>{children}</PlaylistContext.Provider>
 }
 
 export function usePlaylistCtx(): PlaylistContextValue {
