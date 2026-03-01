@@ -36,6 +36,10 @@ const BACKEND_OPTIONS: { value: SegmentationBackend; label: string; description:
 const VISUALIZER_STYLE_OPTIONS: { value: VisualizerStyle; label: string; description: string }[] = [
   { value: 'contour-bars', label: 'Contour Bars', description: 'Bars along detected edges (classic)' },
   { value: 'full-surface', label: 'Full Surface', description: 'Bars across entire image width' },
+  { value: 'radial-burst', label: 'Radial Burst', description: 'Bars radiating from center' },
+  { value: 'waveform', label: 'Waveform', description: 'Oscilloscope-style time domain line' },
+  { value: 'mirrored-bars', label: 'Mirrored Bars', description: 'Symmetric bars from center line' },
+  { value: 'random', label: 'Random', description: 'Pick a random style each track' },
 ]
 
 const COLOR_OPTIONS: { value: VisualizerColorMode; label: string; swatch: string }[] = [

@@ -158,7 +158,7 @@ export interface MaskPostProcessParams {
 }
 
 /** Available visualizer rendering styles */
-export type VisualizerStyle = 'contour-bars' | 'full-surface'
+export type VisualizerStyle = 'contour-bars' | 'full-surface' | 'radial-burst' | 'waveform' | 'mirrored-bars' | 'random'
 
 /** Available mosaic tile transition animations */
 export type MosaicTransition = 'flip' | 'shrink-grow' | 'cross-fade' | 'fade' | 'iris' | 'random'

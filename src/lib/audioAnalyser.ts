@@ -99,3 +99,12 @@ export function getFrequencyData(analyser: AnalyserNode | null, dataArray: Uint8
     analyser.getByteFrequencyData(dataArray)
   }
 }
+
+/**
+ * Read current time-domain (waveform) data into the provided buffer.
+ */
+export function getTimeDomainData(analyser: AnalyserNode | null, dataArray: Uint8Array<ArrayBuffer>) {
+  if (analyser) {
+    analyser.getByteTimeDomainData(dataArray)
+  }
+}

@@ -105,9 +105,10 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
         accentColor={currentAlbumWithColors?.accentColor ?? ''}
         isPlaying={activelyPlaying}
         segmentation={segmentation}
+        trackKey={currentTrack?.filePath ?? ''}
       />
     ),
-    [contourData, analyserRef, dataArrayRef, currentAlbumWithColors?.accentColor, activelyPlaying, segmentation]
+    [contourData, analyserRef, dataArrayRef, currentAlbumWithColors?.accentColor, activelyPlaying, segmentation, currentTrack?.filePath]
   )
 
   if (!currentTrack || !currentAlbumWithColors) return null
