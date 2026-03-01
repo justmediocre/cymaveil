@@ -37,6 +37,37 @@ export default function AppLayout() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
+  // Sidebar (260px) + Queue (320px) + usable content (~500px) = 1080px
+  const NARROW_THRESHOLD = 1080
+
+  // When window is too narrow for both panels, make toggles mutually exclusive
+  const handleToggleSidebar = useCallback(() => {
+    const willOpen = !sidebarOpen
+    if (willOpen && showQueue && window.innerWidth < NARROW_THRESHOLD) {
+      setShowQueue(false)
+    }
+    setSidebarOpen(willOpen)
+  }, [sidebarOpen, showQueue])
+
+  const handleToggleQueue = useCallback(() => {
+    const willOpen = !showQueue
+    if (willOpen && sidebarOpen && window.innerWidth < NARROW_THRESHOLD) {
+      setSidebarOpen(false)
+    }
+    setShowQueue(willOpen)
+  }, [showQueue, sidebarOpen])
+
+  // Auto-collapse sidebar if both panels are open and window resizes below threshold
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth < NARROW_THRESHOLD && sidebarOpen && showQueue) {
+        setSidebarOpen(false)
+      }
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [sidebarOpen, showQueue])
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -165,9 +196,9 @@ export default function AppLayout() {
           {!immersive && (
             <TitleBar
               sidebarOpen={sidebarOpen}
-              onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+              onToggleSidebar={handleToggleSidebar}
               showQueue={showQueue}
-              onToggleQueue={() => setShowQueue(!showQueue)}
+              onToggleQueue={handleToggleQueue}
               isFullscreen={isFullscreen}
               onToggleFullscreen={() => window.electronAPI?.windowToggleFullscreen()}
               batchProgress={batchSeg}
