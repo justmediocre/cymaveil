@@ -3,7 +3,7 @@ import type React from 'react'
 import { getFrequencyData, getTimeDomainData } from '../lib/audioAnalyser'
 import { perfMarkStart } from '../lib/perf'
 import useVisualSettings from '../hooks/useVisualSettings'
-import { createRenderer, computeFrameStyle, CONCRETE_STYLES } from '../lib/visualizers'
+import { createRenderer, computeFrameStyle } from '../lib/visualizers'
 import type { VisualizerRenderer } from '../lib/visualizers'
 import type { ContourData, VisualizerStyle, SegmentationResult } from '../types'
 
@@ -14,14 +14,15 @@ interface VisualizerProps {
   accentColor: string
   isPlaying: boolean
   segmentation?: SegmentationResult | null
-  trackKey?: string
+  /** Pre-resolved concrete style (random already picked by parent). */
+  resolvedStyle: Exclude<VisualizerStyle, 'random'>
 }
 
 /**
  * Canvas overlay that draws audio-reactive visualizations.
  * Delegates rendering to style-specific renderer modules.
  */
-export default function Visualizer({ contourData, analyserRef, dataArrayRef, accentColor, isPlaying, segmentation, trackKey }: VisualizerProps) {
+export default function Visualizer({ contourData, analyserRef, dataArrayRef, accentColor, isPlaying, segmentation, resolvedStyle }: VisualizerProps) {
   const { settings } = useVisualSettings()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -43,13 +44,6 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
   accentColorRef.current = accentColor
   segmentationRef.current = segmentation
 
-  const visualizerStyle: VisualizerStyle = settings.visualizerStyle
-
-  // For 'random' mode: persist the picked style across effect re-runs (e.g. play/pause)
-  // and only re-randomize when trackKey changes (new track loaded).
-  const randomPickRef = useRef<Exclude<VisualizerStyle, 'random'> | null>(null)
-  const lastRandomTrackKeyRef = useRef<string | undefined>(undefined)
-
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -59,21 +53,8 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
 
     let resizeRafId: number | null = null
 
-    // Resolve 'random' to a concrete style, re-picking only on new track
-    let activeStyle: Exclude<VisualizerStyle, 'random'>
-    if (visualizerStyle === 'random') {
-      if (randomPickRef.current === null || trackKey !== lastRandomTrackKeyRef.current) {
-        randomPickRef.current = CONCRETE_STYLES[Math.floor(Math.random() * CONCRETE_STYLES.length)]!
-        lastRandomTrackKeyRef.current = trackKey
-      }
-      activeStyle = randomPickRef.current
-    } else {
-      activeStyle = visualizerStyle
-      lastRandomTrackKeyRef.current = undefined // reset so switching back to 'random' picks fresh
-    }
-
-    // Create the renderer for the resolved style
-    const renderer: VisualizerRenderer = createRenderer(activeStyle)
+    // Create the renderer for the resolved style (random already picked by parent)
+    const renderer: VisualizerRenderer = createRenderer(resolvedStyle)
 
     const resizeCanvas = () => {
       const dpr = window.devicePixelRatio || 1
@@ -184,7 +165,7 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
   // Intentionally omit intensity/colorMode/customColor/accentColor/segmentation —
   // these are read per-frame from refs to avoid teardown/rebuild on slider drags.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contourData, analyserRef, dataArrayRef, isPlaying, settings.canvasVisualizer, visualizerStyle])
+  }, [contourData, analyserRef, dataArrayRef, isPlaying, settings.canvasVisualizer, resolvedStyle])
 
   return (
     <canvas

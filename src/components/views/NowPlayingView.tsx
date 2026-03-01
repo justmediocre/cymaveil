@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, memo } from 'react'
+import { useState, useMemo, useCallback, useRef, memo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
@@ -8,6 +8,7 @@ import useSegmentation from '../../hooks/useSegmentation'
 import useVisualSettings from '../../hooks/useVisualSettings'
 import useMaskEditor from '../../hooks/useMaskEditor'
 import useMaskBrushEditor from '../../hooks/useMaskBrushEditor'
+import { CONCRETE_STYLES } from '../../lib/visualizers'
 import AlbumArt from '../AlbumArt'
 import ErrorBoundary from '../ErrorBoundary'
 import MaskEditor from '../MaskEditor'
@@ -96,6 +97,29 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
 
   const activelyPlaying = isPlaying && isVisible
 
+  // Resolve 'random' visualizer style here (NowPlayingView never unmounts)
+  // rather than inside Visualizer (which unmounts/remounts via AnimatePresence
+  // during album art transitions), preventing double random re-picks.
+  // Keyed on displayedAlbum.id so the style change syncs with the visual
+  // album art transition, not the earlier state change from dispatch(NEXT).
+  const randomPickRef = useRef<Exclude<typeof visualSettings.visualizerStyle, 'random'> | null>(null)
+  const lastRandomAlbumRef = useRef<string | undefined>(undefined)
+  const displayedAlbumId = displayedAlbum?.id
+
+  if (visualSettings.visualizerStyle === 'random') {
+    if (randomPickRef.current === null || displayedAlbumId !== lastRandomAlbumRef.current) {
+      randomPickRef.current = CONCRETE_STYLES[Math.floor(Math.random() * CONCRETE_STYLES.length)]!
+      lastRandomAlbumRef.current = displayedAlbumId
+    }
+  } else {
+    randomPickRef.current = null
+    lastRandomAlbumRef.current = undefined
+  }
+
+  const resolvedVisualizerStyle = visualSettings.visualizerStyle === 'random'
+    ? randomPickRef.current!
+    : visualSettings.visualizerStyle
+
   const visualizerElement = useMemo(
     () => (
       <Visualizer
@@ -105,10 +129,10 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
         accentColor={currentAlbumWithColors?.accentColor ?? ''}
         isPlaying={activelyPlaying}
         segmentation={segmentation}
-        trackKey={currentTrack?.filePath ?? ''}
+        resolvedStyle={resolvedVisualizerStyle}
       />
     ),
-    [contourData, analyserRef, dataArrayRef, currentAlbumWithColors?.accentColor, activelyPlaying, segmentation, currentTrack?.filePath]
+    [contourData, analyserRef, dataArrayRef, currentAlbumWithColors?.accentColor, activelyPlaying, segmentation, resolvedVisualizerStyle]
   )
 
   if (!currentTrack || !currentAlbumWithColors) return null

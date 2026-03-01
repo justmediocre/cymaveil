@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import LibraryTab from '../settings/LibraryTab'
+import PlaybackTab from '../settings/PlaybackTab'
 import VisualsTab from '../settings/VisualsTab'
 import DepthLayersTab from '../settings/DepthLayersTab'
 import AboutTab from '../settings/AboutTab'
@@ -9,10 +10,11 @@ interface SettingsViewProps {
   batchProcessing: boolean
 }
 
-type SettingsTab = 'library' | 'visuals' | 'depth' | 'about'
+type SettingsTab = 'library' | 'playback' | 'visuals' | 'depth' | 'about'
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'library', label: 'Library' },
+  { id: 'playback', label: 'Playback' },
   { id: 'visuals', label: 'Visuals' },
   { id: 'depth', label: 'Depth Layers' },
   { id: 'about', label: 'About' },
@@ -59,6 +61,7 @@ export default function SettingsView({ onProcessAll, batchProcessing }: Settings
       </div>
 
       {activeTab === 'library' && <LibraryTab />}
+      {activeTab === 'playback' && <PlaybackTab />}
       {activeTab === 'visuals' && <VisualsTab />}
       {activeTab === 'depth' && <DepthLayersTab onProcessAll={onProcessAll} batchProcessing={batchProcessing} />}
       {activeTab === 'about' && <AboutTab />}

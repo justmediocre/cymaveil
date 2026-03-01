@@ -7,6 +7,7 @@ import useAudioPlayer from '../../hooks/useAudioPlayer'
 import useAudioAnalyser from '../../hooks/useAudioAnalyser'
 import useMediaSession from '../../hooks/useMediaSession'
 import { playbackTimeStore } from '../../lib/playbackTimeStore'
+import { playbackSettingsStore } from '../../lib/playbackSettingsStore'
 import type { Track, Album, Playlist } from '../../types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -128,6 +129,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     return nextTracks
   }, [queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, getAlbumForTrack])
 
+  // ── Crossfade state ───────────────────────────────────────────────────
+
+  // Tracks whether the last track advancement was caused by crossfade (auto-advance)
+  // so we can skip the normal onEnded and autoplay logic.
+  const isAutoAdvanceRef = useRef(false)
+
   // ── Transition intent (prefire / skip) ─────────────────────────────────
   const [transitionIntent, setTransitionIntent] = useState<'prefire' | 'skip' | null>(null)
 
@@ -152,12 +159,61 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     return nextAlbum?.id !== currentAlbum?.id
   }, [state.repeat, queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, getAlbumForTrack, currentAlbum])
 
+  /**
+   * Resolve the next track without dispatching any state change.
+   * Returns the Track or undefined if at end of queue with no repeat.
+   */
+  const resolveNextTrack = useCallback((): Track | undefined => {
+    if (state.repeat === 'one') return currentTrack
+    if (queueActive) {
+      if (state.queueIndex < state.playQueue.length - 1) {
+        const nextId = state.playQueue[state.queueIndex + 1]
+        return tracks.find(t => t.id === nextId)
+      } else if (state.repeat === 'all') {
+        const nextId = state.playQueue[0]
+        return tracks.find(t => t.id === nextId)
+      }
+      return undefined // queue exhausted
+    }
+    const nextIndex = (state.currentTrackIndex + 1) % tracks.length
+    return tracks[nextIndex]
+  }, [state.repeat, queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, currentTrack])
+
+  // Dynamic aboutToEnd threshold: max(crossfadeDuration, 1.5)
+  const crossfadeDuration = playbackSettingsStore.get().crossfadeDuration
+  const aboutToEndThreshold = Math.max(crossfadeDuration, 1.5)
+
+  // Ref to break circular dependency: handleAboutToEnd needs player.crossfadeToNext,
+  // but player needs handleAboutToEnd callback.
+  const crossfadeToNextRef = useRef<(filePath: string, duration: number) => boolean>(() => false)
+
   const handleAboutToEnd = useCallback(() => {
     if (state.repeat === 'one') return
+
+    const cfDuration = playbackSettingsStore.get().crossfadeDuration
+
+    if (cfDuration > 0) {
+      // Crossfade: resolve next track, initiate crossfade, dispatch NEXT
+      const nextTrack = resolveNextTrack()
+      if (!nextTrack?.filePath) return
+
+      const started = crossfadeToNextRef.current(nextTrack.filePath, cfDuration)
+      if (started) {
+        isAutoAdvanceRef.current = true
+        // Set transition intent based on album change
+        if (nextTrackChangesAlbum) {
+          setTransitionIntent('prefire')
+        }
+        dispatch({ type: 'NEXT', tracksLength: tracks.length })
+        return
+      }
+      // Crossfade didn't start (track too short) — fall through to normal prefire
+    }
+
     if (nextTrackChangesAlbum) {
       setTransitionIntent('prefire')
     }
-  }, [state.repeat, nextTrackChangesAlbum])
+  }, [state.repeat, nextTrackChangesAlbum, resolveNextTrack, tracks.length])
 
   const clearTransitionIntent = useCallback(() => {
     setTransitionIntent(null)
@@ -175,6 +231,11 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const player = useAudioPlayer({
     onEnded: () => {
       consecutiveErrorsRef.current = 0
+      // If crossfade already advanced the track, skip onEnded handling
+      if (isAutoAdvanceRef.current) {
+        isAutoAdvanceRef.current = false
+        return
+      }
       handleNextRef.current()
     },
     onAboutToEnd: handleAboutToEnd,
@@ -187,12 +248,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       }
       handleNextRef.current()
     },
+    aboutToEndThreshold,
   })
   playerRef.current = player
-  const { duration, isPlaying, audioRef } = player
+  crossfadeToNextRef.current = player.crossfadeToNext
+  const { duration, isPlaying, audioRef, secondaryAudioRef } = player
 
   // Audio analyser (Web Audio API)
-  const { analyserRef, dataArrayRef } = useAudioAnalyser(audioRef, isPlaying)
+  const { analyserRef, dataArrayRef } = useAudioAnalyser(audioRef, secondaryAudioRef, isPlaying)
 
   // Shared ref for bass energy
   const bassEnergyRef = useRef(0)
@@ -281,6 +344,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     if (currentTrackId === prevTrackIdRef.current) return
     prevTrackIdRef.current = currentTrackId ?? null
 
+    // If crossfade already started playback on the incoming deck, skip play()
+    if (isAutoAdvanceRef.current) {
+      // Don't clear the flag here — onEnded will clear it
+      return
+    }
+
     if (currentTrack?.filePath) {
       player.play(currentTrack.filePath)
     }
@@ -328,6 +397,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const handleNext = useCallback(() => {
     consecutiveErrorsRef.current = 0
+    isAutoAdvanceRef.current = false // manual skip
     if (state.repeat === 'one') {
       playerRef.current?.seek(0)
       playerRef.current?.resume()
@@ -343,6 +413,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const handlePrev = useCallback(() => {
     consecutiveErrorsRef.current = 0
+    isAutoAdvanceRef.current = false // manual skip
     if (playbackTimeStore.get() > 3) {
       player.seek(0)
     } else {
@@ -380,6 +451,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const selectTrack = useCallback(
     (source: TrackSource, index: number) => {
+      isAutoAdvanceRef.current = false // manual selection
       switch (source.kind) {
         case 'queue':
           if (queueActive) {

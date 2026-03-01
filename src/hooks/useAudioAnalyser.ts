@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react'
-import { getOrCreateAnalyser, setAnalyserEnabled } from '../lib/audioAnalyser'
+import { getOrCreateAnalyser, setAnalyserEnabled, initSecondDeck } from '../lib/audioAnalyser'
 import { visualSettingsStore } from '../lib/visualSettingsStore'
 
 /**
@@ -8,9 +8,14 @@ import { visualSettingsStore } from '../lib/visualSettingsStore'
  * Disconnects the AnalyserNode when no visual effects need it (saves FFT CPU).
  * Returns analyserRef for direct canvas reads — no React state per frame.
  */
-export default function useAudioAnalyser(audioRef: React.RefObject<HTMLAudioElement | null>, isPlaying: boolean) {
+export default function useAudioAnalyser(
+  audioRef: React.RefObject<HTMLAudioElement | null>,
+  secondaryAudioRef: React.RefObject<HTMLAudioElement | null>,
+  isPlaying: boolean,
+) {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const dataArrayRef = useRef<Uint8Array | null>(null)
+  const deckBInitRef = useRef(false)
 
   const initAnalyser = useCallback(() => {
     if (analyserRef.current) return
@@ -21,8 +26,14 @@ export default function useAudioAnalyser(audioRef: React.RefObject<HTMLAudioElem
     if (analyser) {
       analyserRef.current = analyser
       dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount)
+
+      // Also init deck B if secondary element is ready
+      const secondaryAudio = secondaryAudioRef?.current
+      if (secondaryAudio && !deckBInitRef.current) {
+        deckBInitRef.current = initSecondDeck(secondaryAudio)
+      }
     }
-  }, [audioRef])
+  }, [audioRef, secondaryAudioRef])
 
   // Initialize analyser when playback starts, but only if visuals need it
   useEffect(() => {
@@ -33,6 +44,15 @@ export default function useAudioAnalyser(audioRef: React.RefObject<HTMLAudioElem
       }
     }
   }, [isPlaying, initAnalyser])
+
+  // Try to init deck B once the secondary audio element becomes available
+  useEffect(() => {
+    if (deckBInitRef.current || !analyserRef.current) return
+    const secondaryAudio = secondaryAudioRef?.current
+    if (secondaryAudio) {
+      deckBInitRef.current = initSecondDeck(secondaryAudio)
+    }
+  }, [secondaryAudioRef, isPlaying])
 
   // Connect/disconnect analyser based on visual settings
   useEffect(() => {
