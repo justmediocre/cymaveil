@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
 import useVisualSettings from '../../hooks/useVisualSettings'
+import useDebouncedSlider from '../../hooks/useDebouncedSlider'
+import { SettingToggle, SettingSlider, SettingSelect, SettingSection } from './Controls'
 import type { VisualSettings, MosaicTransition } from '../../types'
 
 interface VisualToggle {
@@ -32,51 +33,31 @@ const MOSAIC_TRANSITION_OPTIONS: { value: MosaicTransition; label: string; descr
   { value: 'random', label: 'Random', description: 'Randomly pick a different animation each time' },
 ]
 
-function useDebouncedSlider<K extends keyof VisualSettings>(
-  storeValue: VisualSettings[K],
-  setSetting: (key: K, value: VisualSettings[K]) => void,
-  key: K,
-  delay = 250,
-) {
-  const [local, setLocal] = useState(storeValue)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-
-  // Sync local state when store changes externally
-  useEffect(() => { setLocal(storeValue) }, [storeValue])
-
-  const onChange = useCallback(
-    (value: VisualSettings[K]) => {
-      setLocal(value)
-      clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => setSetting(key, value), delay)
-    },
-    [setSetting, key, delay],
+function ImpactBadge({ impact }: { impact: 'High' | 'Medium' | 'Low' }) {
+  return (
+    <span
+      className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded"
+      style={{
+        color: impactColor[impact],
+        background: impact === 'High' ? 'var(--accent-dim)' : 'var(--bg-elevated)',
+      }}
+    >
+      {impact}
+    </span>
   )
-
-  // Flush on unmount
-  useEffect(() => () => clearTimeout(timerRef.current), [])
-
-  return [local, onChange] as const
 }
 
 export default function VisualsTab() {
   const { settings, toggle, setSetting, onBattery } = useVisualSettings()
   const batterySaverActive = settings.disableVisualsOnBattery && onBattery
 
-  const [localOpacity, setLocalOpacity] = useDebouncedSlider(settings.mosaicOpacity, setSetting, 'mosaicOpacity')
-  const [localDensity, setLocalDensity] = useDebouncedSlider(settings.mosaicDensity, setSetting, 'mosaicDensity')
-  const [localMaxTiles, setLocalMaxTiles] = useDebouncedSlider(settings.mosaicMaxTiles, setSetting, 'mosaicMaxTiles')
+  const [localOpacity, setLocalOpacity] = useDebouncedSlider(settings.mosaicOpacity, (v) => setSetting('mosaicOpacity', v))
+  const [localDensity, setLocalDensity] = useDebouncedSlider(settings.mosaicDensity, (v) => setSetting('mosaicDensity', v))
+  const [localMaxTiles, setLocalMaxTiles] = useDebouncedSlider(settings.mosaicMaxTiles, (v) => setSetting('mosaicMaxTiles', v))
 
   return (
     <>
-      <section className="max-w-lg">
-        <h2
-          className="font-display text-xs font-bold tracking-wider uppercase mb-4"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
-          Effects
-        </h2>
-
+      <SettingSection title="Effects">
         {batterySaverActive && (
           <div
             className="flex items-center gap-2 mb-3 px-4 py-2.5 rounded-xl text-xs"
@@ -92,369 +73,79 @@ export default function VisualsTab() {
           </div>
         )}
 
-        <div className="flex flex-col gap-1">
-          {VISUAL_TOGGLES.map(({ key, label, description, impact }) => {
-            const enabled = settings[key] as boolean
-            return (
-              <div
-                key={key}
-                className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-                style={{ background: 'transparent' }}
-                onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {label}
-                    </span>
-                    <span
-                      className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded"
-                      style={{
-                        color: impactColor[impact],
-                        background: impact === 'High' ? 'var(--accent-dim)' : 'var(--bg-elevated)',
-                      }}
-                    >
-                      {impact}
-                    </span>
-                  </div>
-                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {description}
-                  </span>
-                </div>
+        {VISUAL_TOGGLES.map(({ key, label, description, impact }) => (
+          <SettingToggle
+            key={key}
+            label={label}
+            description={description}
+            badge={<ImpactBadge impact={impact} />}
+            enabled={settings[key] as boolean}
+            onToggle={() => toggle(key)}
+          />
+        ))}
 
-                <button
-                  onClick={() => toggle(key)}
-                  className="shrink-0 relative rounded-full transition-colors duration-200"
-                  style={{
-                    width: 40,
-                    height: 22,
-                    background: enabled ? 'var(--accent)' : 'var(--bg-elevated)',
-                    border: `1px solid ${enabled ? 'var(--accent)' : 'var(--border)'}`,
-                  }}
-                  aria-label={`Toggle ${label}`}
-                  role="switch"
-                  aria-checked={enabled}
-                >
-                  <span
-                    className="absolute top-[2px] rounded-full transition-all duration-200"
-                    style={{
-                      width: 16,
-                      height: 16,
-                      background: enabled ? '#fff' : 'var(--text-tertiary)',
-                      left: enabled ? 20 : 2,
-                    }}
-                  />
-                </button>
-              </div>
-            )
-          })}
+        <SettingToggle
+          label="Background Mosaic"
+          description="Isometric album art grid"
+          badge={<ImpactBadge impact="High" />}
+          enabled={settings.backgroundMosaic}
+          onToggle={() => toggle('backgroundMosaic')}
+        />
 
-          {/* Background Mosaic toggle */}
-          <div
-            className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{ background: 'transparent' }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                  Background Mosaic
-                </span>
-                <span
-                  className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded"
-                  style={{ color: impactColor['High'], background: 'var(--accent-dim)' }}
-                >
-                  High
-                </span>
-              </div>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Isometric album art grid
-              </span>
-            </div>
+        <SettingToggle
+          label="Flat mode"
+          description={settings.mosaicFlat ? 'Flat 2D grid' : 'Isometric 3D perspective'}
+          disabled={!settings.backgroundMosaic}
+          enabled={settings.mosaicFlat}
+          onToggle={() => toggle('mosaicFlat')}
+        />
 
-            <button
-              onClick={() => toggle('backgroundMosaic')}
-              className="shrink-0 relative rounded-full transition-colors duration-200"
-              style={{
-                width: 40,
-                height: 22,
-                background: settings.backgroundMosaic ? 'var(--accent)' : 'var(--bg-elevated)',
-                border: `1px solid ${settings.backgroundMosaic ? 'var(--accent)' : 'var(--border)'}`,
-              }}
-              aria-label="Toggle Background Mosaic"
-              role="switch"
-              aria-checked={settings.backgroundMosaic}
-            >
-              <span
-                className="absolute top-[2px] rounded-full transition-all duration-200"
-                style={{
-                  width: 16,
-                  height: 16,
-                  background: settings.backgroundMosaic ? '#fff' : 'var(--text-tertiary)',
-                  left: settings.backgroundMosaic ? 20 : 2,
-                }}
-              />
-            </button>
-          </div>
+        <SettingSlider
+          label="Opacity"
+          description="Background mosaic transparency"
+          disabled={!settings.backgroundMosaic}
+          value={localOpacity}
+          onChange={setLocalOpacity}
+          min={0} max={100} step={1}
+          format={(v) => `${v}%`}
+        />
 
-          {/* Mosaic flat/2D toggle */}
-          <div
-            className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{
-              background: 'transparent',
-              opacity: settings.backgroundMosaic ? 1 : 0.5,
-              pointerEvents: settings.backgroundMosaic ? 'auto' : 'none',
-            }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Flat mode
-              </span>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                {settings.mosaicFlat ? 'Flat 2D grid' : 'Isometric 3D perspective'}
-              </span>
-            </div>
+        <SettingSelect
+          label="Mosaic transition"
+          description={MOSAIC_TRANSITION_OPTIONS.find(o => o.value === settings.mosaicTransition)?.description ?? ''}
+          disabled={!settings.backgroundMosaic}
+          value={settings.mosaicTransition}
+          onChange={(v) => setSetting('mosaicTransition', v as MosaicTransition)}
+          options={MOSAIC_TRANSITION_OPTIONS}
+        />
 
-            <button
-              onClick={() => toggle('mosaicFlat')}
-              className="shrink-0 relative rounded-full transition-colors duration-200"
-              style={{
-                width: 40,
-                height: 22,
-                background: settings.mosaicFlat ? 'var(--accent)' : 'var(--bg-elevated)',
-                border: `1px solid ${settings.mosaicFlat ? 'var(--accent)' : 'var(--border)'}`,
-              }}
-              aria-label="Toggle flat mosaic mode"
-              role="switch"
-              aria-checked={settings.mosaicFlat}
-            >
-              <span
-                className="absolute top-[2px] rounded-full transition-all duration-200"
-                style={{
-                  width: 16,
-                  height: 16,
-                  background: settings.mosaicFlat ? '#fff' : 'var(--text-tertiary)',
-                  left: settings.mosaicFlat ? 20 : 2,
-                }}
-              />
-            </button>
-          </div>
+        <SettingSlider
+          label="Mosaic density"
+          description="Number of tile columns in the background grid"
+          disabled={!settings.backgroundMosaic}
+          value={localDensity}
+          onChange={setLocalDensity}
+          min={4} max={14} step={1}
+        />
 
-          {/* Mosaic opacity slider */}
-          <div
-            className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{
-              background: 'transparent',
-              opacity: settings.backgroundMosaic ? 1 : 0.5,
-              pointerEvents: settings.backgroundMosaic ? 'auto' : 'none',
-            }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Opacity
-              </span>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Background mosaic transparency
-              </span>
-            </div>
+        <SettingSlider
+          label="Max tiles"
+          description="Cap total rendered tiles to limit memory usage"
+          disabled={!settings.backgroundMosaic}
+          value={localMaxTiles}
+          onChange={setLocalMaxTiles}
+          min={24} max={294} step={6}
+        />
+      </SettingSection>
 
-            <div className="shrink-0 flex items-center gap-2">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={localOpacity}
-                onChange={(e) => setLocalOpacity(Number(e.target.value))}
-                className="w-24 accent-[var(--accent)]"
-                style={{ cursor: 'pointer' }}
-              />
-              <span
-                className="text-xs tabular-nums w-7 text-right"
-                style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}
-              >
-                {localOpacity}%
-              </span>
-            </div>
-          </div>
-
-          {/* Mosaic transition style dropdown */}
-          <div
-            className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{
-              background: 'transparent',
-              opacity: settings.backgroundMosaic ? 1 : 0.5,
-              pointerEvents: settings.backgroundMosaic ? 'auto' : 'none',
-            }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Mosaic transition
-              </span>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                {MOSAIC_TRANSITION_OPTIONS.find(o => o.value === settings.mosaicTransition)?.description ?? ''}
-              </span>
-            </div>
-
-            <select
-              value={settings.mosaicTransition}
-              onChange={(e) => setSetting('mosaicTransition', e.target.value as MosaicTransition)}
-              className="shrink-0 text-sm rounded-lg px-3 py-1.5 cursor-pointer"
-              style={{
-                background: 'var(--bg-elevated)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border)',
-              }}
-            >
-              {MOSAIC_TRANSITION_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Mosaic density slider */}
-          <div
-            className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{
-              background: 'transparent',
-              opacity: settings.backgroundMosaic ? 1 : 0.5,
-              pointerEvents: settings.backgroundMosaic ? 'auto' : 'none',
-            }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Mosaic density
-              </span>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Number of tile columns in the background grid
-              </span>
-            </div>
-
-            <div className="shrink-0 flex items-center gap-2">
-              <input
-                type="range"
-                min={4}
-                max={14}
-                step={1}
-                value={localDensity}
-                onChange={(e) => setLocalDensity(Number(e.target.value))}
-                className="w-24 accent-[var(--accent)]"
-                style={{ cursor: 'pointer' }}
-              />
-              <span
-                className="text-xs tabular-nums w-7 text-right"
-                style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}
-              >
-                {localDensity}
-              </span>
-            </div>
-          </div>
-
-          {/* Mosaic max tiles slider */}
-          <div
-            className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{
-              background: 'transparent',
-              opacity: settings.backgroundMosaic ? 1 : 0.5,
-              pointerEvents: settings.backgroundMosaic ? 'auto' : 'none',
-            }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Max tiles
-              </span>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Cap total rendered tiles to limit memory usage
-              </span>
-            </div>
-
-            <div className="shrink-0 flex items-center gap-2">
-              <input
-                type="range"
-                min={24}
-                max={294}
-                step={6}
-                value={localMaxTiles}
-                onChange={(e) => setLocalMaxTiles(Number(e.target.value))}
-                className="w-24 accent-[var(--accent)]"
-                style={{ cursor: 'pointer' }}
-              />
-              <span
-                className="text-xs tabular-nums w-7 text-right"
-                style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}
-              >
-                {localMaxTiles}
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Power section */}
-      <section className="max-w-lg mt-8">
-        <h2
-          className="font-display text-xs font-bold tracking-wider uppercase mb-4"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
-          Power
-        </h2>
-
-        <div className="flex flex-col gap-1">
-          <div
-            className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{ background: 'transparent' }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Disable visuals on battery
-              </span>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Turn off all visual effects when unplugged to save power
-              </span>
-            </div>
-
-            <button
-              onClick={() => toggle('disableVisualsOnBattery')}
-              className="shrink-0 relative rounded-full transition-colors duration-200"
-              style={{
-                width: 40,
-                height: 22,
-                background: settings.disableVisualsOnBattery ? 'var(--accent)' : 'var(--bg-elevated)',
-                border: `1px solid ${settings.disableVisualsOnBattery ? 'var(--accent)' : 'var(--border)'}`,
-              }}
-              aria-label="Toggle disable visuals on battery"
-              role="switch"
-              aria-checked={settings.disableVisualsOnBattery}
-            >
-              <span
-                className="absolute top-[2px] rounded-full transition-all duration-200"
-                style={{
-                  width: 16,
-                  height: 16,
-                  background: settings.disableVisualsOnBattery ? '#fff' : 'var(--text-tertiary)',
-                  left: settings.disableVisualsOnBattery ? 20 : 2,
-                }}
-              />
-            </button>
-          </div>
-        </div>
-      </section>
+      <SettingSection title="Power" className="mt-8">
+        <SettingToggle
+          label="Disable visuals on battery"
+          description="Turn off all visual effects when unplugged to save power"
+          enabled={settings.disableVisualsOnBattery}
+          onToggle={() => toggle('disableVisualsOnBattery')}
+        />
+      </SettingSection>
     </>
   )
 }

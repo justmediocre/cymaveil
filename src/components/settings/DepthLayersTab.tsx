@@ -4,6 +4,7 @@ import { segmentationCache, countAllCustomized, type UserEditedMaskExport } from
 import { artCache } from '../../lib/artCache'
 import { maskOverrideStore } from '../../lib/segmentation/maskOverrideStore'
 import { DEFAULT_MASK_PARAMS } from '../../lib/segmentation/depthToMask'
+import { SettingRow, SettingToggle, SettingSlider, SettingSelect, SettingSection } from './Controls'
 import type { MaskOverrideRecord } from '../../lib/segmentation/maskOverrideStore'
 import type { SegmentationBackend, VisualizerStyle, VisualizerColorMode, MaskPostProcessParams } from '../../types'
 
@@ -182,487 +183,242 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
   }
 
   return (
-    <section className="max-w-lg">
-      <h2
-        className="font-display text-xs font-bold tracking-wider uppercase mb-4"
-        style={{ color: 'var(--text-tertiary)' }}
+    <SettingSection title="Depth Layers">
+      <SettingToggle
+        label="Enable depth layers"
+        description="Split album art into layers — visualizer appears inside the image"
+        badge={
+          <span
+            className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded"
+            style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}
+          >
+            {hwAccel}
+          </span>
+        }
+        enabled={settings.depthLayerEnabled}
+        onToggle={() => toggle('depthLayerEnabled')}
+      />
+
+      <SettingSelect
+        label="Segmentation model"
+        description={BACKEND_OPTIONS.find(o => o.value === settings.segmentationBackend)?.description ?? ''}
+        disabled={!settings.depthLayerEnabled}
+        value={settings.segmentationBackend}
+        onChange={(v) => setSetting('segmentationBackend', v as SegmentationBackend)}
+        options={BACKEND_OPTIONS.map(o => ({ value: o.value, label: o.label + (o.size ? ` (${o.size})` : '') }))}
+      />
+
+      <SettingSelect
+        label="Visualizer style"
+        description={VISUALIZER_STYLE_OPTIONS.find(o => o.value === settings.visualizerStyle)?.description ?? ''}
+        value={settings.visualizerStyle}
+        onChange={(v) => setSetting('visualizerStyle', v as VisualizerStyle)}
+        options={VISUALIZER_STYLE_OPTIONS}
+      />
+
+      <SettingSlider
+        label="Visualizer intensity"
+        description="Controls bar contrast and transparency"
+        value={settings.visualizerIntensity}
+        onChange={(v) => setSetting('visualizerIntensity', v)}
+        min={10} max={100} step={5}
+      />
+
+      {/* Bar color selector — custom swatch layout */}
+      <SettingRow
+        label="Bar color"
+        description={
+          settings.visualizerColorMode === 'auto'
+            ? 'Derived from album art accent color'
+            : settings.visualizerColorMode === 'custom'
+              ? 'Custom color'
+              : COLOR_OPTIONS.find(o => o.value === settings.visualizerColorMode)?.label ?? ''
+        }
       >
-        Depth Layers
-      </h2>
-
-      <div className="flex flex-col gap-1">
-        {/* Enable toggle */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{ background: 'transparent' }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-        >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Enable depth layers
-              </span>
-              <span
-                className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded"
-                style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}
-              >
-                {hwAccel}
-              </span>
-            </div>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Split album art into layers — visualizer appears inside the image
-            </span>
-          </div>
-
-          <button
-            onClick={() => toggle('depthLayerEnabled')}
-            className="shrink-0 relative rounded-full transition-colors duration-200"
-            style={{
-              width: 40,
-              height: 22,
-              background: settings.depthLayerEnabled ? 'var(--accent)' : 'var(--bg-elevated)',
-              border: `1px solid ${settings.depthLayerEnabled ? 'var(--accent)' : 'var(--border)'}`,
-            }}
-            aria-label="Toggle depth layers"
-            role="switch"
-            aria-checked={settings.depthLayerEnabled}
-          >
-            <span
-              className="absolute top-[2px] rounded-full transition-all duration-200"
+        <div className="shrink-0 flex items-center gap-1.5">
+          {COLOR_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setSetting('visualizerColorMode', opt.value)}
+              title={opt.label}
+              className="rounded-full transition-all duration-150"
               style={{
-                width: 16,
-                height: 16,
-                background: settings.depthLayerEnabled ? '#fff' : 'var(--text-tertiary)',
-                left: settings.depthLayerEnabled ? 20 : 2,
+                width: settings.visualizerColorMode === opt.value ? 22 : 18,
+                height: settings.visualizerColorMode === opt.value ? 22 : 18,
+                background: opt.value === 'auto'
+                  ? 'conic-gradient(#f44, #ff0, #0f0, #0ff, #00f, #f0f, #f44)'
+                  : opt.value === 'custom'
+                    ? settings.visualizerCustomColor
+                    : opt.swatch,
+                border: settings.visualizerColorMode === opt.value
+                  ? '2px solid var(--text-primary)'
+                  : '1px solid var(--border-subtle)',
+                opacity: settings.visualizerColorMode === opt.value ? 1 : 0.7,
               }}
             />
-          </button>
+          ))}
         </div>
+      </SettingRow>
 
-        {/* Segmentation backend dropdown */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{
-            background: 'transparent',
-            opacity: settings.depthLayerEnabled ? 1 : 0.5,
-            pointerEvents: settings.depthLayerEnabled ? 'auto' : 'none',
+      {/* Custom color picker */}
+      {settings.visualizerColorMode === 'custom' && (
+        <SettingRow label="Custom color">
+          <input
+            type="color"
+            value={settings.visualizerCustomColor}
+            onChange={(e) => setSetting('visualizerCustomColor', e.target.value)}
+            className="shrink-0 rounded-lg cursor-pointer border-0"
+            style={{ width: 36, height: 28, padding: 0, background: 'none' }}
+          />
+        </SettingRow>
+      )}
+
+      {/* Mask Tuning sliders */}
+      {settings.depthLayerEnabled && (
+        <SettingSection
+          title="Mask Tuning"
+          action={{ label: 'Reset to defaults', onClick: () => setSetting('maskDefaults', {}) }}
+          description="Global defaults for new masks — per-album overrides take priority"
+          className="mt-3"
+        >
+          {MASK_SLIDERS.map(({ key, label, description, min, max, step }) => (
+            <SettingSlider
+              key={key}
+              label={label}
+              description={description}
+              compact
+              value={settings.maskDefaults[key] ?? DEFAULT_MASK_PARAMS[key]}
+              onChange={(v) => setSetting('maskDefaults', { ...settings.maskDefaults, [key]: v })}
+              min={min} max={max} step={step}
+              valueWidth="w-5"
+            />
+          ))}
+        </SettingSection>
+      )}
+
+      {/* Auto-generated cache */}
+      <SettingRow label="Auto-generated cache" description="Clear auto-generated masks (keeps user edits)">
+        <button
+          onClick={async () => {
+            await segmentationCache.clear()
+            await artCache.clear()
+            bumpCacheVersion()
+            setCacheCleared(true)
+            const id = setTimeout(() => { setCacheCleared(false); timersRef.current.delete(id) }, 2000)
+            timersRef.current.add(id)
           }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
+          className="shrink-0 text-sm px-3 py-1.5 rounded-lg transition-colors"
+          style={{
+            color: cacheCleared ? 'var(--text-secondary)' : 'var(--accent)',
+            background: cacheCleared ? 'var(--bg-elevated)' : 'var(--accent-dim)',
+          }}
         >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Segmentation model
-            </span>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {BACKEND_OPTIONS.find(o => o.value === settings.segmentationBackend)?.description ?? ''}
-            </span>
-          </div>
+          {cacheCleared ? 'Cleared' : 'Clear cache'}
+        </button>
+      </SettingRow>
 
-          <select
-            value={settings.segmentationBackend}
-            onChange={(e) => setSetting('segmentationBackend', e.target.value as SegmentationBackend)}
-            className="shrink-0 text-sm rounded-lg px-3 py-1.5 cursor-pointer"
-            style={{
-              background: 'var(--bg-elevated)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border)',
-            }}
-          >
-            {BACKEND_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}{opt.size ? ` (${opt.size})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Visualizer style dropdown */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{ background: 'transparent' }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-        >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Visualizer style
-            </span>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {VISUALIZER_STYLE_OPTIONS.find(o => o.value === settings.visualizerStyle)?.description ?? ''}
-            </span>
-          </div>
-
-          <select
-            value={settings.visualizerStyle}
-            onChange={(e) => setSetting('visualizerStyle', e.target.value as VisualizerStyle)}
-            className="shrink-0 text-sm rounded-lg px-3 py-1.5 cursor-pointer"
-            style={{
-              background: 'var(--bg-elevated)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border)',
-            }}
-          >
-            {VISUALIZER_STYLE_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Visualizer intensity slider */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{ background: 'transparent' }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-        >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Visualizer intensity
-            </span>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Controls bar contrast and transparency
-            </span>
-          </div>
-
-          <div className="shrink-0 flex items-center gap-2">
-            <input
-              type="range"
-              min={10}
-              max={100}
-              step={5}
-              value={settings.visualizerIntensity}
-              onChange={(e) => setSetting('visualizerIntensity', Number(e.target.value))}
-              className="w-24 accent-[var(--accent)]"
-              style={{ cursor: 'pointer' }}
-            />
+      {/* User-edited masks */}
+      <SettingRow
+        label="User-edited masks"
+        description="Export, import, or clear per-album mask customizations"
+        badge={
+          customizedCount > 0 ? (
             <span
-              className="text-xs tabular-nums w-7 text-right"
-              style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}
+              className="text-[10px] px-1.5 py-0.5 rounded"
+              style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
             >
-              {settings.visualizerIntensity}
+              {customizedCount}
             </span>
-          </div>
-        </div>
-
-        {/* Bar color selector */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{ background: 'transparent' }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-        >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Bar color
-            </span>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {settings.visualizerColorMode === 'auto'
-                ? 'Derived from album art accent color'
-                : settings.visualizerColorMode === 'custom'
-                  ? 'Custom color'
-                  : COLOR_OPTIONS.find(o => o.value === settings.visualizerColorMode)?.label ?? ''}
-            </span>
-          </div>
-
-          <div className="shrink-0 flex items-center gap-1.5">
-            {COLOR_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setSetting('visualizerColorMode', opt.value)}
-                title={opt.label}
-                className="rounded-full transition-all duration-150"
-                style={{
-                  width: settings.visualizerColorMode === opt.value ? 22 : 18,
-                  height: settings.visualizerColorMode === opt.value ? 22 : 18,
-                  background: opt.value === 'auto'
-                    ? 'conic-gradient(#f44, #ff0, #0f0, #0ff, #00f, #f0f, #f44)'
-                    : opt.value === 'custom'
-                      ? settings.visualizerCustomColor
-                      : opt.swatch,
-                  border: settings.visualizerColorMode === opt.value
-                    ? '2px solid var(--text-primary)'
-                    : '1px solid var(--border-subtle)',
-                  opacity: settings.visualizerColorMode === opt.value ? 1 : 0.7,
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Custom color picker — only visible when custom mode selected */}
-        {settings.visualizerColorMode === 'custom' && (
-          <div
-            className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{ background: 'transparent' }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                Custom color
-              </span>
-            </div>
-
-            <input
-              type="color"
-              value={settings.visualizerCustomColor}
-              onChange={(e) => setSetting('visualizerCustomColor', e.target.value)}
-              className="shrink-0 rounded-lg cursor-pointer border-0"
-              style={{ width: 36, height: 28, padding: 0, background: 'none' }}
-            />
-          </div>
-        )}
-
-        {/* Mask Tuning — global default sliders */}
-        {settings.depthLayerEnabled && (
-          <>
-            <div className="mt-3 mb-1 px-4">
-              <div className="flex items-center justify-between">
-                <span
-                  className="text-[10px] font-bold tracking-wider uppercase"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
-                  Mask Tuning
-                </span>
-                <button
-                  onClick={() => setSetting('maskDefaults', {})}
-                  className="text-[10px] transition-colors"
-                  style={{ color: 'var(--text-tertiary)' }}
-                  onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.color = 'var(--accent)')}
-                  onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.color = 'var(--text-tertiary)')}
-                >
-                  Reset to defaults
-                </button>
-              </div>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Global defaults for new masks — per-album overrides take priority
-              </span>
-            </div>
-
-            {MASK_SLIDERS.map(({ key, label, description, min, max, step }) => {
-              const value = settings.maskDefaults[key] ?? DEFAULT_MASK_PARAMS[key]
-              return (
-                <div
-                  key={key}
-                  className="flex items-center justify-between py-2.5 px-4 rounded-xl transition-colors"
-                  style={{ background: 'transparent' }}
-                  onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                  onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {label}
-                    </span>
-                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {description}
-                    </span>
-                  </div>
-
-                  <div className="shrink-0 flex items-center gap-2">
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={value}
-                      onChange={(e) => {
-                        const next = { ...settings.maskDefaults, [key]: Number(e.target.value) }
-                        setSetting('maskDefaults', next)
-                      }}
-                      className="w-24 accent-[var(--accent)]"
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span
-                      className="text-xs tabular-nums w-5 text-right"
-                      style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}
-                    >
-                      {value}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </>
-        )}
-
-        {/* Clear auto-generated cache */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{ background: 'transparent' }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-        >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Auto-generated cache
-            </span>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Clear auto-generated masks (keeps user edits)
-            </span>
-          </div>
-
+          ) : undefined
+        }
+      >
+        <div className="shrink-0 flex items-center gap-1.5">
           <button
-            onClick={async () => {
-              await segmentationCache.clear()
-              await artCache.clear()
-              bumpCacheVersion()
-              setCacheCleared(true)
-              const id = setTimeout(() => { setCacheCleared(false); timersRef.current.delete(id) }, 2000)
-              timersRef.current.add(id)
-            }}
-            className="shrink-0 text-sm px-3 py-1.5 rounded-lg transition-colors"
+            onClick={handleExport}
+            disabled={customizedCount === 0}
+            className="text-sm px-3 py-1.5 rounded-lg transition-colors"
             style={{
-              color: cacheCleared ? 'var(--text-secondary)' : 'var(--accent)',
-              background: cacheCleared ? 'var(--bg-elevated)' : 'var(--accent-dim)',
+              color: exportStatus === 'done' ? 'var(--text-secondary)' : exportStatus === 'error' ? '#f87171' : 'var(--accent)',
+              background: exportStatus === 'idle' ? 'var(--accent-dim)' : 'var(--bg-elevated)',
+              opacity: customizedCount === 0 ? 0.5 : 1,
             }}
           >
-            {cacheCleared ? 'Cleared' : 'Clear cache'}
+            {exportStatus === 'done' ? 'Exported' : exportStatus === 'error' ? 'Error' : 'Export'}
           </button>
-        </div>
-
-        {/* User-edited masks — Export / Import / Clear */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{ background: 'transparent' }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-        >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                User-edited masks
-              </span>
-              {customizedCount > 0 && (
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded"
-                  style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
-                >
-                  {customizedCount}
-                </span>
-              )}
-            </div>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Export, import, or clear per-album mask customizations
-            </span>
-          </div>
-
-          <div className="shrink-0 flex items-center gap-1.5">
-            <button
-              onClick={handleExport}
-              disabled={customizedCount === 0}
-              className="text-sm px-3 py-1.5 rounded-lg transition-colors"
-              style={{
-                color: exportStatus === 'done' ? 'var(--text-secondary)' : exportStatus === 'error' ? '#f87171' : 'var(--accent)',
-                background: exportStatus === 'idle' ? 'var(--accent-dim)' : 'var(--bg-elevated)',
-                opacity: customizedCount === 0 ? 0.5 : 1,
-              }}
-            >
-              {exportStatus === 'done' ? 'Exported' : exportStatus === 'error' ? 'Error' : 'Export'}
-            </button>
-            <button
-              onClick={handleImport}
-              className="text-sm px-3 py-1.5 rounded-lg transition-colors"
-              style={{
-                color: importStatus === 'done' ? 'var(--text-secondary)' : importStatus === 'error' ? '#f87171' : 'var(--accent)',
-                background: importStatus === 'idle' ? 'var(--accent-dim)' : 'var(--bg-elevated)',
-              }}
-            >
-              {importStatus === 'done' ? 'Imported' : importStatus === 'error' ? 'Error' : 'Import'}
-            </button>
-            <button
-              onClick={async () => {
-                await segmentationCache.clearUserEdited()
-                await maskOverrideStore.clearAll()
-                bumpCacheVersion()
-                setUserCacheCleared(true)
-                const id = setTimeout(() => { setUserCacheCleared(false); timersRef.current.delete(id) }, 2000)
-                timersRef.current.add(id)
-              }}
-              disabled={customizedCount === 0}
-              className="text-sm px-3 py-1.5 rounded-lg transition-colors"
-              style={{
-                color: userCacheCleared ? 'var(--text-secondary)' : 'var(--accent)',
-                background: userCacheCleared ? 'var(--bg-elevated)' : 'var(--accent-dim)',
-                opacity: customizedCount === 0 ? 0.5 : 1,
-              }}
-            >
-              {userCacheCleared ? 'Cleared' : 'Clear'}
-            </button>
-          </div>
-        </div>
-
-        {/* Clear all masks */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{ background: 'transparent' }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
-        >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              All masks
-            </span>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Clear everything and re-process from scratch
-            </span>
-          </div>
-
+          <button
+            onClick={handleImport}
+            className="text-sm px-3 py-1.5 rounded-lg transition-colors"
+            style={{
+              color: importStatus === 'done' ? 'var(--text-secondary)' : importStatus === 'error' ? '#f87171' : 'var(--accent)',
+              background: importStatus === 'idle' ? 'var(--accent-dim)' : 'var(--bg-elevated)',
+            }}
+          >
+            {importStatus === 'done' ? 'Imported' : importStatus === 'error' ? 'Error' : 'Import'}
+          </button>
           <button
             onClick={async () => {
-              await segmentationCache.clearAll()
+              await segmentationCache.clearUserEdited()
               await maskOverrideStore.clearAll()
-              await artCache.clear()
               bumpCacheVersion()
-              setAllCacheCleared(true)
-              const id = setTimeout(() => { setAllCacheCleared(false); timersRef.current.delete(id) }, 2000)
+              setUserCacheCleared(true)
+              const id = setTimeout(() => { setUserCacheCleared(false); timersRef.current.delete(id) }, 2000)
               timersRef.current.add(id)
             }}
-            className="shrink-0 text-sm px-3 py-1.5 rounded-lg transition-colors"
+            disabled={customizedCount === 0}
+            className="text-sm px-3 py-1.5 rounded-lg transition-colors"
             style={{
-              color: allCacheCleared ? 'var(--text-secondary)' : 'var(--accent)',
-              background: allCacheCleared ? 'var(--bg-elevated)' : 'var(--accent-dim)',
+              color: userCacheCleared ? 'var(--text-secondary)' : 'var(--accent)',
+              background: userCacheCleared ? 'var(--bg-elevated)' : 'var(--accent-dim)',
+              opacity: customizedCount === 0 ? 0.5 : 1,
             }}
           >
-            {allCacheCleared ? 'Cleared' : 'Clear all'}
+            {userCacheCleared ? 'Cleared' : 'Clear'}
           </button>
         </div>
+      </SettingRow>
 
-        {/* Process all album art */}
-        <div
-          className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-          style={{ background: 'transparent' }}
-          onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
+      {/* Clear all masks */}
+      <SettingRow label="All masks" description="Clear everything and re-process from scratch">
+        <button
+          onClick={async () => {
+            await segmentationCache.clearAll()
+            await maskOverrideStore.clearAll()
+            await artCache.clear()
+            bumpCacheVersion()
+            setAllCacheCleared(true)
+            const id = setTimeout(() => { setAllCacheCleared(false); timersRef.current.delete(id) }, 2000)
+            timersRef.current.add(id)
+          }}
+          className="shrink-0 text-sm px-3 py-1.5 rounded-lg transition-colors"
+          style={{
+            color: allCacheCleared ? 'var(--text-secondary)' : 'var(--accent)',
+            background: allCacheCleared ? 'var(--bg-elevated)' : 'var(--accent-dim)',
+          }}
         >
-          <div className="flex flex-col gap-0.5 min-w-0 mr-4">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Pre-process all
-            </span>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              {batchProcessing
-                ? 'Processing album art in the background...'
-                : 'Generate masks for all uncached album art'}
-            </span>
-          </div>
+          {allCacheCleared ? 'Cleared' : 'Clear all'}
+        </button>
+      </SettingRow>
 
-          <button
-            onClick={onProcessAll}
-            disabled={batchProcessing || !settings.depthLayerEnabled || settings.segmentationBackend === 'none' || settings.segmentationBackend === 'manual'}
-            className="shrink-0 text-sm px-3 py-1.5 rounded-lg transition-colors"
-            style={{
-              color: batchProcessing ? 'var(--text-secondary)' : 'var(--accent)',
-              background: batchProcessing ? 'var(--bg-elevated)' : 'var(--accent-dim)',
-              opacity: (!settings.depthLayerEnabled || settings.segmentationBackend === 'none' || settings.segmentationBackend === 'manual') ? 0.5 : 1,
-            }}
-          >
-            {batchProcessing ? 'Processing...' : 'Process all'}
-          </button>
-        </div>
-      </div>
-    </section>
+      {/* Process all album art */}
+      <SettingRow
+        label="Pre-process all"
+        description={batchProcessing
+          ? 'Processing album art in the background...'
+          : 'Generate masks for all uncached album art'}
+      >
+        <button
+          onClick={onProcessAll}
+          disabled={batchProcessing || !settings.depthLayerEnabled || settings.segmentationBackend === 'none' || settings.segmentationBackend === 'manual'}
+          className="shrink-0 text-sm px-3 py-1.5 rounded-lg transition-colors"
+          style={{
+            color: batchProcessing ? 'var(--text-secondary)' : 'var(--accent)',
+            background: batchProcessing ? 'var(--bg-elevated)' : 'var(--accent-dim)',
+            opacity: (!settings.depthLayerEnabled || settings.segmentationBackend === 'none' || settings.segmentationBackend === 'manual') ? 0.5 : 1,
+          }}
+        >
+          {batchProcessing ? 'Processing...' : 'Process all'}
+        </button>
+      </SettingRow>
+    </SettingSection>
   )
 }
