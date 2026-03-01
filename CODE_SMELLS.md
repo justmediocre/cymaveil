@@ -9,7 +9,7 @@
   - `src/components/views/PlaylistDetailView.tsx:44-76` — 6 handlers defined as plain functions, not `useCallback`. Passed to `TrackList` which has `memo`-wrapped `TrackRow` children, defeating the memoization.
   - `src/components/layout/QueuePanel.tsx:28` — `handleQueueTrackSelect` is also not wrapped in `useCallback`, same issue.
 
-- [ ] **3. Stale store read at render time**
+- [x] **3. Stale store read at render time**
   - `src/contexts/playback/PlaybackContext.tsx:183-184` — `crossfadeDuration` is read from `playbackSettingsStore.get()` during render without a subscription. If the user changes crossfade in settings, `aboutToEndThreshold` stays stale until an unrelated re-render. Should use `useSyncExternalStore` like `usePlaybackSettings` does.
 
 - [ ] **4. Duplicated visualizer logic across 4 files**

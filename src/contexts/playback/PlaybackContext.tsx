@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useCallback, useMemo, useRef, useEffect, useState } from 'react'
+import { createContext, useContext, useReducer, useCallback, useMemo, useRef, useEffect, useState, useSyncExternalStore } from 'react'
 import { useLibraryCtx } from '../library/LibraryContext'
 import { usePlaylistCtx } from '../playlist/PlaylistContext'
 import { playbackReducer, initialPlaybackState, shuffleArray } from './playbackReducer'
@@ -180,8 +180,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, [state.repeat, queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, currentTrack])
 
   // Dynamic aboutToEnd threshold: max(crossfadeDuration, 1.5)
-  const crossfadeDuration = playbackSettingsStore.get().crossfadeDuration
-  const aboutToEndThreshold = Math.max(crossfadeDuration, 1.5)
+  const playbackSettings = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
+  const aboutToEndThreshold = Math.max(playbackSettings.crossfadeDuration, 1.5)
 
   // Ref to break circular dependency: handleAboutToEnd needs player.crossfadeToNext,
   // but player needs handleAboutToEnd callback.
