@@ -1,3 +1,42 @@
+/**
+ * Fraction of FFT bins to use — drops the top 7% (high-frequency noise above ~20 kHz).
+ */
+const USABLE_FFT_FRACTION = 0.93
+
+/** Power-law exponent for perceptual log-scale bar frequency distribution. */
+const LOG_SCALE_EXP = 1.5
+
+/** Temporal smoothing retention (higher = more inertia, slower decay). */
+const SMOOTH_RETAIN = 0.4
+
+/** Compute the usable FFT bin count from raw frequency data. */
+export function usableBinCount(dataArray: Uint8Array): number {
+  return Math.floor(dataArray.length * USABLE_FFT_FRACTION)
+}
+
+/**
+ * Read an FFT value at a perceptual-log position, apply temporal smoothing,
+ * and return the smoothed [0,1] amplitude.
+ *
+ * @param smoothed  - persistent smoothing buffer
+ * @param index     - index into the smoothing buffer to read/write
+ * @param t         - normalised bar position in [0,1)
+ * @param binCount  - usable FFT bin count (from `usableBinCount`)
+ * @param dataArray - raw frequency data (Uint8Array from AnalyserNode)
+ */
+export function sampleSmoothed(
+  smoothed: Float32Array,
+  index: number,
+  t: number,
+  binCount: number,
+  dataArray: Uint8Array,
+): number {
+  const logIndex = Math.floor(Math.pow(t, LOG_SCALE_EXP) * (binCount - 1))
+  const rawValue = dataArray[logIndex]! / 255
+  smoothed[index] = smoothed[index]! * SMOOTH_RETAIN + rawValue * (1 - SMOOTH_RETAIN)
+  return smoothed[index]!
+}
+
 export interface BarGeometry {
   px: number
   py: number

@@ -1,4 +1,5 @@
 import type { VisualizerRenderer, RenderContext } from './types'
+import { usableBinCount, sampleSmoothed } from './barHelpers'
 
 const BAR_COUNT = 48
 
@@ -17,7 +18,7 @@ export function createMirroredBarsRenderer(): VisualizerRenderer {
       if (w === 0 || h === 0) return
 
       const { glowR, glowG, glowB, coreR, coreG, coreB, glowAlphaMul, coreAlphaMul, padX, padBot } = style
-      const binCount = Math.floor(dataArray.length * 0.93)
+      const binCount = usableBinCount(dataArray)
 
       const insetL = w * padX
       const insetR = w * padX
@@ -31,10 +32,7 @@ export function createMirroredBarsRenderer(): VisualizerRenderer {
 
       // Smooth values
       for (let i = 0; i < BAR_COUNT; i++) {
-        const t = i / BAR_COUNT
-        const logIndex = Math.floor(Math.pow(t, 1.5) * (binCount - 1))
-        const rawValue = dataArray[logIndex]! / 255
-        smoothed[i] = smoothed[i]! * 0.4 + rawValue * 0.6
+        sampleSmoothed(smoothed, i, i / BAR_COUNT, binCount, dataArray)
       }
 
       // Shadow pass

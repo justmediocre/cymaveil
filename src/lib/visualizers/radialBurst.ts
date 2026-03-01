@@ -1,4 +1,5 @@
 import type { VisualizerRenderer, RenderContext } from './types'
+import { usableBinCount, sampleSmoothed } from './barHelpers'
 
 const BAR_COUNT = 64
 
@@ -21,7 +22,7 @@ export function createRadialBurstRenderer(): VisualizerRenderer {
       if (w === 0 || h === 0) return
 
       const { glowR, glowG, glowB, coreR, coreG, coreB, glowAlphaMul, coreAlphaMul } = style
-      const binCount = Math.floor(dataArray.length * 0.93)
+      const binCount = usableBinCount(dataArray)
 
       const cx = w / 2
       const cy = h / 2
@@ -32,10 +33,7 @@ export function createRadialBurstRenderer(): VisualizerRenderer {
 
       // Build bar data
       for (let i = 0; i < BAR_COUNT; i++) {
-        const t = i / BAR_COUNT
-        const logIndex = Math.floor(Math.pow(t, 1.5) * (binCount - 1))
-        const rawValue = dataArray[logIndex]! / 255
-        hostSmoothed[i] = hostSmoothed[i]! * 0.4 + rawValue * 0.6
+        sampleSmoothed(hostSmoothed, i, i / BAR_COUNT, binCount, dataArray)
       }
 
       const angleStep = (Math.PI * 2) / BAR_COUNT

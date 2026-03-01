@@ -1,6 +1,6 @@
 import type { ContourData } from '../../types'
 import type { VisualizerRenderer, RenderContext } from './types'
-import { type BarGeometry, createBarPool, createBucketIndices, clearBuckets, drawLineBars, ALPHA_BUCKETS } from './barHelpers'
+import { type BarGeometry, createBarPool, createBucketIndices, clearBuckets, drawLineBars, ALPHA_BUCKETS, usableBinCount, sampleSmoothed } from './barHelpers'
 
 export function createContourBarsRenderer(): VisualizerRenderer {
   let contours: ContourData['contours'] = []
@@ -28,7 +28,7 @@ export function createContourBarsRenderer(): VisualizerRenderer {
       if (contours.length === 0 || w === 0) return
 
       const { glowR, glowG, glowB, coreR, coreG, coreB, glowAlphaMul, coreAlphaMul, padX, padBot } = style
-      const binCount = Math.floor(dataArray.length * 0.93)
+      const binCount = usableBinCount(dataArray)
       let smoothedOffset = 0
 
       for (const contour of contours) {
@@ -47,13 +47,8 @@ export function createContourBarsRenderer(): VisualizerRenderer {
         clearBuckets(bucketIndices)
 
         for (let i = 0; i < points.length; i++) {
-          const t = i / points.length
-          const logIndex = Math.floor(Math.pow(t, 1.5) * (binCount - 1))
-          const rawValue = dataArray[logIndex]! / 255
-
           const si = smoothedOffset + i
-          smoothed[si] = smoothed[si]! * 0.4 + rawValue * 0.6
-          const value = smoothed[si]!
+          const value = sampleSmoothed(smoothed, si, i / points.length, binCount, dataArray)
 
           if (value < 0.02) continue
 
