@@ -32,7 +32,7 @@
   - `electron/updateChecker.js`: silently swallows (`catch { return null }`)
   - Production builds lose all visibility into library load/save failures.
 
-- [ ] **9. `setTimeout` loop instead of `requestAnimationFrame` for animation**
+- [x] **9. `setTimeout` loop instead of `requestAnimationFrame` for animation**
   - `src/components/Visualizer.tsx:146` and `src/lib/tickLoop.ts` — Use `setTimeout(render, 33)` for ~30fps. This doesn't sync with display refresh rate, causing micro-jitter especially on 120Hz displays.
 
 ## Lower-Priority (Low Severity)

@@ -25,7 +25,7 @@ interface VisualizerProps {
 export default function Visualizer({ contourData, analyserRef, dataArrayRef, accentColor, isPlaying, segmentation, resolvedStyle }: VisualizerProps) {
   const { settings } = useVisualSettings()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rafRef = useRef<number | null>(null)
   const smoothedRef = useRef<Float32Array | null>(null)
   const sizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 })
   const timeDomainRef = useRef<Uint8Array | null>(null)
@@ -143,11 +143,11 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
       }
 
       markEnd()
-      timerRef.current = setTimeout(render, 33)
+      rafRef.current = requestAnimationFrame(render)
     }
 
     if (isPlaying && settings.canvasVisualizer) {
-      timerRef.current = setTimeout(render, 33)
+      rafRef.current = requestAnimationFrame(render)
     } else {
       const { w, h } = sizeRef.current
       ctx.clearRect(0, 0, w, h)
@@ -156,9 +156,9 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
     return () => {
       observer.disconnect()
       if (resizeRafId !== null) cancelAnimationFrame(resizeRafId)
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
-        timerRef.current = null
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
       }
       renderer.dispose()
     }
