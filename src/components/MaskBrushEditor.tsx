@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import type { SegmentationBackend } from '../types'
 import type { MaskBrushEditorState } from '../hooks/useMaskBrushEditor'
 import { paintPoint, paintLine, commitStroke } from '../lib/brushEngine'
+import { useTheme } from '../contexts/ThemeContext'
 
 interface MaskBrushEditorProps {
   editor: MaskBrushEditorState
@@ -31,6 +32,9 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
     saving,
     close,
   } = editor
+
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
 
   const artCanvasRef = useRef<HTMLCanvasElement>(null)
   const maskCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -136,9 +140,12 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
     const sx = screenX - rect.left
     const sy = screenY - rect.top
 
+    const cursorColor = isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)'
+    const crosshairColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)'
+
     ctx.beginPath()
     ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2)
-    ctx.strokeStyle = state.mode === 'paint' ? 'rgba(255,255,255,0.8)' : 'rgba(255,80,80,0.8)'
+    ctx.strokeStyle = state.mode === 'paint' ? cursorColor : 'rgba(255,80,80,0.8)'
     ctx.lineWidth = 1.5
     ctx.stroke()
 
@@ -148,12 +155,12 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
     ctx.lineTo(sx + 3, sy)
     ctx.moveTo(sx, sy - 3)
     ctx.lineTo(sx, sy + 3)
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+    ctx.strokeStyle = crosshairColor
     ctx.lineWidth = 1
     ctx.stroke()
 
     lastScreenPosRef.current = { x: screenX, y: screenY }
-  }, [brushStateRef])
+  }, [brushStateRef, isDark])
 
   // Redraw cursor when brush radius or mode changes (keyboard/scroll)
   useEffect(() => {
@@ -302,7 +309,7 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
         position: 'fixed',
         inset: 0,
         zIndex: 100,
-        background: 'rgba(0,0,0,0.85)',
+        background: 'var(--bg-primary)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
