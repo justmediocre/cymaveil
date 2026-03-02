@@ -43,7 +43,7 @@
   - `src/components/VisualizerBackground.tsx:8-9` — `dominantColor` and `accentColor` declared in props interface and passed by caller but never read.
   - `src/contexts/playback/PlaybackContext.tsx:507-514` — `currentAlbumWithColors` spreads `currentAlbum` then re-assigns `dominantColor` and `accentColor` with their own values — a no-op.
 
-- [ ] **11. `any` types in segmentation worker**
+- [x] **11. `any` types in segmentation worker**
   - `src/lib/segmentation/segmentation.worker.ts` — `pipeline: any` (line 28), `dtype as any` (line 57), `result: any` (line 69). The `dtype` cast is avoidable since `DepthModelDtype` already exists in `types.ts`.
 
 - [ ] **12. Magic numbers**

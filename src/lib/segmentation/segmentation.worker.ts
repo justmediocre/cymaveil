@@ -12,8 +12,10 @@ export {} // ensure this file is treated as a module
 
 // ── Message protocol ──────────────────────────────────────────────────────────
 
+import type { DepthModelSize, DepthModelDtype } from '../../types'
+
 export type WorkerRequest =
-  | { type: 'loadModel'; params: { modelSize?: string; modelDtype?: string } }
+  | { type: 'loadModel'; params: { modelSize?: DepthModelSize; modelDtype?: DepthModelDtype } }
   | { type: 'estimateDepth'; id: number; imageSrc: string; width: number; height: number }
   | { type: 'dispose' }
 
@@ -25,20 +27,44 @@ export type WorkerResponse =
 
 // ── Internal state ────────────────────────────────────────────────────────────
 
-let pipeline: any = null
+/** Minimal shape of the @huggingface/transformers pipeline callable. */
+interface DepthPipeline {
+  (input: string): Promise<DepthPipelineResult>
+  dispose(): void
+}
+
+/** Shape of a single depth-estimation result from the pipeline. */
+interface DepthPipelineResult {
+  depth: {
+    data: Float32Array | Uint8Array
+    width: number
+    height: number
+    channels?: number
+  }
+}
+
+/** Progress event emitted during model download. */
+interface ProgressInfo {
+  status: string
+  progress?: number
+}
+
+let pipeline: DepthPipeline | null = null
 let currentConfig: { modelSize: string; modelDtype: string } | null = null
 
-const DEFAULT_MODEL_SIZE = 'small'
-const DEFAULT_MODEL_DTYPE = 'q8'
+const DEFAULT_MODEL_SIZE: DepthModelSize = 'small'
+const DEFAULT_MODEL_DTYPE: DepthModelDtype = 'q8'
 
-function modelId(size: string): string {
+function modelId(size: DepthModelSize): string {
   return `onnx-community/depth-anything-v2-${size}`
 }
 
 async function detectDevice(): Promise<'webgpu' | 'wasm'> {
   if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
     try {
-      const adapter = await (navigator as any).gpu.requestAdapter()
+      // WebGPU API — not yet in TypeScript's default lib.dom.d.ts
+      const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu
+      const adapter = await gpu?.requestAdapter()
       if (adapter) return 'webgpu'
     } catch { /* WebGPU not usable */ }
   }
@@ -46,40 +72,40 @@ async function detectDevice(): Promise<'webgpu' | 'wasm'> {
 }
 
 async function createPipelineWithParams(
-  size: string,
-  dtype: string,
+  size: DepthModelSize,
+  dtype: DepthModelDtype,
   onProgress?: (progress: number) => void,
 ) {
   const { pipeline: createPipeline } = await import('@huggingface/transformers')
   const device = await detectDevice()
 
   return createPipeline('depth-estimation', modelId(size), {
-    dtype: dtype as any,
+    dtype,
     device,
     progress_callback: onProgress
-      ? (info: any) => {
+      ? (info: ProgressInfo) => {
           if (info.status === 'progress' && info.progress != null) {
             onProgress(info.progress / 100)
           }
         }
       : undefined,
-  })
+  }) as unknown as DepthPipeline
 }
 
-function extractDepthMap(result: any, width: number, height: number): Uint8Array | null {
+function extractDepthMap(result: DepthPipelineResult, width: number, height: number): Uint8Array | null {
   if (!result?.depth) return null
 
   const depthImage = result.depth
   const depthData = depthImage.data
-  const srcW = depthImage.width as number
-  const srcH = depthImage.height as number
+  const srcW = depthImage.width
+  const srcH = depthImage.height
   const channels = depthImage.channels ?? Math.round(depthData.length / (srcW * srcH))
 
   // Find min/max for normalization
   let minVal = Infinity
   let maxVal = -Infinity
   for (let i = 0; i < srcW * srcH; i++) {
-    const v = depthData[i * channels]
+    const v = depthData[i * channels]!
     if (v < minVal) minVal = v
     if (v > maxVal) maxVal = v
   }
@@ -87,7 +113,7 @@ function extractDepthMap(result: any, width: number, height: number): Uint8Array
   const range = maxVal - minVal
   const normalized = new Float32Array(srcW * srcH)
   for (let i = 0; i < srcW * srcH; i++) {
-    const raw = depthData[i * channels]
+    const raw = depthData[i * channels]!
     normalized[i] = range > 0 ? ((raw - minVal) / range) * 255 : 128
   }
 
