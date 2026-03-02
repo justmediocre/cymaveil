@@ -58,7 +58,7 @@
 - [x] **14. Duplicate luminance formula**
   - `0.299 * r + 0.587 * g + 0.114 * b` hardcoded in both `edgeDetector.ts:37` and `depthToMask.ts:343`.
 
-- [ ] **15. Ambiguous file naming**
+- [x] **15. Ambiguous file naming**
   - `src/components/Controls.tsx` (playback transport) vs `src/components/settings/Controls.tsx` (settings UI primitives) — same filename, different purposes.
 
 - [ ] **16. `clearLibrary` aborts on first file deletion failure**

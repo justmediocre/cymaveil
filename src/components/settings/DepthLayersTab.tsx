@@ -4,7 +4,7 @@ import { segmentationCache, countAllCustomized, type UserEditedMaskExport } from
 import { artCache } from '../../lib/artCache'
 import { maskOverrideStore } from '../../lib/segmentation/maskOverrideStore'
 import { DEFAULT_MASK_PARAMS } from '../../lib/segmentation/depthToMask'
-import { SettingRow, SettingToggle, SettingSlider, SettingSelect, SettingSection } from './Controls'
+import { SettingRow, SettingToggle, SettingSlider, SettingSelect, SettingSection } from './SettingsControls'
 import type { MaskOverrideRecord } from '../../lib/segmentation/maskOverrideStore'
 import type { SegmentationBackend, VisualizerStyle, VisualizerColorMode, MaskPostProcessParams } from '../../types'
 

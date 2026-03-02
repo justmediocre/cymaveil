@@ -1,6 +1,6 @@
 import usePlaybackSettings from '../../hooks/usePlaybackSettings'
 import useDebouncedSlider from '../../hooks/useDebouncedSlider'
-import { SettingSlider, SettingSection } from './Controls'
+import { SettingSlider, SettingSection } from './SettingsControls'
 
 export default function PlaybackTab() {
   const { settings, setSetting } = usePlaybackSettings()

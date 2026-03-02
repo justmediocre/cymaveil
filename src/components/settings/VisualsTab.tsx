@@ -1,6 +1,6 @@
 import useVisualSettings from '../../hooks/useVisualSettings'
 import useDebouncedSlider from '../../hooks/useDebouncedSlider'
-import { SettingToggle, SettingSlider, SettingSelect, SettingSection } from './Controls'
+import { SettingToggle, SettingSlider, SettingSelect, SettingSection } from './SettingsControls'
 import type { VisualSettings, MosaicTransition } from '../../types'
 
 interface VisualToggle {
