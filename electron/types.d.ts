@@ -37,6 +37,7 @@ export interface PlaybackState {
   playQueue: string[]
   queueIndex: number
   shuffle: boolean
+  repeat: 'off' | 'all' | 'one'
 }
 
 /** Library data persisted to disk */

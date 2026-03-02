@@ -274,6 +274,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       let restoredQueue: string[] = []
       let restoredQueueIndex = -1
       let restoredShuffle = false
+      let restoredRepeat: 'off' | 'all' | 'one' = 'off'
 
       if (window.electronAPI?.loadPlaybackState) {
         try {
@@ -286,6 +287,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
             restoredQueue = saved.playQueue
             restoredQueueIndex = saved.queueIndex ?? -1
             restoredShuffle = saved.shuffle ?? false
+            restoredRepeat = saved.repeat ?? 'off'
           }
         } catch (err) {
           if (import.meta.env.DEV) console.warn('Failed to restore playback state:', err)
@@ -300,6 +302,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
             playQueue: restoredQueue,
             queueIndex: restoredQueueIndex,
             shuffle: restoredShuffle,
+            repeat: restoredRepeat,
           },
         })
       }
@@ -372,8 +375,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       playQueue: state.playQueue,
       queueIndex: state.queueIndex,
       shuffle: state.shuffle,
+      repeat: state.repeat,
     })
-  }, [state.currentTrackIndex, state.playQueue, state.queueIndex, state.shuffle])
+  }, [state.currentTrackIndex, state.playQueue, state.queueIndex, state.shuffle, state.repeat])
 
   // Push currentTime to the main process periodically so it can
   // persist the latest position on close (destroy() skips beforeunload)
