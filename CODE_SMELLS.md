@@ -64,7 +64,7 @@
 - [x] **16. `clearLibrary` aborts on first file deletion failure**
   - `electron/libraryStore.js:199-214` — If one `unlinkSync` fails, the catch aborts the loop, leaving orphaned artwork files. A per-file try/catch would be more robust.
 
-- [ ] **17. `VolumeControl.tsx:79` — `useCallback` recreated on every volume change**
+- [x] **17. `VolumeControl.tsx:79` — `useCallback` recreated on every volume change**
   - `volumeFromY` captures `volume` in its closure, causing re-creation on every volume update. Store `volume` in a ref instead.
 
 - [ ] **18. Mixed hover interaction styles**

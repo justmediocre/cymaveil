@@ -17,6 +17,8 @@ export default function VolumeControl({ volume = 75, onVolumeChange }: VolumeCon
   const trackRef = useRef<HTMLDivElement | null>(null)
   const dragging = useRef(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const volumeRef = useRef(volume)
+  volumeRef.current = volume
 
   const getLevel = (): 'high' | 'low' | 'mute' => {
     if (volume === 0) return 'mute'
@@ -78,11 +80,11 @@ export default function VolumeControl({ volume = 75, onVolumeChange }: VolumeCon
   // Drag handling for the vertical slider
   const volumeFromY = useCallback((clientY: number) => {
     const track = trackRef.current
-    if (!track) return volume
+    if (!track) return volumeRef.current
     const rect = track.getBoundingClientRect()
     const ratio = 1 - (clientY - rect.top) / rect.height
     return Math.max(0, Math.min(100, Math.round(ratio * 100)))
-  }, [volume])
+  }, [])
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
