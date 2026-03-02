@@ -201,11 +201,16 @@ export function clearLibrary() {
     store.clear()
     store.set('schemaVersion', 1)
 
-    // Remove all artwork files
+    // Remove all artwork files — per-file try/catch so one locked file
+    // doesn't leave the rest orphaned on disk.
     if (fs.existsSync(artworkDir)) {
       const files = fs.readdirSync(artworkDir)
       for (const file of files) {
-        fs.unlinkSync(path.join(artworkDir, file))
+        try {
+          fs.unlinkSync(path.join(artworkDir, file))
+        } catch (err) {
+          console.error(`Failed to delete artwork file ${file}:`, err)
+        }
       }
     }
   } catch (err) {

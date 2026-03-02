@@ -61,7 +61,7 @@
 - [x] **15. Ambiguous file naming**
   - `src/components/Controls.tsx` (playback transport) vs `src/components/settings/Controls.tsx` (settings UI primitives) — same filename, different purposes.
 
-- [ ] **16. `clearLibrary` aborts on first file deletion failure**
+- [x] **16. `clearLibrary` aborts on first file deletion failure**
   - `electron/libraryStore.js:199-214` — If one `unlinkSync` fails, the catch aborts the loop, leaving orphaned artwork files. A per-file try/catch would be more robust.
 
 - [ ] **17. `VolumeControl.tsx:79` — `useCallback` recreated on every volume change**
