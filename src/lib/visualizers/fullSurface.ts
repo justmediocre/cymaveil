@@ -38,7 +38,7 @@ export function createFullSurfaceRenderer(): VisualizerRenderer {
       let barCount = 0
 
       for (let i = 0; i < BAR_COUNT; i++) {
-        const value = sampleSmoothed(smoothed, i, i / BAR_COUNT, binCount, dataArray)
+        const value = sampleSmoothed(smoothed, i, (i + 1) / (BAR_COUNT + 1), binCount, dataArray)
 
         if (value < 0.02) continue
 

@@ -48,7 +48,7 @@ export function createContourBarsRenderer(): VisualizerRenderer {
 
         for (let i = 0; i < points.length; i++) {
           const si = smoothedOffset + i
-          const value = sampleSmoothed(smoothed, si, i / points.length, binCount, dataArray)
+          const value = sampleSmoothed(smoothed, si, (i + 1) / (points.length + 1), binCount, dataArray)
 
           if (value < 0.02) continue
 

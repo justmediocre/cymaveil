@@ -29,7 +29,7 @@ export function createRadialBurstRenderer(): VisualizerRenderer {
 
       // Build bar data
       for (let i = 0; i < BAR_COUNT; i++) {
-        sampleSmoothed(hostSmoothed, i, i / BAR_COUNT, binCount, dataArray)
+        sampleSmoothed(hostSmoothed, i, (i + 1) / (BAR_COUNT + 1), binCount, dataArray)
       }
 
       const angleStep = (Math.PI * 2) / BAR_COUNT

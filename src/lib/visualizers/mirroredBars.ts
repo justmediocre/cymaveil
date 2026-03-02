@@ -32,7 +32,7 @@ export function createMirroredBarsRenderer(): VisualizerRenderer {
 
       // Smooth values
       for (let i = 0; i < BAR_COUNT; i++) {
-        sampleSmoothed(smoothed, i, i / BAR_COUNT, binCount, dataArray)
+        sampleSmoothed(smoothed, i, (i + 1) / (BAR_COUNT + 1), binCount, dataArray)
       }
 
       // Shadow pass
