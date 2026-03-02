@@ -1,7 +1,6 @@
 import { memo, useState, useRef, useEffect } from 'react'
 import type React from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { perfMarkStart } from '../lib/perf'
 import { onTick } from '../lib/tickLoop'
 import useVisualSettings from '../hooks/useVisualSettings'
 import { useTheme } from '../contexts/ThemeContext'

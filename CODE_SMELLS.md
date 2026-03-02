@@ -37,7 +37,7 @@
 
 ## Lower-Priority (Low Severity)
 
-- [ ] **10. Dead code**
+- [x] **10. Dead code**
   - `src/components/AlbumArt.tsx:4` — `perfMarkStart` imported but never used.
   - `src/lib/visualizers/radialBurst.ts:6,15` — Module-level `smoothed` variable allocated in `init()` but `render()` uses `hostSmoothed` parameter instead.
   - `src/components/VisualizerBackground.tsx:8-9` — `dominantColor` and `accentColor` declared in props interface and passed by caller but never read.

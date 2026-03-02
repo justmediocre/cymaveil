@@ -4,17 +4,13 @@ import { usableBinCount, sampleSmoothed } from './barHelpers'
 const BAR_COUNT = 64
 
 export function createRadialBurstRenderer(): VisualizerRenderer {
-  let smoothed = new Float32Array(BAR_COUNT)
-
   return {
     name: 'radial-burst',
     needsTimeDomain: false,
     needsContourData: false,
     smoothedSize: BAR_COUNT,
 
-    init() {
-      smoothed = new Float32Array(BAR_COUNT)
-    },
+    init() {},
 
     render(rc: RenderContext, hostSmoothed: Float32Array) {
       const { ctx, w, h, dataArray, style } = rc

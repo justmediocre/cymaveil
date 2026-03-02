@@ -504,14 +504,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   // ── Media Session ───────────────────────────────────────────────────────
 
-  const currentAlbumWithColors = useMemo(() => {
-    if (!currentAlbum) return null
-    return {
-      ...currentAlbum,
-      dominantColor: currentAlbum.dominantColor,
-      accentColor: currentAlbum.accentColor,
-    }
-  }, [currentAlbum])
+  const currentAlbumWithColors = currentAlbum ?? null
 
   useMediaSession({
     track: currentTrack ?? null,

@@ -5,8 +5,6 @@ import { onTick } from '../lib/tickLoop'
 
 interface VisualizerBackgroundProps {
   analyserRef: React.RefObject<AnalyserNode | null>
-  dominantColor: string
-  accentColor: string
   isPlaying: boolean
   bassEnergyRef: React.MutableRefObject<number>
 }

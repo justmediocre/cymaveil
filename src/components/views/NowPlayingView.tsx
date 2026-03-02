@@ -144,8 +144,6 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
       {/* Bass-reactive background glow */}
       <VisualizerBackground
         analyserRef={analyserRef}
-        dominantColor={currentAlbumWithColors.dominantColor}
-        accentColor={currentAlbumWithColors.accentColor}
         isPlaying={activelyPlaying}
         bassEnergyRef={bassEnergyRef}
       />
