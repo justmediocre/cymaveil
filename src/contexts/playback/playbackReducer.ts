@@ -94,7 +94,17 @@ export function playbackReducer(state: PlaybackState, action: PlaybackAction): P
 
     case 'TOGGLE_SHUFFLE': {
       if (state.shuffle) {
-        // Turn OFF: deactivate queue
+        // Turn OFF: restore album queue in order (if album context available)
+        const idx = action.albumTrackIds.indexOf(action.currentTrackId!)
+        if (action.albumTrackIds.length > 0 && idx >= 0) {
+          return {
+            ...state,
+            shuffle: false,
+            playQueue: action.albumTrackIds,
+            queueIndex: idx,
+          }
+        }
+        // Fallback: deactivate queue
         const globalIndex = action.tracks.findIndex((t) => t.id === action.currentTrackId)
         return {
           ...state,

@@ -472,8 +472,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           break
         case 'album':
           {
-            const track = source.albumTracks[index]
-            if (track) dispatch({ type: 'DEACTIVATE_QUEUE', trackId: track.id, tracks })
+            const trackIds = source.albumTracks.map(t => t.id)
+            dispatch({ type: 'SET_QUEUE', queue: trackIds, index, shuffle: false })
           }
           break
         case 'playlist':

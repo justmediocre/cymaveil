@@ -21,7 +21,7 @@ export default function QueuePanel({ show }: QueuePanelProps) {
     return albumTracks
   }, [queueActive, state.playQueue, tracks, albumTracks])
 
-  const queuePanelHeader = queueActive
+  const queuePanelHeader = queueActive && state.shuffle
     ? `Shuffle Queue \u00b7 ${state.playQueue.length} tracks`
     : `Now Playing \u00b7 ${currentAlbum?.title || ''}`
 
