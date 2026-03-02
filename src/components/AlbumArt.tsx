@@ -85,6 +85,10 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
   const [artEntered, setArtEntered] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
+  // Track whether the entrance blur animation is still running.
+  // While true, filter: blur() is applied; once complete it's removed
+  // so the browser rasterizes at native device resolution (HiDPI).
+  const [artBlurring, setArtBlurring] = useState(true)
 
   // Snapshot segmentation for the displayed album so the foreground mask
   // persists during skip transitions instead of vanishing immediately
@@ -130,6 +134,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
         // Vinyl already retracted (paused or initial) — swap art directly
         setArtEntered(false)
         setImageLoaded(false)
+        setArtBlurring(true)
         setDisplayedAlbum(album)
         pendingAlbumRef.current = null
       }
@@ -167,6 +172,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
     if (pendingAlbumRef.current) {
       setArtEntered(false)
       setImageLoaded(false)
+      setArtBlurring(true)
       setDisplayedAlbum(pendingAlbumRef.current)
       pendingAlbumRef.current = null
     }
@@ -175,6 +181,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
   // Album art entrance animation completed → extend vinyl
   const handleArtEnterComplete = () => {
     setArtEntered(true)
+    setArtBlurring(false)
     setTransitioning(false)
     if (isPlayingRef.current) {
       setVinylOut(true)
@@ -360,7 +367,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
             animate={{
               opacity: 1,
               scale: 1,
-              filter: 'blur(0px)',
+              filter: artBlurring ? 'blur(0px)' : 'none',
             }}
             exit={{ opacity: 0, scale: 0.95, filter: 'blur(8px)', transition: { duration: artDuration, ease: [0.22, 1, 0.36, 1] } }}
             transition={{ duration: artDuration, ease: [0.22, 1, 0.36, 1] }}
@@ -391,10 +398,11 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
               {/* Foreground mask — only show after art transition completes.
                   Uses displayedSeg (snapshotted) so the old mask persists
                   during skip transitions instead of popping off early. */}
-              {displayedSeg && artEntered && imageLoaded && (
+              {displayedSeg && artEntered && imageLoaded && displayedAlbum.art && (
                 <ForegroundMask
                   key={displayedAlbum.id}
                   segmentation={displayedSeg}
+                  artSrc={displayedAlbum.art}
                   style={{ opacity: debugLayers.mask ? 1 : 0 }}
                 />
               )}
