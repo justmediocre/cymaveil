@@ -7,6 +7,7 @@
  */
 
 import type { EdgeResult } from '../types'
+import { luminance } from './imageUtils'
 
 const DETECT_SIZE = 128
 const MARGIN = 5
@@ -34,7 +35,7 @@ export function detectEdges(src: string | null | undefined): Promise<EdgeResult[
         const gray = new Float32Array(w * h)
         for (let i = 0; i < w * h; i++) {
           const idx = i * 4
-          gray[i] = 0.299 * data[idx]! + 0.587 * data[idx + 1]! + 0.114 * data[idx + 2]!
+          gray[i] = luminance(data[idx]!, data[idx + 1]!, data[idx + 2]!)
         }
 
         // Pre-compute blur levels

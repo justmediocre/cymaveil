@@ -55,7 +55,7 @@
 - [x] **13. Duplicated loading spinner**
   - `src/App.tsx:7` and `src/components/layout/AppLayout.tsx:18-22` define identical `LOADING_SPINNER` constants.
 
-- [ ] **14. Duplicate luminance formula**
+- [x] **14. Duplicate luminance formula**
   - `0.299 * r + 0.587 * g + 0.114 * b` hardcoded in both `edgeDetector.ts:37` and `depthToMask.ts:343`.
 
 - [ ] **15. Ambiguous file naming**

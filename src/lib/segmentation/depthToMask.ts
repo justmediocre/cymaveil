@@ -1,4 +1,5 @@
 import type { SegmentationResult, MaskPostProcessParams } from '../../types'
+import { luminance } from '../imageUtils'
 
 /** Built-in default post-processing parameters */
 export const DEFAULT_MASK_PARAMS: MaskPostProcessParams = {
@@ -340,7 +341,7 @@ function computeImageGradient(rgba: Uint8ClampedArray, w: number, h: number): Im
   const lum = new Float32Array(w * h)
   for (let i = 0; i < w * h; i++) {
     const ri = i * 4
-    lum[i] = 0.299 * rgba[ri]! + 0.587 * rgba[ri + 1]! + 0.114 * rgba[ri + 2]!
+    lum[i] = luminance(rgba[ri]!, rgba[ri + 1]!, rgba[ri + 2]!)
   }
 
   const grad = new Float32Array(w * h)
