@@ -12,6 +12,7 @@ interface VisualizerProps {
   analyserRef: React.RefObject<AnalyserNode | null>
   dataArrayRef: React.RefObject<Uint8Array | null>
   accentColor: string
+  accentSecondary?: string
   isPlaying: boolean
   segmentation?: SegmentationResult | null
   /** Pre-resolved concrete style (random already picked by parent). */
@@ -22,7 +23,7 @@ interface VisualizerProps {
  * Canvas overlay that draws audio-reactive visualizations.
  * Delegates rendering to style-specific renderer modules.
  */
-export default function Visualizer({ contourData, analyserRef, dataArrayRef, accentColor, isPlaying, segmentation, resolvedStyle }: VisualizerProps) {
+export default function Visualizer({ contourData, analyserRef, dataArrayRef, accentColor, accentSecondary, isPlaying, segmentation, resolvedStyle }: VisualizerProps) {
   const { settings } = useVisualSettings()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -36,12 +37,14 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
   const colorModeRef = useRef(settings.visualizerColorMode)
   const customColorRef = useRef(settings.visualizerCustomColor)
   const accentColorRef = useRef(accentColor)
+  const accentSecondaryRef = useRef(accentSecondary)
   const segmentationRef = useRef(segmentation)
 
   intensityRef.current = settings.visualizerIntensity
   colorModeRef.current = settings.visualizerColorMode
   customColorRef.current = settings.visualizerCustomColor
   accentColorRef.current = accentColor
+  accentSecondaryRef.current = accentSecondary
   segmentationRef.current = segmentation
 
   useEffect(() => {
@@ -125,7 +128,8 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
           colorModeRef.current,
           customColorRef.current,
           accentColorRef.current,
-          !!segmentationRef.current
+          !!segmentationRef.current,
+          accentSecondaryRef.current,
         )
 
         renderer.render(

@@ -35,16 +35,7 @@ export function resolveBarColor(mode: string, customHex: string, accentColor: st
   return PRESET_COLORS[mode] ?? parseColor(accentColor)
 }
 
-export function computeFrameStyle(
-  intensity: number,
-  colorMode: string,
-  customColor: string,
-  accentColor: string,
-  hasDepthMask: boolean
-): FrameStyle {
-  const intensityNorm = intensity / 100
-  const color = resolveBarColor(colorMode, customColor, accentColor)
-
+function saturateAndBrighten(color: ParsedColor, intensityNorm: number): { r: number; g: number; b: number } {
   const maxC = Math.max(color.r, color.g, color.b, 1)
   const satBoost = 0.3 + intensityNorm * 0.4
   const satR = Math.min(255, color.r + (color.r / maxC) * 255 * satBoost)
@@ -52,14 +43,40 @@ export function computeFrameStyle(
   const satB = Math.min(255, color.b + (color.b / maxC) * 255 * satBoost)
 
   const brighten = 0.15 + intensityNorm * 0.15
-  const glowR = Math.round(satR + (255 - satR) * brighten)
-  const glowG = Math.round(satG + (255 - satG) * brighten)
-  const glowB = Math.round(satB + (255 - satB) * brighten)
+  return {
+    r: Math.round(satR + (255 - satR) * brighten),
+    g: Math.round(satG + (255 - satG) * brighten),
+    b: Math.round(satB + (255 - satB) * brighten),
+  }
+}
 
-  const coreBrighten = 0.3 + intensityNorm * 0.3
-  const coreR = Math.round(glowR + (255 - glowR) * coreBrighten)
-  const coreG = Math.round(glowG + (255 - glowG) * coreBrighten)
-  const coreB = Math.round(glowB + (255 - glowB) * coreBrighten)
+export function computeFrameStyle(
+  intensity: number,
+  colorMode: string,
+  customColor: string,
+  accentColor: string,
+  hasDepthMask: boolean,
+  accentSecondary?: string,
+): FrameStyle {
+  const intensityNorm = intensity / 100
+  const color = resolveBarColor(colorMode, customColor, accentColor)
+
+  const glow = saturateAndBrighten(color, intensityNorm)
+  const glowR = glow.r, glowG = glow.g, glowB = glow.b
+
+  // Two-tone: use secondary accent for core when available (auto mode only)
+  let coreR: number, coreG: number, coreB: number
+  if (colorMode === 'auto' && accentSecondary) {
+    const secondary = parseColor(accentSecondary)
+    const core = saturateAndBrighten(secondary, intensityNorm)
+    coreR = core.r; coreG = core.g; coreB = core.b
+  } else {
+    // Derive core by further brightening glow (original single-color approach)
+    const coreBrighten = 0.3 + intensityNorm * 0.3
+    coreR = Math.round(glowR + (255 - glowR) * coreBrighten)
+    coreG = Math.round(glowG + (255 - glowG) * coreBrighten)
+    coreB = Math.round(glowB + (255 - glowB) * coreBrighten)
+  }
 
   const glowAlphaMul = 0.3 + intensityNorm * 0.7
   const coreAlphaMul = 0.4 + intensityNorm * 0.6

@@ -4,7 +4,7 @@ import { getDB, hashArtSrc, COLORS_STORE, CONTOUR_STORE } from './segmentation/c
 const COLORS_LRU_CAPACITY = 16
 const CONTOUR_LRU_CAPACITY = 8
 const MAX_IDB_ENTRIES = 200
-const COLORS_VERSION = 'colors:v1'
+const COLORS_VERSION = 'colors:v2'
 const CONTOUR_VERSION = 'contour:v1'
 
 // --- In-memory LRU ---

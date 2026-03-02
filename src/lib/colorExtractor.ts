@@ -12,6 +12,24 @@ interface ColorBucket {
   saturation: number
 }
 
+function rgbToHue(r: number, g: number, b: number): number {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  const delta = max - min
+  if (delta === 0) return 0
+  let h: number
+  if (max === r) h = (((g - b) / delta) % 6 + 6) % 6
+  else if (max === g) h = (b - r) / delta + 2
+  else h = (r - g) / delta + 4
+  return h * 60
+}
+
+function hueDist(h1: number, h2: number): number {
+  const d = Math.abs(h1 - h2)
+  return Math.min(d, 360 - d)
+}
+
+const SECONDARY_HUE_THRESHOLD = 40
+
 /** Boost washed-out pastel accents into a vivid version of the same hue */
 function vibrantAccent(r: number, g: number, b: number): string {
   const rn = r / 255, gn = g / 255, bn = b / 255
@@ -121,7 +139,23 @@ export function extractColors(src: string | null | undefined): Promise<AlbumColo
         }
         const accentColor = vibrantAccent(accent.r, accent.g, accent.b)
 
-        resolve({ dominant, accent: accentColor })
+        // Secondary accent: best scoring color with a distinct hue from primary
+        const primaryHue = rgbToHue(accent.r, accent.g, accent.b)
+        let secondary: ColorBucket | null = null
+        let bestSecScore = 0
+        for (const c of sorted) {
+          if (c === accent) continue
+          const score = accentScore(c)
+          if (score <= bestSecScore) continue
+          if (hueDist(rgbToHue(c.r, c.g, c.b), primaryHue) < SECONDARY_HUE_THRESHOLD) continue
+          secondary = c
+          bestSecScore = score
+        }
+        const accentSecondary = secondary && bestSecScore >= 20
+          ? vibrantAccent(secondary.r, secondary.g, secondary.b)
+          : undefined
+
+        resolve({ dominant, accent: accentColor, accentSecondary })
       } catch {
         resolve(null)
       }

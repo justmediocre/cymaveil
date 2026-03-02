@@ -92,6 +92,7 @@ export interface UpdateInfo {
 export interface AlbumColors {
   dominant: string
   accent: string
+  accentSecondary?: string
 }
 
 /** A point on a contour path (normalized 0-1 coords) */

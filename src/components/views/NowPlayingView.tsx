@@ -47,8 +47,9 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
       ...currentAlbum,
       dominantColor: albumColors.dominant,
       accentColor: albumColors.accent,
+      accentSecondary: albumColors.accentSecondary,
     }
-  }, [currentAlbum, albumColors.dominant, albumColors.accent])
+  }, [currentAlbum, albumColors.dominant, albumColors.accent, albumColors.accentSecondary])
 
   const { contourData } = useContourPath(currentAlbumWithColors?.art ?? null)
   const {
@@ -135,12 +136,13 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
         analyserRef={analyserRef}
         dataArrayRef={dataArrayRef}
         accentColor={currentAlbumWithColors?.accentColor ?? ''}
+        accentSecondary={currentAlbumWithColors?.accentSecondary}
         isPlaying={activelyPlaying}
         segmentation={segmentation}
         resolvedStyle={resolvedVisualizerStyle}
       />
     ),
-    [contourData, analyserRef, dataArrayRef, currentAlbumWithColors?.accentColor, activelyPlaying, segmentation, resolvedVisualizerStyle]
+    [contourData, analyserRef, dataArrayRef, currentAlbumWithColors?.accentColor, currentAlbumWithColors?.accentSecondary, activelyPlaying, segmentation, resolvedVisualizerStyle]
   )
 
   if (!currentTrack || !currentAlbumWithColors) return null

@@ -34,7 +34,11 @@ export default function useAlbumColors(album: Album | null): AlbumColors {
         const extracted = await extractColors(artSrc)
         if (cancelled) return
         if (extracted) {
-          const result: AlbumColors = { dominant: extracted.dominant, accent: extracted.accent }
+          const result: AlbumColors = {
+            dominant: extracted.dominant,
+            accent: extracted.accent,
+            accentSecondary: extracted.accentSecondary,
+          }
           setColors(result)
           artCache.putColors(artSrc, result)
         } else {
