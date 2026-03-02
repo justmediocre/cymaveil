@@ -37,6 +37,11 @@ export function sampleSmoothed(
   return smoothed[index]!
 }
 
+/** Standard 3-pass line widths for shadow / glow / core rendering. */
+export const LINE_WIDTH_SHADOW = 6
+export const LINE_WIDTH_GLOW = 3
+export const LINE_WIDTH_CORE = 1.5
+
 export interface BarGeometry {
   px: number
   py: number

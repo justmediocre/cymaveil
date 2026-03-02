@@ -1,4 +1,5 @@
 import type { VisualizerRenderer, RenderContext } from './types'
+import { LINE_WIDTH_SHADOW, LINE_WIDTH_GLOW, LINE_WIDTH_CORE } from './barHelpers'
 
 const POINT_COUNT = 128
 
@@ -63,19 +64,19 @@ export function createWaveformRenderer(): VisualizerRenderer {
       ctx.lineJoin = 'round'
 
       // Shadow pass
-      ctx.lineWidth = 6
+      ctx.lineWidth = LINE_WIDTH_SHADOW
       ctx.strokeStyle = `rgba(0, 0, 0, ${0.35 * glowAlphaMul})`
       buildPath()
       ctx.stroke()
 
       // Glow pass
-      ctx.lineWidth = 3
+      ctx.lineWidth = LINE_WIDTH_GLOW
       ctx.strokeStyle = `rgba(${glowR}, ${glowG}, ${glowB}, ${glowAlphaMul})`
       buildPath()
       ctx.stroke()
 
       // Core pass
-      ctx.lineWidth = 1.5
+      ctx.lineWidth = LINE_WIDTH_CORE
       ctx.strokeStyle = `rgba(${coreR}, ${coreG}, ${coreB}, ${coreAlphaMul})`
       buildPath()
       ctx.stroke()

@@ -1,5 +1,5 @@
 import type { VisualizerRenderer, RenderContext } from './types'
-import { usableBinCount, sampleSmoothed } from './barHelpers'
+import { usableBinCount, sampleSmoothed, LINE_WIDTH_SHADOW, LINE_WIDTH_GLOW, LINE_WIDTH_CORE } from './barHelpers'
 
 const BAR_COUNT = 64
 
@@ -35,7 +35,7 @@ export function createRadialBurstRenderer(): VisualizerRenderer {
       const angleStep = (Math.PI * 2) / BAR_COUNT
 
       // Shadow pass
-      ctx.lineWidth = 6
+      ctx.lineWidth = LINE_WIDTH_SHADOW
       for (let i = 0; i < BAR_COUNT; i++) {
         const value = hostSmoothed[i]!
         if (value < 0.02) continue
@@ -54,7 +54,7 @@ export function createRadialBurstRenderer(): VisualizerRenderer {
       }
 
       // Glow pass
-      ctx.lineWidth = 3
+      ctx.lineWidth = LINE_WIDTH_GLOW
       for (let i = 0; i < BAR_COUNT; i++) {
         const value = hostSmoothed[i]!
         if (value < 0.02) continue
@@ -73,7 +73,7 @@ export function createRadialBurstRenderer(): VisualizerRenderer {
       }
 
       // Core pass
-      ctx.lineWidth = 1.5
+      ctx.lineWidth = LINE_WIDTH_CORE
       for (let i = 0; i < BAR_COUNT; i++) {
         const value = hostSmoothed[i]!
         if (value < 0.02) continue

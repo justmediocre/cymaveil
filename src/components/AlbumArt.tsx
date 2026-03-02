@@ -7,6 +7,11 @@ import { useTheme } from '../contexts/ThemeContext'
 import ForegroundMask from './ForegroundMask'
 import type { Album, SegmentationResult } from '../types'
 
+/** Minimum normalised bass energy [0,1] to trigger a bass-hit zoom impulse. */
+const BASS_HIT_THRESHOLD = 0.6
+/** Minimum ms between consecutive bass-hit triggers (avoids multi-fire on one transient). */
+const BASS_HIT_DEBOUNCE_MS = 60
+
 interface AlbumArtProps {
   album: Album
   isPlaying: boolean
@@ -193,10 +198,10 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
       const energy = bassEnergyRef?.current || 0
       const now = performance.now()
       if (shakeRef.current) {
-        // Detect bass hit (60ms debounce avoids multi-trigger on one transient)
-        if (energy > 0.6 && now - lastBassHitRef.current > 60) {
+        // Detect bass hit
+        if (energy > BASS_HIT_THRESHOLD && now - lastBassHitRef.current > BASS_HIT_DEBOUNCE_MS) {
           lastBassHitRef.current = now
-          const t = (energy - 0.6) / 0.4               // normalize 0..1
+          const t = (energy - BASS_HIT_THRESHOLD) / (1 - BASS_HIT_THRESHOLD)  // normalize 0..1
           const impulse = t * t * 0.01                  // quadratic — keep zoom subtle, blur does the work
 
           // If zoomed in or heading there, reverse; otherwise zoom in

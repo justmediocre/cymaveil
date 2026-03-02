@@ -46,7 +46,7 @@
 - [x] **11. `any` types in segmentation worker**
   - `src/lib/segmentation/segmentation.worker.ts` — `pipeline: any` (line 28), `dtype as any` (line 57), `result: any` (line 69). The `dtype` cast is avoidable since `DepthModelDtype` already exists in `types.ts`.
 
-- [ ] **12. Magic numbers**
+- [x] **12. Magic numbers**
   - `0.93` FFT truncation — 4 files, no constant or comment explaining the 7% high-frequency cutoff.
   - `2000` ms status reset — repeated 7 times in `DepthLayersTab.tsx`.
   - `0.6` bass threshold and `60` ms debounce — `AlbumArt.tsx:198-199`.

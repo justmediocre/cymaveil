@@ -54,6 +54,9 @@ const COLOR_OPTIONS: { value: VisualizerColorMode; label: string; swatch: string
   { value: 'custom', label: 'Custom', swatch: '' },
 ]
 
+/** Duration (ms) before status indicators (e.g. "Cleared", "Exported") reset to idle. */
+const STATUS_RESET_MS = 2000
+
 function detectAcceleration(): string {
   if (typeof navigator !== 'undefined' && 'gpu' in navigator) return 'WebGPU'
   return 'WASM'
@@ -117,11 +120,11 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
         URL.revokeObjectURL(url)
       }
       setExportStatus('done')
-      const id = setTimeout(() => { setExportStatus('idle'); timersRef.current.delete(id) }, 2000)
+      const id = setTimeout(() => { setExportStatus('idle'); timersRef.current.delete(id) }, STATUS_RESET_MS)
       timersRef.current.add(id)
     } catch {
       setExportStatus('error')
-      const id = setTimeout(() => { setExportStatus('idle'); timersRef.current.delete(id) }, 2000)
+      const id = setTimeout(() => { setExportStatus('idle'); timersRef.current.delete(id) }, STATUS_RESET_MS)
       timersRef.current.add(id)
     }
   }
@@ -173,11 +176,11 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
 
       bumpCacheVersion()
       setImportStatus('done')
-      const id = setTimeout(() => { setImportStatus('idle'); timersRef.current.delete(id) }, 2000)
+      const id = setTimeout(() => { setImportStatus('idle'); timersRef.current.delete(id) }, STATUS_RESET_MS)
       timersRef.current.add(id)
     } catch {
       setImportStatus('error')
-      const id = setTimeout(() => { setImportStatus('idle'); timersRef.current.delete(id) }, 2000)
+      const id = setTimeout(() => { setImportStatus('idle'); timersRef.current.delete(id) }, STATUS_RESET_MS)
       timersRef.current.add(id)
     }
   }
@@ -304,7 +307,7 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
             await artCache.clear()
             bumpCacheVersion()
             setCacheCleared(true)
-            const id = setTimeout(() => { setCacheCleared(false); timersRef.current.delete(id) }, 2000)
+            const id = setTimeout(() => { setCacheCleared(false); timersRef.current.delete(id) }, STATUS_RESET_MS)
             timersRef.current.add(id)
           }}
           className="shrink-0 text-sm px-3 py-1.5 rounded-lg transition-colors"
@@ -361,7 +364,7 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
               await maskOverrideStore.clearAll()
               bumpCacheVersion()
               setUserCacheCleared(true)
-              const id = setTimeout(() => { setUserCacheCleared(false); timersRef.current.delete(id) }, 2000)
+              const id = setTimeout(() => { setUserCacheCleared(false); timersRef.current.delete(id) }, STATUS_RESET_MS)
               timersRef.current.add(id)
             }}
             disabled={customizedCount === 0}
@@ -386,7 +389,7 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
             await artCache.clear()
             bumpCacheVersion()
             setAllCacheCleared(true)
-            const id = setTimeout(() => { setAllCacheCleared(false); timersRef.current.delete(id) }, 2000)
+            const id = setTimeout(() => { setAllCacheCleared(false); timersRef.current.delete(id) }, STATUS_RESET_MS)
             timersRef.current.add(id)
           }}
           className="shrink-0 text-sm px-3 py-1.5 rounded-lg transition-colors"
