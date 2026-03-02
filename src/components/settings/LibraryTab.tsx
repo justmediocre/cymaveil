@@ -29,10 +29,7 @@ export default function LibraryTab() {
         {folders.map((folder) => (
           <div
             key={folder}
-            className="group flex items-center justify-between py-3 px-4 rounded-xl transition-colors"
-            style={{ background: 'transparent' }}
-            onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
+            className="group flex items-center justify-between py-3 px-4 rounded-xl transition-colors hover:[background:var(--bg-hover)]"
           >
             <div className="flex items-center gap-3 min-w-0">
               <FolderIcon size={16} />
@@ -46,10 +43,8 @@ export default function LibraryTab() {
             </div>
             <button
               onClick={() => removeFolder(folder)}
-              className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center w-7 h-7 rounded-lg"
+              className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center w-7 h-7 rounded-lg hover:[color:var(--accent)]"
               style={{ color: 'var(--text-tertiary)' }}
-              onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.color = 'var(--accent)')}
-              onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => (e.currentTarget.style.color = 'var(--text-tertiary)')}
               title="Remove folder"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -90,17 +85,11 @@ export default function LibraryTab() {
           <button
             onClick={handleImportFolder}
             disabled={isScanning}
-            className="flex items-center gap-2 text-sm py-2 px-3 rounded-lg transition-colors"
+            className="flex items-center gap-2 text-sm py-2 px-3 rounded-lg transition-colors hover:[background:var(--bg-elevated)]"
             style={{
               color: 'var(--accent)',
               background: 'var(--accent-dim)',
               opacity: isScanning ? 0.5 : 1,
-            }}
-            onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-              if (!isScanning) e.currentTarget.style.background = 'var(--bg-elevated)'
-            }}
-            onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-              e.currentTarget.style.background = 'var(--accent-dim)'
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

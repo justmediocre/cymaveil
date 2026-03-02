@@ -14,16 +14,13 @@ interface SettingRowProps {
 export function SettingRow({ label, description, badge, disabled, compact, children }: SettingRowProps) {
   return (
     <div
-      className="flex items-center justify-between px-4 rounded-xl transition-colors"
+      className="flex items-center justify-between px-4 rounded-xl transition-colors hover:[background:var(--bg-hover)]"
       style={{
         paddingTop: compact ? '0.625rem' : '0.75rem',
         paddingBottom: compact ? '0.625rem' : '0.75rem',
-        background: 'transparent',
         opacity: disabled ? 0.5 : 1,
         pointerEvents: disabled ? 'none' : 'auto',
       }}
-      onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-      onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => (e.currentTarget.style.background = 'transparent')}
     >
       <div className="flex flex-col gap-0.5 min-w-0 mr-4">
         {badge ? (

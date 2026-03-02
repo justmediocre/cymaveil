@@ -137,10 +137,8 @@ export default function AddToPlaylistMenu({
                 onAddToPlaylist(playlist.id, trackId)
                 closeMenu()
               }}
-              className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors"
+              className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors hover:[background:var(--bg-hover)]"
               style={{ color: 'var(--text-primary)' }}
-              onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'var(--bg-hover)'}
-              onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'transparent'}
             >
               {isInPlaylist && (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -181,10 +179,8 @@ export default function AddToPlaylistMenu({
         ) : (
           <button
             onClick={() => setShowNewInput(true)}
-            className="w-full text-left px-3 py-2 text-xs transition-colors"
+            className="w-full text-left px-3 py-2 text-xs transition-colors hover:[background:var(--bg-hover)]"
             style={{ color: 'var(--text-secondary)' }}
-            onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'var(--bg-hover)'}
-            onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'transparent'}
           >
             + New Playlist
           </button>
