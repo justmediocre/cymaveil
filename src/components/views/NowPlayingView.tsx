@@ -95,7 +95,7 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
     refreshSegmentation()
   }, [refreshSegmentation])
 
-  const { settings: visualSettings } = useVisualSettings()
+  const { settings: visualSettings, setSetting } = useVisualSettings()
 
   const activelyPlaying = isPlaying && isVisible
 
@@ -110,6 +110,16 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
   const lastRandomAlbumRef = useRef<string | undefined>(undefined)
   const displayedAlbumId = displayedAlbum?.id
   const currentTrackId = currentTrack?.id
+
+  // Manual visualizer cycle — cleared on track change so it doesn't
+  // override the random (or configured) pick for the next track.
+  const manualPickRef = useRef<Exclude<typeof visualSettings.visualizerStyle, 'random'> | null>(null)
+  const [, setManualPickVer] = useState(0)
+  const lastManualTrackRef = useRef<string | undefined>(undefined)
+  if (currentTrackId !== lastManualTrackRef.current) {
+    lastManualTrackRef.current = currentTrackId
+    manualPickRef.current = null
+  }
 
   if (visualSettings.visualizerStyle === 'random') {
     const albumChanged = displayedAlbumId !== lastRandomAlbumRef.current
@@ -126,9 +136,26 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
     lastRandomAlbumRef.current = undefined
   }
 
-  const resolvedVisualizerStyle = visualSettings.visualizerStyle === 'random'
-    ? randomPickRef.current!
-    : visualSettings.visualizerStyle
+  const resolvedVisualizerStyle = manualPickRef.current
+    ?? (visualSettings.visualizerStyle === 'random'
+      ? randomPickRef.current!
+      : visualSettings.visualizerStyle)
+
+  // Cycle through concrete visualizer styles on album art click
+  const resolvedStyleRef = useRef(resolvedVisualizerStyle)
+  resolvedStyleRef.current = resolvedVisualizerStyle
+  const handleCycleVisualizer = useCallback(() => {
+    if (!activelyPlaying) return
+    const current = manualPickRef.current ?? resolvedStyleRef.current
+    const idx = CONCRETE_STYLES.indexOf(current)
+    const next = CONCRETE_STYLES[(idx + 1) % CONCRETE_STYLES.length]!
+    manualPickRef.current = next
+    setManualPickVer(v => v + 1)
+    // Persist the pick unless the user chose 'random' (which should stay random)
+    if (visualSettings.visualizerStyle !== 'random') {
+      setSetting('visualizerStyle', next)
+    }
+  }, [activelyPlaying, visualSettings.visualizerStyle, setSetting])
 
   const visualizerElement = useMemo(
     () => (
@@ -190,6 +217,7 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
           onDisplayedAlbumChange={handleDisplayedAlbumChange}
           onEditMask={maskEditor.toggle}
           onEditBrush={handleOpenBrushEditor}
+          onCycleVisualizer={handleCycleVisualizer}
           hasOverride={hasOverride}
           depthLayerActive={visualSettings.depthLayerEnabled}
         >

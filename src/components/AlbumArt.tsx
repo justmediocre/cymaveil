@@ -24,12 +24,13 @@ interface AlbumArtProps {
   onTransitionDone?: () => void
   onEditMask?: () => void
   onEditBrush?: () => void
+  onCycleVisualizer?: () => void
   onDisplayedAlbumChange?: (album: Album) => void
   hasOverride?: boolean
   depthLayerActive?: boolean
 }
 
-export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergyRef, children, segmentation, segmentationLoading, transitionIntent, onTransitionDone, onEditMask, onEditBrush, onDisplayedAlbumChange, hasOverride, depthLayerActive }: AlbumArtProps) {
+export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergyRef, children, segmentation, segmentationLoading, transitionIntent, onTransitionDone, onEditMask, onEditBrush, onCycleVisualizer, onDisplayedAlbumChange, hasOverride, depthLayerActive }: AlbumArtProps) {
   const { isLight } = useTheme()
   const { settings } = useVisualSettings()
   const [isHovered, setIsHovered] = useState(false)
@@ -355,9 +356,11 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
           <motion.div
             key={displayedAlbum.id}
             className="relative rounded-2xl overflow-hidden"
+            onClick={onCycleVisualizer}
             style={{
               width: 'min(340px, 55vw)',
               aspectRatio: '1',
+              cursor: onCycleVisualizer ? 'pointer' : undefined,
               boxShadow: settings.ambientGlow && isPlaying
                 ? `0 25px 50px -12px rgba(0,0,0,0.25), 0 0 ${isLight ? '12px 3px' : '18px 4px'} color-mix(in srgb, ${displayedAlbum.accentColor} ${isLight ? '20%' : '35%'}, transparent)`
                 : '0 25px 50px -12px rgba(0,0,0,0.25)',
