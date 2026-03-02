@@ -146,17 +146,26 @@ export default function useMaskEditor(artSrc: string | null): MaskEditorState {
     backendId: SegmentationBackend,
     defaultPostParams: MaskPostProcessParams,
   ) => {
+    // Get depth map BEFORE clearing anything (it may live in the user-edited entry)
+    const depthData = await segmentationCache.getDepthMap(artSrc, backendId)
+
+    // Remove param override
     const hash = await hashArtSrc(artSrc)
     await maskOverrideStore.remove(hash)
 
-    // Re-process with defaults from cached depth map
-    const depthData = await segmentationCache.getDepthMap(artSrc, backendId)
+    // Remove cache entry (clears user-edited flag and brush-painted data)
+    await segmentationCache.removeEntry(artSrc, backendId)
+
     if (depthData) {
+      // Re-process with defaults and cache the clean result
       const result = await depthToMask(
         depthData.depthMap, artSrc, depthData.width, depthData.height, true, defaultPostParams,
       )
       setPreviewSegmentation(result)
       await segmentationCache.put(artSrc, backendId, result)
+    } else {
+      // Pure brush paint with no prior ML run — clear preview so useSegmentation re-runs
+      setPreviewSegmentation(null)
     }
   }, [])
 

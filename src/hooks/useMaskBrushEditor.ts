@@ -8,6 +8,7 @@ import {
   undo as brushUndo,
   redo as brushRedo,
   saveInitialState,
+  resetToInitial as brushResetToInitial,
   type BrushState,
 } from '../lib/brushEngine'
 
@@ -28,6 +29,7 @@ export interface MaskBrushEditorState {
   canRedo: boolean
   undo: () => void
   redo: () => void
+  reset: () => void
   syncUndoRedo: () => void
   save: (backendId: SegmentationBackend) => Promise<void>
   saving: boolean
@@ -123,6 +125,13 @@ export default function useMaskBrushEditor(): MaskBrushEditorState {
     }
   }, [incrementPreview, syncUndoRedo])
 
+  const reset = useCallback(() => {
+    if (brushStateRef.current && brushResetToInitial(brushStateRef.current)) {
+      incrementPreview()
+      syncUndoRedo()
+    }
+  }, [incrementPreview, syncUndoRedo])
+
   const save = useCallback(async (backendId: SegmentationBackend) => {
     const state = brushStateRef.current
     const artSrc = lockedArtSrc
@@ -154,6 +163,7 @@ export default function useMaskBrushEditor(): MaskBrushEditorState {
     canRedo,
     undo,
     redo,
+    reset,
     syncUndoRedo,
     save,
     saving,

@@ -27,6 +27,7 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
     canRedo,
     undo,
     redo,
+    reset,
     syncUndoRedo,
     save,
     saving,
@@ -285,6 +286,11 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
     return () => window.removeEventListener('keydown', handler, true)
   }, [close, undo, redo, toggleBrushMode, brushRadius, setBrushRadius])
 
+  const handleReset = useCallback(() => {
+    const ok = window.confirm('Reset all brush edits to the original state?')
+    if (ok) reset()
+  }, [reset])
+
   const handleSave = useCallback(async () => {
     await save(backendId)
     onSave()
@@ -521,6 +527,24 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
             <polyline points="23 4 23 10 17 10" />
             <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" />
           </svg>
+        </button>
+
+        {/* Reset */}
+        <button
+          onClick={handleReset}
+          title="Reset to original"
+          style={{
+            padding: '4px 8px',
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            fontSize: 11,
+          }}
+        >
+          Reset
         </button>
 
         {/* Divider */}

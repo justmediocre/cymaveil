@@ -62,6 +62,7 @@ interface MaskEditorProps {
   initialPostProcessParams: MaskPostProcessParams
   initialModelParams: MaskModelParams
   hasOverride: boolean
+  hasUserPaint: boolean
   reprocessing: boolean
   downloadProgress: number | null
   onPreview: (depthMap: Uint8Array, artSrc: string, w: number, h: number, params: MaskPostProcessParams) => void
@@ -91,6 +92,7 @@ export default function MaskEditor({
   initialPostProcessParams,
   initialModelParams,
   hasOverride,
+  hasUserPaint,
   reprocessing,
   downloadProgress,
   onPreview,
@@ -143,11 +145,15 @@ export default function MaskEditor({
   }, [artSrc, backendId, modelParams, postParams, onSave])
 
   const handleRemoveOverride = useCallback(async () => {
+    if (hasUserPaint) {
+      const ok = window.confirm('This will discard your manual brush edits. Continue?')
+      if (!ok) return
+    }
     const globalDefaults = { ...DEFAULT_MASK_PARAMS }
     await onRemoveOverride(artSrc, backendId, globalDefaults)
     setPostParams(globalDefaults)
     setModelParams(initialModelParams)
-  }, [artSrc, backendId, initialModelParams, onRemoveOverride])
+  }, [artSrc, backendId, initialModelParams, onRemoveOverride, hasUserPaint])
 
   const handleResetPost = useCallback(() => {
     setPostParams({ ...DEFAULT_MASK_PARAMS })

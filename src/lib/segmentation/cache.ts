@@ -430,6 +430,28 @@ export const segmentationCache = {
     }
   },
 
+  /** Remove a specific cache entry (both LRU and IDB) for a given artSrc + backend */
+  async removeEntry(artSrc: string, backend: SegmentationBackend): Promise<void> {
+    const hash = await hashArtSrc(artSrc)
+    const key = cacheKey(hash, backend)
+
+    // Remove from LRU
+    if (lruMap.has(key)) {
+      lruMap.delete(key)
+      const idx = lruOrder.indexOf(key)
+      if (idx !== -1) lruOrder.splice(idx, 1)
+    }
+
+    // Remove from IDB
+    try {
+      const db = await getDB()
+      const tx = db.transaction(STORE_NAME, 'readwrite')
+      tx.objectStore(STORE_NAME).delete(key)
+    } catch {
+      // Non-fatal
+    }
+  },
+
   /** Check if a specific cached mask is user-edited */
   async isUserEdited(artSrc: string, backend: SegmentationBackend): Promise<boolean> {
     const hash = await hashArtSrc(artSrc)

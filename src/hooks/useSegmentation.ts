@@ -23,6 +23,8 @@ export interface SegmentationState {
   effectivePostProcessParams: MaskPostProcessParams
   effectiveModelParams: MaskModelParams
   hasOverride: boolean
+  /** Whether the cached mask has user brush paint edits */
+  hasUserPaint: boolean
   artHash: string | null
   /** Force re-evaluation (e.g. after saving/removing an override) */
   refresh: () => void
@@ -36,6 +38,7 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
   const [effectivePostProcessParams, setEffectivePostProcessParams] = useState<MaskPostProcessParams>(DEFAULT_MASK_PARAMS)
   const [effectiveModelParams, setEffectiveModelParams] = useState<MaskModelParams>(DEFAULT_MODEL_PARAMS)
   const [hasOverride, setHasOverride] = useState(false)
+  const [hasUserPaint, setHasUserPaint] = useState(false)
   const [artHash, setArtHash] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const prevKeyRef = useRef<string | null>(null)
@@ -62,6 +65,7 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
       setLoading(false)
       setDepthMap(null)
       setHasOverride(false)
+      setHasUserPaint(false)
       setArtHash(null)
       return
     }
@@ -96,11 +100,13 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
       const cached = await segmentationCache.get(artSrc, backendId)
       if (cancelled) return
 
-      // hasOverride: true if there's a parameter override OR a user-painted mask in cache
-      const userEdited = !override && cached
+      // Always check if the cached mask is user-edited (brush painted)
+      const userEdited = cached
         ? await segmentationCache.isUserEdited(artSrc, backendId)
         : false
       if (cancelled) return
+      setHasUserPaint(userEdited)
+      // hasOverride: true if there's a parameter override OR a user-painted mask in cache
       setHasOverride(!!override || userEdited)
 
       if (cached) {
@@ -157,6 +163,7 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
         setSegmentation(null)
         setLoading(false)
         setDepthMap(null)
+        setHasUserPaint(false)
       }
     })
 
@@ -165,5 +172,5 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
     }
   }, [artSrc, backendId, settings.maskDefaults, settings.maskCacheVersion, refreshKey])
 
-  return { segmentation, loading, depthMap, effectivePostProcessParams, effectiveModelParams, hasOverride, artHash, refresh }
+  return { segmentation, loading, depthMap, effectivePostProcessParams, effectiveModelParams, hasOverride, hasUserPaint, artHash, refresh }
 }

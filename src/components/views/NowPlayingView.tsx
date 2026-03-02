@@ -59,6 +59,7 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
     effectivePostProcessParams,
     effectiveModelParams,
     hasOverride,
+    hasUserPaint,
     refresh: refreshSegmentation,
   } = useSegmentation(currentAlbumWithColors?.art ?? null)
   const maskEditor = useMaskEditor(currentAlbumWithColors?.art ?? null)
@@ -238,6 +239,7 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
               initialPostProcessParams={effectivePostProcessParams}
               initialModelParams={effectiveModelParams}
               hasOverride={hasOverride}
+              hasUserPaint={hasUserPaint}
               reprocessing={maskEditor.reprocessing}
               downloadProgress={maskEditor.downloadProgress}
               onPreview={maskEditor.previewFromParams}

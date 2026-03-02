@@ -167,3 +167,14 @@ export function saveInitialState(state: BrushState): void {
     state.undoStack.push(state.alpha.slice())
   }
 }
+
+/** Reset alpha to the initial state (before any painting), clear undo/redo stacks */
+export function resetToInitial(state: BrushState): boolean {
+  const initial = state.undoStack[0]
+  if (!initial) return false
+  state.alpha.set(initial)
+  state.undoStack.length = 0
+  state.redoStack.length = 0
+  state.undoStack.push(state.alpha.slice())
+  return true
+}
