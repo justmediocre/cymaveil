@@ -30,8 +30,9 @@ const MASK_SLIDERS: MaskSliderDef[] = [
 
 const BACKEND_OPTIONS: { value: SegmentationBackend; label: string; description: string; size: string }[] = [
   { value: 'none', label: 'None', description: 'Depth layers disabled', size: '' },
-  { value: 'manual', label: 'Manual', description: 'User-painted masks only — no ML model', size: '' },
-  { value: 'depth-anything', label: 'Depth Anything v2', description: 'Monocular depth estimation — works on any image', size: '~25 MB' },
+  { value: 'manual', label: 'Manual', description: 'User-painted masks only — no auto segmentation', size: '' },
+  { value: 'classical', label: 'Classical', description: 'Color-based saliency — fast, no download', size: '' },
+  { value: 'depth-anything', label: 'Depth Anything v2', description: 'ML depth estimation — best quality', size: '~25 MB' },
 ]
 
 const VISUALIZER_STYLE_OPTIONS: { value: VisualizerStyle; label: string; description: string }[] = [
@@ -203,7 +204,7 @@ export default function DepthLayersTab({ onProcessAll, batchProcessing }: DepthL
       />
 
       <SettingSelect
-        label="Segmentation model"
+        label="Segmentation mode"
         description={BACKEND_OPTIONS.find(o => o.value === settings.segmentationBackend)?.description ?? ''}
         disabled={!settings.depthLayerEnabled}
         value={settings.segmentationBackend}

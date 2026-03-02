@@ -2,6 +2,7 @@ import type { SegmentationBackend, MaskModelParams } from '../../types'
 import type { SegmentationBackendModule, DepthEstimation } from './types'
 import type { WorkerResponse } from './segmentation.worker'
 import { depthToMask } from './depthToMask'
+import { computeSaliencyMap, CLASSICAL_WORK_SIZE } from './classicalSaliency'
 
 // ── Mutex: serialises all backend access so only one caller loads/uses the model at a time ──
 
@@ -105,6 +106,50 @@ export async function withBackend<T>(
 ): Promise<T | null> {
   if (id === 'none') return null
 
+  // ── Classical saliency backend — no worker, no download ──────────────
+  if (id === 'classical') {
+    const release = await acquireLock()
+    try {
+      const proxy: SegmentationBackendModule = {
+        name: 'Classical Saliency',
+        modelSize: '',
+
+        isLoaded: () => true,
+        load: async () => {},
+        loadWithParams: async () => {},
+
+        async estimateDepth(imageSrc, w, h) {
+          try {
+            const size = Math.min(w, h, CLASSICAL_WORK_SIZE)
+            const { saliencyMap, width, height } = await computeSaliencyMap(imageSrc, size, size)
+            return { depthMap: saliencyMap, width, height }
+          } catch (err) {
+            if (import.meta.env.DEV) console.error('[classical] Saliency estimation failed:', err)
+            return null
+          }
+        },
+
+        async segment(imageSrc, w, h) {
+          try {
+            const size = Math.min(w, h, CLASSICAL_WORK_SIZE)
+            const { saliencyMap, width, height } = await computeSaliencyMap(imageSrc, size, size)
+            return depthToMask(saliencyMap, imageSrc, width, height, true)
+          } catch (err) {
+            if (import.meta.env.DEV) console.error('[classical] Segmentation failed:', err)
+            return null
+          }
+        },
+
+        dispose() {},
+      }
+
+      return await workFn(proxy)
+    } finally {
+      release()
+    }
+  }
+
+  // ── ML backend (Depth Anything v2) — worker + WASM ──────────────────
   const release = await acquireLock()
   const worker = createWorker()
   currentWorker = worker

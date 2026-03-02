@@ -201,124 +201,128 @@ export default function MaskEditor({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3" style={{ fontSize: 12 }}>
-        {/* Model section */}
-        <div>
-          <div
-            className="text-[10px] font-bold tracking-wider uppercase mb-2"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
-            Model
-          </div>
-
-          {/* Model size */}
-          <div className="flex items-center justify-between mb-2">
-            <span style={{ color: 'var(--text-secondary)' }}>Quality</span>
-            <div className="flex rounded-md overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-              {MODEL_SIZES.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setModelParams(prev => ({ ...prev, modelSize: opt.value }))}
-                  className="px-2.5 py-1 text-[11px] transition-colors"
-                  style={{
-                    background: modelParams.modelSize === opt.value ? 'var(--accent)' : 'var(--bg-elevated)',
-                    color: modelParams.modelSize === opt.value ? '#fff' : 'var(--text-secondary)',
-                  }}
-                  title={opt.size}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Model dtype */}
-          <div className="flex items-center justify-between mb-2">
-            <span style={{ color: 'var(--text-secondary)' }}>Precision</span>
-            <div className="flex rounded-md overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-              {MODEL_DTYPES.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setModelParams(prev => ({ ...prev, modelDtype: opt.value }))}
-                  className="px-2.5 py-1 text-[11px] transition-colors"
-                  style={{
-                    background: modelParams.modelDtype === opt.value ? 'var(--accent)' : 'var(--bg-elevated)',
-                    color: modelParams.modelDtype === opt.value ? '#fff' : 'var(--text-secondary)',
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Resolution */}
-          <div className="flex items-center justify-between mb-2">
-            <span style={{ color: 'var(--text-secondary)' }}>Resolution</span>
-            <select
-              value={modelParams.inputResolution}
-              onChange={(e) => setModelParams(prev => ({ ...prev, inputResolution: Number(e.target.value) }))}
-              className="text-[11px] rounded-md px-2 py-0.5 cursor-pointer"
-              style={{
-                background: 'var(--bg-elevated)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border)',
-              }}
-            >
-              {RESOLUTIONS.map(r => (
-                <option key={r} value={r}>{r}px</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Re-process button with download warning */}
-          {modelChanged && (
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={handleReprocess}
-                disabled={reprocessing}
-                className="w-full text-[11px] py-1.5 rounded-lg transition-colors"
-                style={{
-                  background: 'var(--accent-dim)',
-                  color: 'var(--accent)',
-                  opacity: reprocessing ? 0.6 : 1,
-                }}
+        {/* Model section — only shown for ML backends */}
+        {backendId === 'depth-anything' && (
+          <>
+            <div>
+              <div
+                className="text-[10px] font-bold tracking-wider uppercase mb-2"
+                style={{ color: 'var(--text-tertiary)' }}
               >
-                {reprocessing ? (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M12 2a10 10 0 0 1 10 10" />
-                    </svg>
-                    {downloadProgress != null
-                      ? `Downloading model... ${Math.round(downloadProgress * 100)}%`
-                      : 'Processing...'}
-                  </span>
-                ) : 'Re-process with new model'}
-              </button>
-              {!reprocessing && (
-                <span className="text-[10px] text-center" style={{ color: 'var(--text-tertiary)' }}>
-                  May download {estimateDownloadSize(modelParams.modelSize, modelParams.modelDtype)}
-                </span>
-              )}
-              {reprocessing && downloadProgress != null && (
-                <div
-                  className="w-full rounded-full overflow-hidden"
-                  style={{ height: 2, background: 'var(--border-subtle)' }}
+                Model
+              </div>
+
+              {/* Model size */}
+              <div className="flex items-center justify-between mb-2">
+                <span style={{ color: 'var(--text-secondary)' }}>Quality</span>
+                <div className="flex rounded-md overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                  {MODEL_SIZES.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setModelParams(prev => ({ ...prev, modelSize: opt.value }))}
+                      className="px-2.5 py-1 text-[11px] transition-colors"
+                      style={{
+                        background: modelParams.modelSize === opt.value ? 'var(--accent)' : 'var(--bg-elevated)',
+                        color: modelParams.modelSize === opt.value ? '#fff' : 'var(--text-secondary)',
+                      }}
+                      title={opt.size}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Model dtype */}
+              <div className="flex items-center justify-between mb-2">
+                <span style={{ color: 'var(--text-secondary)' }}>Precision</span>
+                <div className="flex rounded-md overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                  {MODEL_DTYPES.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setModelParams(prev => ({ ...prev, modelDtype: opt.value }))}
+                      className="px-2.5 py-1 text-[11px] transition-colors"
+                      style={{
+                        background: modelParams.modelDtype === opt.value ? 'var(--accent)' : 'var(--bg-elevated)',
+                        color: modelParams.modelDtype === opt.value ? '#fff' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Resolution */}
+              <div className="flex items-center justify-between mb-2">
+                <span style={{ color: 'var(--text-secondary)' }}>Resolution</span>
+                <select
+                  value={modelParams.inputResolution}
+                  onChange={(e) => setModelParams(prev => ({ ...prev, inputResolution: Number(e.target.value) }))}
+                  className="text-[11px] rounded-md px-2 py-0.5 cursor-pointer"
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border)',
+                  }}
                 >
-                  <div
-                    className="h-full rounded-full transition-all duration-300"
+                  {RESOLUTIONS.map(r => (
+                    <option key={r} value={r}>{r}px</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Re-process button with download warning */}
+              {modelChanged && (
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={handleReprocess}
+                    disabled={reprocessing}
+                    className="w-full text-[11px] py-1.5 rounded-lg transition-colors"
                     style={{
-                      width: `${Math.round(downloadProgress * 100)}%`,
-                      background: 'var(--accent)',
+                      background: 'var(--accent-dim)',
+                      color: 'var(--accent)',
+                      opacity: reprocessing ? 0.6 : 1,
                     }}
-                  />
+                  >
+                    {reprocessing ? (
+                      <span className="flex items-center justify-center gap-1.5">
+                        <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <path d="M12 2a10 10 0 0 1 10 10" />
+                        </svg>
+                        {downloadProgress != null
+                          ? `Downloading model... ${Math.round(downloadProgress * 100)}%`
+                          : 'Processing...'}
+                      </span>
+                    ) : 'Re-process with new model'}
+                  </button>
+                  {!reprocessing && (
+                    <span className="text-[10px] text-center" style={{ color: 'var(--text-tertiary)' }}>
+                      May download {estimateDownloadSize(modelParams.modelSize, modelParams.modelDtype)}
+                    </span>
+                  )}
+                  {reprocessing && downloadProgress != null && (
+                    <div
+                      className="w-full rounded-full overflow-hidden"
+                      style={{ height: 2, background: 'var(--border-subtle)' }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${Math.round(downloadProgress * 100)}%`,
+                          background: 'var(--accent)',
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Divider */}
-        <div style={{ height: 1, background: 'var(--border-subtle)' }} />
+            {/* Divider */}
+            <div style={{ height: 1, background: 'var(--border-subtle)' }} />
+          </>
+        )}
 
         {/* Post-processing section */}
         <div>

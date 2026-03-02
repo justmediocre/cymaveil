@@ -131,7 +131,7 @@ export interface SegmentationResult {
 }
 
 /** Available segmentation backends */
-export type SegmentationBackend = 'none' | 'manual' | 'depth-anything'
+export type SegmentationBackend = 'none' | 'manual' | 'classical' | 'depth-anything'
 
 /** Depth model size variants */
 export type DepthModelSize = 'small' | 'base' | 'large'
