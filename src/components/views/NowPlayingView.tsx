@@ -100,19 +100,27 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
   // Resolve 'random' visualizer style here (NowPlayingView never unmounts)
   // rather than inside Visualizer (which unmounts/remounts via AnimatePresence
   // during album art transitions), preventing double random re-picks.
-  // Keyed on displayedAlbum.id so the style change syncs with the visual
-  // album art transition, not the earlier state change from dispatch(NEXT).
+  // Re-picks on every track change: for cross-album changes, deferred until
+  // displayedAlbum updates (syncing with the art transition); for same-album
+  // changes, picked immediately when currentTrack changes.
   const randomPickRef = useRef<Exclude<typeof visualSettings.visualizerStyle, 'random'> | null>(null)
+  const lastRandomTrackRef = useRef<string | undefined>(undefined)
   const lastRandomAlbumRef = useRef<string | undefined>(undefined)
   const displayedAlbumId = displayedAlbum?.id
+  const currentTrackId = currentTrack?.id
 
   if (visualSettings.visualizerStyle === 'random') {
-    if (randomPickRef.current === null || displayedAlbumId !== lastRandomAlbumRef.current) {
+    const albumChanged = displayedAlbumId !== lastRandomAlbumRef.current
+    const sameAlbumTrackChanged = currentTrackId !== lastRandomTrackRef.current
+      && currentAlbum?.id === displayedAlbumId
+    if (randomPickRef.current === null || albumChanged || sameAlbumTrackChanged) {
       randomPickRef.current = CONCRETE_STYLES[Math.floor(Math.random() * CONCRETE_STYLES.length)]!
+      lastRandomTrackRef.current = currentTrackId
       lastRandomAlbumRef.current = displayedAlbumId
     }
   } else {
     randomPickRef.current = null
+    lastRandomTrackRef.current = undefined
     lastRandomAlbumRef.current = undefined
   }
 
