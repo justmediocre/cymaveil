@@ -52,7 +52,7 @@
   - `0.6` bass threshold and `60` ms debounce — `AlbumArt.tsx:198-199`.
   - Shadow/glow/core line widths `6/3/1.5` — duplicated in `waveform.ts` and `radialBurst.ts`.
 
-- [ ] **13. Duplicated loading spinner**
+- [x] **13. Duplicated loading spinner**
   - `src/App.tsx:7` and `src/components/layout/AppLayout.tsx:18-22` define identical `LOADING_SPINNER` constants.
 
 - [ ] **14. Duplicate luminance formula**

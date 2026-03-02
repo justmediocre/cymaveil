@@ -11,15 +11,10 @@ import AlbumArtBackground from '../AlbumArtBackground'
 import PerfHUD from '../PerfHUD'
 import UpdateNotification from '../UpdateNotification'
 import ErrorBoundary from '../ErrorBoundary'
+import LoadingSpinner from '../LoadingSpinner'
 import useBatchSegmentation from '../../hooks/useBatchSegmentation'
 import useUpdateChecker from '../../hooks/useUpdateChecker'
 import { perfCountRender } from '../../lib/perf'
-
-const LOADING_SPINNER = (
-  <div className="flex h-screen items-center justify-center" style={{ background: '#0a0a0b' }}>
-    <div className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Loading library...</div>
-  </div>
-)
 
 export default function AppLayout() {
   perfCountRender('App')
@@ -186,7 +181,7 @@ export default function AppLayout() {
 
   // Keep the loading state visible until playback state finishes restoring.
   // Only gate when there are tracks (empty library should show the app immediately).
-  if (tracks.length > 0 && !state.isReady) return LOADING_SPINNER
+  if (tracks.length > 0 && !state.isReady) return <LoadingSpinner />
 
   const isNowPlaying = activeNav === 'NowPlaying'
   const hasTrack = state.isReady && currentTrack && currentAlbum
