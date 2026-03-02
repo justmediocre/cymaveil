@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { cmdOrCtrl } from '../../lib/keyboard'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import Sidebar from '../Sidebar'
@@ -85,13 +86,13 @@ export default function AppLayout() {
         e.preventDefault()
         handleToggleQueue()
       }
-      // Ctrl+Right → next track
-      if (e.key === 'ArrowRight' && e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Ctrl+Right / Cmd+Right → next track
+      if (e.key === 'ArrowRight' && cmdOrCtrl(e) && !e.altKey) {
         e.preventDefault()
         handleNext()
       }
-      // Ctrl+Left → previous track
-      if (e.key === 'ArrowLeft' && e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Ctrl+Left / Cmd+Left → previous track
+      if (e.key === 'ArrowLeft' && cmdOrCtrl(e) && !e.altKey) {
         e.preventDefault()
         handlePrev()
       }

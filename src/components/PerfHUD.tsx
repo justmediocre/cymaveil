@@ -1,6 +1,7 @@
 /* global __PERF_HUD__ */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { perfSubscribe } from '../lib/perf'
+import { cmdOrCtrl } from '../lib/keyboard'
 import type { PerfSnapshot } from '../types'
 
 interface Position {
@@ -22,7 +23,7 @@ function PerfHUDInner() {
   // Toggle with Ctrl+Shift+P
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.code === 'KeyP') {
+      if (cmdOrCtrl(e) && e.shiftKey && e.code === 'KeyP') {
         e.preventDefault()
         setVisible((v) => !v)
       }

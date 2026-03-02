@@ -3,6 +3,7 @@ import type React from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { onTick } from '../lib/tickLoop'
 import useVisualSettings from '../hooks/useVisualSettings'
+import { cmdOrCtrl } from '../lib/keyboard'
 import { useTheme } from '../contexts/ThemeContext'
 import ForegroundMask from './ForegroundMask'
 import type { Album, SegmentationResult } from '../types'
@@ -44,8 +45,8 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Ctrl+Shift shortcuts (debug layers, mask editor)
-      if (e.ctrlKey && e.shiftKey) {
+      // Ctrl+Shift / Cmd+Shift shortcuts (debug layers, mask editor)
+      if (cmdOrCtrl(e) && e.shiftKey) {
         if (import.meta.env.DEV) {
           if (e.key === '!' || e.code === 'Digit1') {
             e.preventDefault()
@@ -65,7 +66,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
         return
       }
       // Plain key shortcuts
-      if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+      if (!cmdOrCtrl(e) && !e.shiftKey && !e.altKey) {
         if ((e.key === 'B' || e.key === 'b') && e.code === 'KeyB') {
           e.preventDefault()
           onEditBrush?.()

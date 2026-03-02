@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import type { SegmentationBackend } from '../types'
 import type { MaskBrushEditorState } from '../hooks/useMaskBrushEditor'
 import { paintPoint, paintLine, commitStroke } from '../lib/brushEngine'
+import { cmdOrCtrl } from '../lib/keyboard'
 import { useTheme } from '../contexts/ThemeContext'
 
 interface MaskBrushEditorProps {
@@ -219,7 +220,7 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
     if (!container) return
 
     const handler = (e: WheelEvent) => {
-      if (!e.ctrlKey) return
+      if (!cmdOrCtrl(e)) return
       e.preventDefault()
       const delta = e.deltaY > 0 ? -1 : 1
       setBrushRadius(brushRadius + delta)
@@ -239,28 +240,28 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
         return
       }
 
-      if (e.ctrlKey && e.key === 'z') {
+      if (cmdOrCtrl(e) && e.key === 'z') {
         e.stopPropagation()
         e.preventDefault()
         undo()
         return
       }
 
-      if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
+      if (cmdOrCtrl(e) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
         e.stopPropagation()
         e.preventDefault()
         redo()
         return
       }
 
-      if (e.ctrlKey && e.key === 's') {
+      if (cmdOrCtrl(e) && e.key === 's') {
         e.stopPropagation()
         e.preventDefault()
         handleSave()
         return
       }
 
-      if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (!cmdOrCtrl(e) && !e.altKey) {
         if (e.key === 'x' || e.key === 'X') {
           e.stopPropagation()
           e.preventDefault()
