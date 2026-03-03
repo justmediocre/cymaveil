@@ -143,12 +143,12 @@ body {
 }
 
 .animate-vinyl {
-  animation: vinyl-spin 3s linear infinite;
+  animation: vinyl-spin 1.8s linear infinite;
   will-change: transform;
 }
 
 .animate-vinyl-paused {
-  animation: vinyl-spin 3s linear infinite;
+  animation: vinyl-spin 1.8s linear infinite;
   animation-play-state: paused;
 }
 
