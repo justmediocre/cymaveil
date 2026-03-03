@@ -360,6 +360,18 @@ ipcMain.handle('update:setEnabled', async (_event, enabled) => {
   uc.setUpdateCheckEnabled(enabled)
 })
 
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  }
+})
+
 app.whenReady().then(async () => {
   // Get the partition session used by the BrowserWindow — protocol handlers
   // and CSP must be registered on this session, not session.defaultSession.
@@ -544,3 +556,5 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
 })
+
+} // single-instance lock
