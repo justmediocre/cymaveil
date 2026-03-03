@@ -138,7 +138,7 @@ export default function AboutTab() {
         </div>
 
         <p className="text-sm leading-relaxed mb-1" style={{ color: 'var(--text-secondary)' }}>
-          A refined music player with living album art.
+          Your music player deserves a glow up.
         </p>
         <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
           Copyright (c) 2026 Cymaveil. Released under the MIT License.
