@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
-import { cmdOrCtrl } from '../../lib/keyboard'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
+import useShortcut from '../../hooks/useShortcut'
+import { TOGGLE_FULLSCREEN, EXIT_FULLSCREEN, TOGGLE_QUEUE, NEXT_TRACK, PREV_TRACK, PLAY_PAUSE } from '../../lib/shortcuts'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import Sidebar from '../Sidebar'
 import TitleBar from './TitleBar'
@@ -65,53 +66,12 @@ export default function AppLayout() {
   }, [sidebarOpen, showQueue])
 
   // Global keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F11') {
-        e.preventDefault()
-        window.electronAPI?.windowToggleFullscreen()
-      }
-      if (e.key === 'Escape' && isFullscreen) {
-        window.electronAPI?.windowToggleFullscreen()
-      }
-      // Tab → toggle queue panel
-      if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        const el = e.target as HTMLElement
-        if (
-          el?.closest?.(
-            'input, textarea, select, [contenteditable="true"]',
-          )
-        )
-          return
-        e.preventDefault()
-        handleToggleQueue()
-      }
-      // Ctrl+Right / Cmd+Right → next track
-      if (e.key === 'ArrowRight' && cmdOrCtrl(e) && !e.altKey) {
-        e.preventDefault()
-        handleNext()
-      }
-      // Ctrl+Left / Cmd+Left → previous track
-      if (e.key === 'ArrowLeft' && cmdOrCtrl(e) && !e.altKey) {
-        e.preventDefault()
-        handlePrev()
-      }
-      // Spacebar → play/pause (skip when focused on interactive UI elements)
-      if (e.code === 'Space' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        const el = e.target as HTMLElement
-        if (
-          el?.closest?.(
-            'input, textarea, select, button, a, summary, [contenteditable="true"], [role="button"], [role="checkbox"], [role="switch"], [role="slider"], [role="tab"], [role="menuitem"], [role="option"]',
-          )
-        )
-          return
-        e.preventDefault()
-        handlePlayPause()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handlePlayPause, handleNext, handlePrev, handleToggleQueue, isFullscreen])
+  useShortcut(TOGGLE_FULLSCREEN, () => { window.electronAPI?.windowToggleFullscreen() })
+  useShortcut(EXIT_FULLSCREEN, () => { window.electronAPI?.windowToggleFullscreen() }, { enabled: isFullscreen, preventDefault: false })
+  useShortcut(TOGGLE_QUEUE, handleToggleQueue, { skipInput: true })
+  useShortcut(NEXT_TRACK, handleNext)
+  useShortcut(PREV_TRACK, handlePrev)
+  useShortcut(PLAY_PAUSE, handlePlayPause, { skipInteractive: true })
 
   // Listen for fullscreen state changes from Electron
   useEffect(() => {

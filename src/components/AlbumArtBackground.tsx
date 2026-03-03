@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react'
 import useVisualSettings from '../hooks/useVisualSettings'
-import { cmdOrCtrl } from '../lib/keyboard'
+import useShortcut from '../hooks/useShortcut'
+import { ANIMATE_TILE } from '../lib/shortcuts'
 import type { Album, MosaicTransition } from '../types'
 
 interface AlbumArtBackgroundProps {
@@ -274,15 +275,7 @@ export default function AlbumArtBackground({ albums, isPlaying }: AlbumArtBackgr
   }, [isPlaying, allArts, visibleCount, animateRandomTile])
 
   // Hidden hotkey: Ctrl+Shift+B to manually animate a tile
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (cmdOrCtrl(e) && e.shiftKey && e.key === 'B') {
-        animateRandomTile()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [animateRandomTile])
+  useShortcut(ANIMATE_TILE, animateRandomTile)
 
   // Reset tile after animation completes
   const handleAnimationComplete = useCallback((idx: number) => {

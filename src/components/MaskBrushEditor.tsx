@@ -4,6 +4,8 @@ import type { SegmentationBackend } from '../types'
 import type { MaskBrushEditorState } from '../hooks/useMaskBrushEditor'
 import { paintPoint, paintLine, commitStroke } from '../lib/brushEngine'
 import { cmdOrCtrl } from '../lib/keyboard'
+import useShortcut from '../hooks/useShortcut'
+import { EDITOR_CLOSE, EDITOR_UNDO, EDITOR_REDO, EDITOR_REDO_ALT, EDITOR_SAVE, EDITOR_TOGGLE_MODE, EDITOR_BRUSH_SMALLER, EDITOR_BRUSH_LARGER } from '../lib/shortcuts'
 import { useTheme } from '../contexts/ThemeContext'
 
 interface MaskBrushEditorProps {
@@ -229,64 +231,6 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
     return () => container.removeEventListener('wheel', handler)
   }, [brushRadius, setBrushRadius])
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Use capture phase and stop propagation to block global handlers
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        e.preventDefault()
-        close()
-        return
-      }
-
-      if (cmdOrCtrl(e) && e.key === 'z') {
-        e.stopPropagation()
-        e.preventDefault()
-        undo()
-        return
-      }
-
-      if (cmdOrCtrl(e) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
-        e.stopPropagation()
-        e.preventDefault()
-        redo()
-        return
-      }
-
-      if (cmdOrCtrl(e) && e.key === 's') {
-        e.stopPropagation()
-        e.preventDefault()
-        handleSave()
-        return
-      }
-
-      if (!cmdOrCtrl(e) && !e.altKey) {
-        if (e.key === 'x' || e.key === 'X') {
-          e.stopPropagation()
-          e.preventDefault()
-          toggleBrushMode()
-          return
-        }
-        if (e.key === '[') {
-          e.stopPropagation()
-          e.preventDefault()
-          setBrushRadius(brushRadius - 1)
-          return
-        }
-        if (e.key === ']') {
-          e.stopPropagation()
-          e.preventDefault()
-          setBrushRadius(brushRadius + 1)
-          return
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handler, true)
-    return () => window.removeEventListener('keydown', handler, true)
-  }, [close, undo, redo, toggleBrushMode, brushRadius, setBrushRadius])
-
   const handleReset = useCallback(() => {
     const ok = window.confirm('Reset all brush edits to the original state?')
     if (ok) reset()
@@ -297,6 +241,17 @@ export default function MaskBrushEditor({ editor, backendId, onSave, children }:
     onSave()
     close()
   }, [save, backendId, onSave, close])
+
+  // Keyboard shortcuts — priority 10 wins over global shortcuts (e.g. Escape closes editor, not fullscreen)
+  const EDITOR_PRIORITY = 10
+  useShortcut(EDITOR_CLOSE, close, { priority: EDITOR_PRIORITY })
+  useShortcut(EDITOR_UNDO, undo, { priority: EDITOR_PRIORITY })
+  useShortcut(EDITOR_REDO, redo, { priority: EDITOR_PRIORITY })
+  useShortcut(EDITOR_REDO_ALT, redo, { priority: EDITOR_PRIORITY })
+  useShortcut(EDITOR_SAVE, handleSave, { priority: EDITOR_PRIORITY })
+  useShortcut(EDITOR_TOGGLE_MODE, toggleBrushMode, { priority: EDITOR_PRIORITY })
+  useShortcut(EDITOR_BRUSH_SMALLER, () => setBrushRadius(brushRadius - 1), { priority: EDITOR_PRIORITY })
+  useShortcut(EDITOR_BRUSH_LARGER, () => setBrushRadius(brushRadius + 1), { priority: EDITOR_PRIORITY })
 
   // Cleanup rAF on unmount
   useEffect(() => {

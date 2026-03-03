@@ -3,7 +3,8 @@ import type React from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { onTick } from '../lib/tickLoop'
 import useVisualSettings from '../hooks/useVisualSettings'
-import { cmdOrCtrl } from '../lib/keyboard'
+import useShortcut from '../hooks/useShortcut'
+import { DEBUG_TOGGLE_IMG, DEBUG_TOGGLE_VISUALIZER, DEBUG_TOGGLE_MASK, EDIT_MASK, EDIT_BRUSH } from '../lib/shortcuts'
 import { useTheme } from '../contexts/ThemeContext'
 import ForegroundMask from './ForegroundMask'
 import type { Album, SegmentationResult } from '../types'
@@ -43,39 +44,11 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
   // --- Dev-only layer toggles (Ctrl+Shift+1/2/3) ---
   const [debugLayers, setDebugLayers] = useState({ img: true, visualizer: true, mask: true })
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Ctrl+Shift / Cmd+Shift shortcuts (debug layers, mask editor)
-      if (cmdOrCtrl(e) && e.shiftKey) {
-        if (import.meta.env.DEV) {
-          if (e.key === '!' || e.code === 'Digit1') {
-            e.preventDefault()
-            setDebugLayers(prev => ({ ...prev, img: !prev.img }))
-          } else if (e.key === '@' || e.code === 'Digit2') {
-            e.preventDefault()
-            setDebugLayers(prev => ({ ...prev, visualizer: !prev.visualizer }))
-          } else if (e.key === '#' || e.code === 'Digit3') {
-            e.preventDefault()
-            setDebugLayers(prev => ({ ...prev, mask: !prev.mask }))
-          }
-        }
-        if ((e.key === 'E' || e.key === 'e') && e.code === 'KeyE') {
-          e.preventDefault()
-          onEditMask?.()
-        }
-        return
-      }
-      // Plain key shortcuts
-      if (!cmdOrCtrl(e) && !e.shiftKey && !e.altKey) {
-        if ((e.key === 'B' || e.key === 'b') && e.code === 'KeyB') {
-          e.preventDefault()
-          onEditBrush?.()
-        }
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onEditMask, onEditBrush])
+  useShortcut(DEBUG_TOGGLE_IMG, () => setDebugLayers(p => ({ ...p, img: !p.img })), { enabled: import.meta.env.DEV })
+  useShortcut(DEBUG_TOGGLE_VISUALIZER, () => setDebugLayers(p => ({ ...p, visualizer: !p.visualizer })), { enabled: import.meta.env.DEV })
+  useShortcut(DEBUG_TOGGLE_MASK, () => setDebugLayers(p => ({ ...p, mask: !p.mask })), { enabled: import.meta.env.DEV })
+  useShortcut(EDIT_MASK, () => { onEditMask?.() })
+  useShortcut(EDIT_BRUSH, () => { onEditBrush?.() })
 
   // --- Sequenced vinyl / album-art transition state ---
   const [displayedAlbum, _setDisplayedAlbum] = useState<Album>(album)

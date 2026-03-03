@@ -1,7 +1,8 @@
 /* global __PERF_HUD__ */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { perfSubscribe } from '../lib/perf'
-import { cmdOrCtrl } from '../lib/keyboard'
+import useShortcut from '../hooks/useShortcut'
+import { TOGGLE_PERF_HUD } from '../lib/shortcuts'
 import type { PerfSnapshot } from '../types'
 
 interface Position {
@@ -21,16 +22,7 @@ function PerfHUDInner() {
   useEffect(() => perfSubscribe(setSnap), [])
 
   // Toggle with Ctrl+Shift+P
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (cmdOrCtrl(e) && e.shiftKey && e.code === 'KeyP') {
-        e.preventDefault()
-        setVisible((v) => !v)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  useShortcut(TOGGLE_PERF_HUD, () => setVisible(v => !v))
 
   // Drag via pointer capture
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLPreElement>) => {
