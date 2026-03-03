@@ -234,7 +234,7 @@ input[type='range']:focus-visible {
 /* ─── Album art background mosaic (isometric) ─── */
 .album-art-bg-iso {
   position: absolute;
-  inset: -60%;
+  inset: -75% -60% -45%;
   transform: rotateX(55deg) rotateZ(-15deg);
   transform-origin: center center;
   transform-style: preserve-3d;
