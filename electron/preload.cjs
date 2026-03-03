@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('fullscreen:changed', handler)
     return () => ipcRenderer.removeListener('fullscreen:changed', handler)
   },
+  isScreenshotMode: process.argv.includes('--screenshot'),
+  screenshotCapture: (theme) => ipcRenderer.invoke('screenshot:capture', theme),
+  screenshotCombine: () => ipcRenderer.invoke('screenshot:combine'),
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
   dismissUpdate: (version) => ipcRenderer.invoke('update:dismiss', version),
   openReleasePage: (url) => ipcRenderer.invoke('update:openRelease', url),

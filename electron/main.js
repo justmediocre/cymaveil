@@ -28,6 +28,7 @@ const getUpdateChecker = async () => (_updateChecker ??= await import('./updateC
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
+const isScreenshotMode = isDev && process.argv.includes('--screenshot')
 
 // Set Windows app identity for SMTC (System Media Transport Controls)
 const APP_USER_MODEL_ID = 'com.cymaveil.player'
@@ -83,6 +84,156 @@ protocol.registerSchemesAsPrivileged([
   },
 ])
 
+// ── Screenshot mode helpers ─────────────────────────────────────────────────
+
+/** @type {{ albums: import('./types').Album[], tracks: import('./types').Track[], folders: string[] } | null} */
+let screenshotMockData = null
+/** @type {string[]} */
+let screenshotArtworkFiles = []
+/** @type {string | null} */
+let screenshotWavPath = null
+
+/**
+ * Generate a pink noise WAV file using the Voss-McCartney algorithm.
+ * Produces natural bass-heavy spectrum that looks good on visualizer bars.
+ * @param {string} filePath
+ * @param {number} durationSec
+ * @param {number} [sampleRate=44100]
+ */
+function generatePinkNoiseWav(filePath, durationSec, sampleRate = 44100) {
+  const numSamples = Math.floor(sampleRate * durationSec)
+  const numRows = 12 // number of octave rows
+  const rows = new Float64Array(numRows)
+  let runningSum = 0
+
+  const dataSize = numSamples * 2 // 16-bit mono
+  const header = Buffer.alloc(44)
+  // RIFF header
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + dataSize, 4)
+  header.write('WAVE', 8)
+  // fmt chunk
+  header.write('fmt ', 12)
+  header.writeUInt32LE(16, 16)       // chunk size
+  header.writeUInt16LE(1, 20)        // PCM
+  header.writeUInt16LE(1, 22)        // mono
+  header.writeUInt32LE(sampleRate, 24)
+  header.writeUInt32LE(sampleRate * 2, 28) // byte rate
+  header.writeUInt16LE(2, 32)        // block align
+  header.writeUInt16LE(16, 34)       // bits per sample
+  // data chunk
+  header.write('data', 36)
+  header.writeUInt32LE(dataSize, 40)
+
+  const samples = Buffer.alloc(dataSize)
+  const maxVal = 32767
+  // Pre-fill rows with random values
+  for (let i = 0; i < numRows; i++) {
+    rows[i] = (Math.random() * 2 - 1)
+    runningSum += rows[i]
+  }
+
+  for (let i = 0; i < numSamples; i++) {
+    // Voss-McCartney: use trailing zeros of counter to decide which row to update
+    let k = i
+    let tz = 0
+    if (k > 0) {
+      while ((k & 1) === 0) { tz++; k >>= 1 }
+    }
+    const row = tz % numRows
+    runningSum -= rows[row]
+    rows[row] = (Math.random() * 2 - 1)
+    runningSum += rows[row]
+
+    // Normalize: sum of numRows random [-1,1] values → divide by numRows, then add white noise
+    const pink = (runningSum / numRows + (Math.random() * 2 - 1)) * 0.5
+    const clamped = Math.max(-1, Math.min(1, pink))
+    samples.writeInt16LE(Math.round(clamped * maxVal), i * 2)
+  }
+
+  fs.writeFileSync(filePath, Buffer.concat([header, samples]))
+}
+
+const SCREENSHOT_ALBUM_META = [
+  { title: 'Depth of Field', artist: 'The Foreground Masks' },
+  { title: 'Glass Resonance', artist: 'Cymaveil' },
+  { title: 'Mosaic Drift', artist: 'The Tile Transitions' },
+  { title: 'Full Surface', artist: 'Contour & Bass' },
+  { title: 'Living Art', artist: 'The Segmentation Faults' },
+  { title: 'Ambient Glow', artist: 'Pink Noise Ensemble' },
+  { title: 'Veil of Sound', artist: 'The Waveforms' },
+  { title: 'Radial Burst', artist: 'Vinyl Surface' },
+]
+
+/**
+ * Read art files from docs/screenshots/art/, copy to userData/artwork/,
+ * generate a WAV, and build mock LibraryData.
+ */
+function setupScreenshotData() {
+  const artDir = path.join(__dirname, '..', 'docs', 'screenshots', 'art')
+  if (!fs.existsSync(artDir)) {
+    console.error('[screenshot] docs/screenshots/art/ directory not found')
+    app.quit()
+    return
+  }
+
+  const artFiles = fs.readdirSync(artDir).filter((f) => /\.(jpe?g|png|webp)$/i.test(f))
+  if (artFiles.length === 0) {
+    console.error('[screenshot] No image files found in docs/screenshots/art/')
+    app.quit()
+    return
+  }
+
+  // Copy art to userData/artwork/ as screenshot-N.ext
+  const artworkDir = path.join(app.getPath('userData'), 'artwork')
+  fs.mkdirSync(artworkDir, { recursive: true })
+
+  /** @type {import('./types').Album[]} */
+  const albums = []
+  /** @type {import('./types').Track[]} */
+  const tracks = []
+
+  // Generate pink noise WAV
+  screenshotWavPath = path.join(app.getPath('temp'), 'cymaveil-screenshot-pink.wav')
+  generatePinkNoiseWav(screenshotWavPath, 120)
+
+  for (let i = 0; i < artFiles.length; i++) {
+    const srcFile = artFiles[i]
+    const ext = path.extname(srcFile).toLowerCase()
+    const destName = `screenshot-${i}${ext}`
+    const destPath = path.join(artworkDir, destName)
+
+    fs.copyFileSync(path.join(artDir, srcFile), destPath)
+    screenshotArtworkFiles.push(destPath)
+
+    const meta = SCREENSHOT_ALBUM_META[i % SCREENSHOT_ALBUM_META.length]
+    const albumId = `screenshot-${i}`
+
+    albums.push({
+      id: albumId,
+      title: meta.title,
+      artist: meta.artist,
+      year: 2024,
+      art: `artwork://file/${encodeURIComponent(destName)}`,
+      dominantColor: '#1a1a2e',
+      accentColor: '#e94560',
+    })
+
+    tracks.push({
+      id: `screenshot-track-${i}`,
+      title: meta.title,
+      artist: meta.artist,
+      albumId,
+      duration: 120,
+      trackNum: 1,
+      filePath: screenshotWavPath,
+    })
+  }
+
+  screenshotMockData = { albums, tracks, folders: [] }
+  console.log(`[screenshot] Prepared ${albums.length} mock albums from docs/screenshots/art/`)
+}
+
 /** @type {BrowserWindow | null} */
 let mainWindow = null
 /** @type {number | null} */
@@ -93,8 +244,8 @@ function createWindow() {
 
   mainWindow = new BrowserWindow({
     title: 'Cymaveil',
-    width: 1200,
-    height: 800,
+    width: isScreenshotMode ? 900 : 1200,
+    height: isScreenshotMode ? 650 : 800,
     minWidth: 900,
     minHeight: 650,
     frame: false,
@@ -107,6 +258,7 @@ function createWindow() {
       contextIsolation: true,
       partition: 'persist:cymaveil',
       preload: preloadPath,
+      additionalArguments: isScreenshotMode ? ['--screenshot'] : [],
     },
   })
 
@@ -168,6 +320,61 @@ function validatePath(input) {
   }
 }
 
+// ── Screenshot mode IPC interception ────────────────────────────────────────
+// Registered BEFORE normal handlers so they take precedence when active.
+if (isScreenshotMode) {
+  ipcMain.handle('library:load', async () => screenshotMockData)
+  ipcMain.handle('library:save', async () => {})
+  ipcMain.handle('library:clear', async () => {})
+  ipcMain.handle('playback:load', async () => ({
+    currentTrackIndex: 0,
+    currentTime: 0,
+    playQueue: [],
+    queueIndex: -1,
+    shuffle: false,
+    repeat: 'off',
+  }))
+  ipcMain.handle('playback:save', async () => {})
+  ipcMain.on('playback:pushTime', () => {})
+
+  ipcMain.handle('screenshot:capture', async (_event, theme) => {
+    if (!mainWindow) return
+    const image = await mainWindow.webContents.capturePage()
+    const pngData = image.toPNG()
+    const outDir = path.join(__dirname, '..', 'docs', 'screenshots')
+    fs.mkdirSync(outDir, { recursive: true })
+    const outPath = path.join(outDir, `now-playing-${theme}.png`)
+    fs.writeFileSync(outPath, pngData)
+    console.log(`[screenshot] Saved ${outPath}`)
+  })
+
+  ipcMain.handle('screenshot:combine', async () => {
+    const { spawn } = await import('child_process')
+    const scriptPath = path.join(__dirname, '..', 'docs', 'screenshots', 'art', 'combine_themes.py')
+    return new Promise((resolve) => {
+      const proc = spawn('python3', [scriptPath], { stdio: 'inherit' })
+      proc.on('close', () => {
+        // Cleanup: delete copied artwork files
+        for (const f of screenshotArtworkFiles) {
+          try { fs.unlinkSync(f) } catch {}
+        }
+        // Delete temp WAV
+        if (screenshotWavPath) {
+          try { fs.unlinkSync(screenshotWavPath) } catch {}
+        }
+        console.log('[screenshot] Cleanup complete')
+        resolve(undefined)
+        app.quit()
+      })
+      proc.on('error', (err) => {
+        console.error('[screenshot] Failed to run combine script:', err.message)
+        resolve(undefined)
+        app.quit()
+      })
+    })
+  })
+}
+
 // IPC: Open native folder picker
 ipcMain.handle('dialog:selectFolder', async () => {
   const win = mainWindow || BrowserWindow.getFocusedWindow()
@@ -188,40 +395,42 @@ ipcMain.handle('music:scanFolder', async (event, folderPath) => {
   })
 })
 
-// IPC: Library persistence
-ipcMain.handle('library:load', async () => {
-  const { loadLibrary } = await getStore()
-  return loadLibrary()
-})
+// IPC: Library persistence (skipped in screenshot mode — intercepted above)
+if (!isScreenshotMode) {
+  ipcMain.handle('library:load', async () => {
+    const { loadLibrary } = await getStore()
+    return loadLibrary()
+  })
 
-ipcMain.handle('library:save', async (_event, data) => {
-  if (!data || !Array.isArray(data.albums) || !Array.isArray(data.tracks)) return
-  const { saveLibrary } = await getStore()
-  saveLibrary(data)
-})
+  ipcMain.handle('library:save', async (_event, data) => {
+    if (!data || !Array.isArray(data.albums) || !Array.isArray(data.tracks)) return
+    const { saveLibrary } = await getStore()
+    saveLibrary(data)
+  })
 
-ipcMain.handle('library:clear', async () => {
-  const { clearLibrary } = await getStore()
-  clearLibrary()
-})
+  ipcMain.handle('library:clear', async () => {
+    const { clearLibrary } = await getStore()
+    clearLibrary()
+  })
 
-// IPC: Playback state persistence
-ipcMain.handle('playback:load', async () => {
-  const { loadPlaybackState } = await getStore()
-  return loadPlaybackState()
-})
+  // IPC: Playback state persistence
+  ipcMain.handle('playback:load', async () => {
+    const { loadPlaybackState } = await getStore()
+    return loadPlaybackState()
+  })
 
-ipcMain.handle('playback:save', async (_event, data) => {
-  if (!data || typeof data.currentTrackIndex !== 'number' || typeof data.currentTime !== 'number') return
-  const { savePlaybackState } = await getStore()
-  savePlaybackState(data)
-})
+  ipcMain.handle('playback:save', async (_event, data) => {
+    if (!data || typeof data.currentTrackIndex !== 'number' || typeof data.currentTime !== 'number') return
+    const { savePlaybackState } = await getStore()
+    savePlaybackState(data)
+  })
 
-// Fire-and-forget time updates from renderer (no response needed)
-ipcMain.on('playback:pushTime', (_event, time) => {
-  if (typeof time !== 'number') return
-  latestPlaybackTime = time
-})
+  // Fire-and-forget time updates from renderer (no response needed)
+  ipcMain.on('playback:pushTime', (_event, time) => {
+    if (typeof time !== 'number') return
+    latestPlaybackTime = time
+  })
+}
 
 /** Merge cached currentTime into the persisted playback state */
 function flushPlaybackTime() {
@@ -358,11 +567,11 @@ app.whenReady().then(() => {
   // Apply Content Security Policy via session headers (covers all responses including dev server)
   ses.webRequest.onHeadersReceived((details, callback) => {
     const scriptSrc = isDev
-      ? "'self' 'unsafe-inline' 'wasm-unsafe-eval'"
-      : "'self' 'wasm-unsafe-eval'"
+      ? "'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net"
+      : "'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net"
     const connectSrc = isDev
-      ? "'self' blob: https://huggingface.co https://cdn-lfs.huggingface.co ws://localhost:*"
-      : "'self' blob: https://huggingface.co https://cdn-lfs.huggingface.co"
+      ? "'self' blob: https://huggingface.co https://*.hf.co https://cdn.jsdelivr.net ws://localhost:*"
+      : "'self' blob: https://huggingface.co https://*.hf.co https://cdn.jsdelivr.net"
     const csp = [
       "default-src 'none'",
       `script-src ${scriptSrc}`,
@@ -384,6 +593,9 @@ app.whenReady().then(() => {
       },
     })
   })
+
+  // Screenshot mode: prepare mock data before creating window
+  if (isScreenshotMode) setupScreenshotData()
 
   // Create window first for fastest first paint
   createWindow()

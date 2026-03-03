@@ -31,6 +31,8 @@
     "typecheck": "tsc --noEmit",
     "electron": "electron .",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "screenshot": "electron . --screenshot",
+    "screenshot:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron . --screenshot\"",
     "dist": "vite build && electron-builder --win",
     "dist:linux": "vite build && electron-builder --linux",
     "dist:mac": "vite build && electron-builder --mac",

@@ -44,6 +44,7 @@ export default function ForegroundMask({ segmentation, artSrc, style }: Foregrou
 
   return (
     <img
+      data-foreground-mask
       src={artSrc}
       alt=""
       className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-2xl"

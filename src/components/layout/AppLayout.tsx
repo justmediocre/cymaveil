@@ -17,6 +17,7 @@ import LoadingSpinner from '../LoadingSpinner'
 import useBatchSegmentation from '../../hooks/useBatchSegmentation'
 import useUpdateChecker from '../../hooks/useUpdateChecker'
 import { perfCountRender } from '../../lib/perf'
+import useScreenshotMode from '../../hooks/useScreenshotMode'
 
 export default function AppLayout() {
   perfCountRender('App')
@@ -72,6 +73,12 @@ export default function AppLayout() {
   useShortcut(NEXT_TRACK, handleNext)
   useShortcut(PREV_TRACK, handlePrev)
   useShortcut(PLAY_PAUSE, handlePlayPause, { skipInteractive: true })
+
+  // Automated screenshot capture (dev-only, gates internally on --screenshot flag)
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useScreenshotMode({ setActiveNav, setSidebarOpen, setShowQueue })
+  }
 
   // Listen for fullscreen state changes from Electron
   useEffect(() => {

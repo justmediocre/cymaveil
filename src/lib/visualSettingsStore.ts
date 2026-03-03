@@ -64,6 +64,12 @@ export const visualSettingsStore = {
     syncGlassBlur()
     listeners.forEach((l) => l())
   },
+  setBulk(updates: Partial<VisualSettings>) {
+    settings = { ...settings, ...updates }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+    syncGlassBlur()
+    listeners.forEach((l) => l())
+  },
   subscribe(l: () => void): () => void {
     listeners.add(l)
     return () => listeners.delete(l)

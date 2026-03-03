@@ -230,6 +230,9 @@ export interface ElectronAPI {
   windowToggleFullscreen: () => Promise<void>
   windowIsFullscreen: () => Promise<boolean>
   onFullscreenChange: (callback: (isFullscreen: boolean) => void) => () => void
+  isScreenshotMode?: boolean
+  screenshotCapture?: (theme: string) => Promise<void>
+  screenshotCombine?: () => Promise<void>
   checkForUpdate: () => Promise<UpdateInfo | null>
   dismissUpdate: (version: string) => Promise<void>
   openReleasePage: (url: string) => Promise<void>
