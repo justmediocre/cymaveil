@@ -1,7 +1,7 @@
 // — Global (AppLayout) —
 export const TOGGLE_FULLSCREEN = 'f11'
 export const EXIT_FULLSCREEN = 'escape'
-export const TOGGLE_QUEUE = 'tab'
+export const TOGGLE_QUEUE = 'mod+t'
 export const NEXT_TRACK = 'mod+arrowright'
 export const PREV_TRACK = 'mod+arrowleft'
 export const PLAY_PAUSE = 'space'
