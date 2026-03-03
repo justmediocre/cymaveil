@@ -30,6 +30,7 @@ export default function TitleBar({
         <motion.button
           onClick={onToggleSidebar}
           className="no-drag flex items-center justify-center w-8 h-8 rounded-lg"
+          title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
           aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
           style={{ color: 'var(--text-tertiary)' }}
           whileHover={{ scale: 1.05, color: 'var(--text-primary)' }}
@@ -71,6 +72,7 @@ export default function TitleBar({
         <motion.button
           onClick={onToggleQueue}
           className="no-drag flex items-center justify-center w-8 h-8 rounded-lg"
+          title={showQueue ? 'Hide track list (Ctrl+T)' : 'Show track list (Ctrl+T)'}
           aria-label={showQueue ? 'Close queue' : 'Open queue'}
           style={{ color: showQueue ? 'var(--accent)' : 'var(--text-tertiary)' }}
           whileHover={{ scale: 1.05, color: 'var(--text-primary)' }}
@@ -82,6 +84,7 @@ export default function TitleBar({
         <motion.button
           onClick={onToggleFullscreen}
           className="no-drag flex items-center justify-center w-8 h-8 rounded-lg"
+          title={isFullscreen ? 'Exit fullscreen (F11)' : 'Fullscreen (F11)'}
           aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
           style={{ color: 'var(--text-tertiary)' }}
           whileHover={{ scale: 1.05, color: 'var(--text-primary)' }}
