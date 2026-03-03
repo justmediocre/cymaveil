@@ -123,10 +123,27 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
         return
       }
 
+      // Re-check cache before acquiring the backend lock — batch segmentation
+      // may have populated it while we were waiting in the queue
+      const rechecked = await segmentationCache.get(artSrc, backendId)
+      if (cancelled) return
+      if (rechecked) {
+        setSegmentation(rechecked)
+        setDepthMap(rechecked.depthMap)
+        setLoading(false)
+        setHasOverride(!!override || await segmentationCache.isUserEdited(artSrc, backendId))
+        return
+      }
+
       // Load backend, run segmentation, then auto-dispose
       const resolution = modelParams.inputResolution || SEGMENT_SIZE
       const result = await withBackend(backendId, modelParams, null, async (backend) => {
         if (cancelled) return null
+
+        // Final cache check after acquiring lock — avoids redundant model run
+        // when batch segmentation cached the result while we waited on the mutex
+        const postLockCached = await segmentationCache.get(artSrc, backendId)
+        if (postLockCached) return postLockCached
 
         let depth: Uint8Array | null = null
         let seg: SegmentationResult | null = null
@@ -169,6 +186,9 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
 
     return () => {
       cancelled = true
+      // Reset so React strict mode's remount re-runs the effect instead of
+      // hitting the prevKeyRef dedup (which would leave loading stuck at true)
+      prevKeyRef.current = null
     }
   }, [artSrc, backendId, settings.maskDefaults, settings.maskCacheVersion, refreshKey])
 
