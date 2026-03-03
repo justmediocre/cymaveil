@@ -1,6 +1,6 @@
 // @ts-check
 
-import { app, BrowserWindow, dialog, ipcMain, protocol, net, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol, net, session } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -34,31 +34,6 @@ const isScreenshotMode = isDev && process.argv.includes('--screenshot')
 const APP_USER_MODEL_ID = 'com.cymaveil.player'
 app.setAppUserModelId(APP_USER_MODEL_ID)
 app.setName('Cymaveil')
-
-// Windows SMTC resolves the app display name from a Start Menu shortcut
-// linked to the AppUserModelId. Without one, it shows "Unknown App".
-function ensureStartMenuShortcut() {
-  if (process.platform !== 'win32') return
-  const shortcutPath = path.join(
-    app.getPath('appData'),
-    'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Cymaveil.lnk'
-  )
-  const shortcutDetails = {
-    target: process.execPath,
-    appUserModelId: APP_USER_MODEL_ID,
-    description: 'Cymaveil Music Player',
-  }
-  try {
-    // Update if it already exists (exe path may have changed), otherwise create
-    if (fs.existsSync(shortcutPath)) {
-      shell.writeShortcutLink(shortcutPath, 'update', shortcutDetails)
-    } else {
-      shell.writeShortcutLink(shortcutPath, 'create', shortcutDetails)
-    }
-  } catch {
-    // Non-critical — SMTC will just show "Unknown App"
-  }
-}
 
 // Register custom schemes as privileged before app is ready.
 // bypassCSP is required so the renderer can load audio/artwork from these
@@ -415,8 +390,6 @@ app.whenReady().then(async () => {
 
   // Create window first for fastest first paint
   createWindow()
-
-  ensureStartMenuShortcut()
 
   // Handle audio:// protocol — serves local audio files with range request
   // support so the <audio> element can seek
