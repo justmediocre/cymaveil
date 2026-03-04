@@ -8,7 +8,11 @@ A refined desktop music player with living album art.
 
 Cymaveil turns your local music library into a visual experience — album artwork drives dynamic backgrounds, color palettes, and audio-reactive visualizations that respond to whatever you're listening to. An on-device depth model can even separate album art into layers, so the visualizer plays *behind* the subject — and of course, there's no replacement for the human touch — you can paint your own masks too.
 
-> *Screenshots of the Now Playing view and depth layer decomposition are coming soon — waiting on permission from album artists whose artwork appears in the captures.*
+*Content in screenshots used with permission from Ponies at Dawn, check out their Bandcamp at [https://poniesatdawn.bandcamp.com/music](https://poniesatdawn.bandcamp.com/music)*
+
+![Now Playing](docs/screenshots/now-playing-combined.png)
+
+*The Now Playing view across themes — album artwork drives dynamic backgrounds, color palettes, and audio-reactive visualizations.*
 
 ![Paint Editor](docs/screenshots/painteditor.gif)
 
@@ -30,8 +34,6 @@ Cymaveil turns your local music library into a visual experience — album artwo
 - **Dark & light themes** — system-aware with manual toggle
 - **Media key support** — play/pause, next, previous via keyboard and OS media controls
 - **File watching** — library updates automatically when files change on disk
-
-> *Screenshots of the library and album views are coming soon — waiting on permission from album artists whose artwork appears in the captures.*
 
 ## Language Support
 
