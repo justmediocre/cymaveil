@@ -105,7 +105,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
             nextTracks.push({
               id: track.id,
               title: track.title,
-              artist: album?.artist || 'Unknown Artist',
+              artist: track.artist || 'Unknown Artist',
               art: album?.art || null,
             })
           }
@@ -120,7 +120,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           nextTracks.push({
             id: track.id,
             title: track.title,
-            artist: album?.artist || 'Unknown Artist',
+            artist: track.artist || 'Unknown Artist',
             art: album?.art || null,
           })
         }
