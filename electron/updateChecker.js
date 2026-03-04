@@ -7,7 +7,7 @@ import Store from 'electron-store'
  * Master toggle — set to `true` when the repo is public and releases exist.
  * When `false`, every exported function is a no-op / returns safe defaults.
  */
-const UPDATES_ENABLED = false
+const UPDATES_ENABLED = true
 
 const GITHUB_API_URL = 'https://api.github.com/repos/justmediocre/cymaveil/releases/latest'
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000 // 24 hours
