@@ -1,13 +1,11 @@
-import { createContext, useContext, useReducer, useCallback, useMemo, useRef, useEffect, useState, useSyncExternalStore } from 'react'
+import { createContext, useContext, useReducer, useMemo, useRef, useEffect } from 'react'
 import { useLibraryCtx } from '../library/LibraryContext'
 import { usePlaylistCtx } from '../playlist/PlaylistContext'
-import { playbackReducer, initialPlaybackState, shuffleArray } from './playbackReducer'
-import type { PlaybackState, PlaybackAction, QueueSource } from './playbackReducer'
-import useAudioPlayer from '../../hooks/useAudioPlayer'
-import useAudioAnalyser from '../../hooks/useAudioAnalyser'
+import { playbackReducer, initialPlaybackState } from './playbackReducer'
+import { usePlaybackCrossfade } from './usePlaybackCrossfade'
+import { usePlaybackPersistence } from './usePlaybackPersistence'
+import { usePlaybackActions } from './usePlaybackActions'
 import useMediaSession from '../../hooks/useMediaSession'
-import { playbackTimeStore } from '../../lib/playbackTimeStore'
-import { playbackSettingsStore } from '../../lib/playbackSettingsStore'
 import type { Track, Album, Playlist } from '../../types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -27,8 +25,8 @@ export interface UpNextTrack {
 }
 
 export interface PlaybackContextValue {
-  state: PlaybackState
-  dispatch: React.Dispatch<PlaybackAction>
+  state: import('./playbackReducer').PlaybackState
+  dispatch: React.Dispatch<import('./playbackReducer').PlaybackAction>
 
   // Derived
   currentTrack: Track | undefined
@@ -73,7 +71,7 @@ const PlaybackContext = createContext<PlaybackContextValue | null>(null)
 
 export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const { tracks, getAlbumForTrack, getTracksForAlbum } = useLibraryCtx()
-  const { playlists, nowPlayingList, replaceNowPlaying, addToNowPlaying } = usePlaylistCtx()
+  const { playlists, nowPlayingList, addToNowPlaying } = usePlaylistCtx()
 
   const [state, dispatch] = useReducer(playbackReducer, initialPlaybackState)
 
@@ -136,212 +134,24 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     return nextTracks
   }, [state.playbackActive, queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, getAlbumForTrack])
 
-  // ── Crossfade state ───────────────────────────────────────────────────
+  // ── Composed hooks ─────────────────────────────────────────────────────
 
-  // Tracks whether the last track advancement was caused by crossfade (auto-advance)
-  // so we can skip the normal onEnded and autoplay logic.
-  const isAutoAdvanceRef = useRef(false)
+  const crossfade = usePlaybackCrossfade(
+    state, dispatch, tracks, currentTrack, currentAlbum, queueActive, getAlbumForTrack,
+  )
 
-  // ── Transition intent (prefire / skip) ─────────────────────────────────
-  const [transitionIntent, setTransitionIntent] = useState<'prefire' | 'skip' | null>(null)
+  const { player, isAutoAdvanceRef, transitionIntent, clearTransitionIntent,
+    analyserRef, dataArrayRef, bassEnergyRef } = crossfade
+  const { duration, isPlaying, audioRef } = player
 
-  // Check whether the next track will be in a different album (drives prefire decision)
-  const nextTrackChangesAlbum = useMemo(() => {
-    if (state.repeat === 'one') return false
-    let nextTrack: Track | undefined
-    if (queueActive) {
-      if (state.queueIndex < state.playQueue.length - 1) {
-        const nextId = state.playQueue[state.queueIndex + 1]
-        nextTrack = tracks.find(t => t.id === nextId)
-      } else if (state.repeat === 'all') {
-        const nextId = state.playQueue[0]
-        nextTrack = tracks.find(t => t.id === nextId)
-      }
-    } else {
-      const nextIndex = (state.currentTrackIndex + 1) % tracks.length
-      nextTrack = tracks[nextIndex]
-    }
-    if (!nextTrack) return false
-    const nextAlbum = getAlbumForTrack(nextTrack)
-    return nextAlbum?.id !== currentAlbum?.id
-  }, [state.repeat, queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, getAlbumForTrack, currentAlbum])
+  const { readyRef, pendingRestoreRef } = usePlaybackPersistence(
+    state, dispatch, tracks, player,
+  )
 
-  /**
-   * Resolve the next track without dispatching any state change.
-   * Returns the Track or undefined if at end of queue with no repeat.
-   */
-  const resolveNextTrack = useCallback((): Track | undefined => {
-    if (state.repeat === 'one') return currentTrack
-    if (queueActive) {
-      if (state.queueIndex < state.playQueue.length - 1) {
-        const nextId = state.playQueue[state.queueIndex + 1]
-        return tracks.find(t => t.id === nextId)
-      } else if (state.repeat === 'all') {
-        const nextId = state.playQueue[0]
-        return tracks.find(t => t.id === nextId)
-      }
-      return undefined // queue exhausted
-    }
-    const nextIndex = (state.currentTrackIndex + 1) % tracks.length
-    return tracks[nextIndex]
-  }, [state.repeat, queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, currentTrack])
-
-  // Dynamic aboutToEnd threshold: max(crossfadeDuration, 1.5)
-  const playbackSettings = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
-  const aboutToEndThreshold = Math.max(playbackSettings.crossfadeDuration, 1.5)
-
-  // Ref to break circular dependency: handleAboutToEnd needs player.crossfadeToNext,
-  // but player needs handleAboutToEnd callback.
-  const crossfadeToNextRef = useRef<(filePath: string, duration: number) => boolean>(() => false)
-
-  const handleAboutToEnd = useCallback(() => {
-    if (state.repeat === 'one') return
-
-    const cfDuration = playbackSettingsStore.get().crossfadeDuration
-
-    if (cfDuration > 0) {
-      // Crossfade: resolve next track, initiate crossfade, dispatch NEXT
-      const nextTrack = resolveNextTrack()
-      if (!nextTrack?.filePath) return
-
-      const started = crossfadeToNextRef.current(nextTrack.filePath, cfDuration)
-      if (started) {
-        isAutoAdvanceRef.current = true
-        // Set transition intent based on album change
-        if (nextTrackChangesAlbum) {
-          setTransitionIntent('prefire')
-        }
-        dispatch({ type: 'NEXT', tracksLength: tracks.length })
-        return
-      }
-      // Crossfade didn't start (track too short) — fall through to normal prefire
-    }
-
-    if (nextTrackChangesAlbum) {
-      setTransitionIntent('prefire')
-    }
-  }, [state.repeat, nextTrackChangesAlbum, resolveNextTrack, tracks.length])
-
-  const clearTransitionIntent = useCallback(() => {
-    setTransitionIntent(null)
-  }, [])
-
-  // Ref to break circular dependency: handleNext needs player, player needs handleNext (onEnded)
-  const handleNextRef = useRef<() => void>(() => {})
-  const playerRef = useRef<{ seek: (t: number) => void; resume: () => void } | null>(null)
-
-  // Consecutive error tracking — stop advancing after too many failures in a row
-  const consecutiveErrorsRef = useRef(0)
-  const MAX_CONSECUTIVE_ERRORS = 3
-
-  // Audio player hook
-  const player = useAudioPlayer({
-    onEnded: () => {
-      consecutiveErrorsRef.current = 0
-      // If crossfade already advanced the track, skip onEnded handling
-      if (isAutoAdvanceRef.current) {
-        isAutoAdvanceRef.current = false
-        return
-      }
-      handleNextRef.current()
-    },
-    onAboutToEnd: handleAboutToEnd,
-    onError: () => {
-      consecutiveErrorsRef.current++
-      if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
-        console.warn(`[playback] ${MAX_CONSECUTIVE_ERRORS} consecutive errors, stopping`)
-        consecutiveErrorsRef.current = 0
-        return
-      }
-      handleNextRef.current()
-    },
-    aboutToEndThreshold,
-  })
-  playerRef.current = player
-  crossfadeToNextRef.current = player.crossfadeToNext
-  const { duration, isPlaying, audioRef, secondaryAudioRef } = player
-
-  // Audio analyser (Web Audio API)
-  const { analyserRef, dataArrayRef } = useAudioAnalyser(audioRef, secondaryAudioRef, isPlaying)
-
-  // Shared ref for bass energy
-  const bassEnergyRef = useRef(0)
-
-  // ── Playback state restoration ──────────────────────────────────────────
-
-  const readyRef = useRef(false)
-  const pendingRestoreRef = useRef(false)
-
-  useEffect(() => {
-    if (tracks.length === 0 || readyRef.current) return
-
-    async function restore() {
-      let targetIndex = 0
-      let targetTime = 0
-      let restoredQueue: string[] = []
-      let restoredQueueIndex = -1
-      let restoredShuffle = false
-      let restoredRepeat: 'off' | 'all' | 'one' = 'off'
-      let restoredQueueSource: 'none' | 'album' | 'playlist' | 'now-playing' = 'none'
-      let restoredPlaybackActive = false
-
-      if (window.electronAPI?.loadPlaybackState) {
-        try {
-          const saved = await window.electronAPI.loadPlaybackState()
-          if (saved.currentTrackIndex >= 0 && saved.currentTrackIndex < tracks.length) {
-            targetIndex = saved.currentTrackIndex
-            targetTime = saved.currentTime || 0
-          }
-          restoredPlaybackActive = saved.playbackActive ?? (saved.currentTrackIndex >= 0)
-          if (Array.isArray(saved.playQueue) && saved.playQueue.length > 0) {
-            restoredQueue = saved.playQueue
-            restoredQueueIndex = saved.queueIndex ?? -1
-            restoredShuffle = saved.shuffle ?? false
-            restoredRepeat = saved.repeat ?? 'off'
-            restoredQueueSource = (saved.queueSource as typeof restoredQueueSource) ?? 'none'
-          }
-        } catch (err) {
-          if (import.meta.env.DEV) console.warn('Failed to restore playback state:', err)
-        }
-      }
-
-      // Restore queue state and playbackActive
-      const restorePatch: Partial<import('./playbackReducer').PlaybackState> = {
-        playbackActive: restoredPlaybackActive,
-      }
-      if (restoredQueue.length > 0 && restoredQueueIndex >= 0) {
-        restorePatch.playQueue = restoredQueue
-        restorePatch.queueIndex = restoredQueueIndex
-        restorePatch.queueSource = restoredQueueSource
-        restorePatch.shuffle = restoredShuffle
-        restorePatch.repeat = restoredRepeat
-      }
-      dispatch({ type: 'RESTORE', patch: restorePatch })
-
-      // Determine which track to load — queue takes priority
-      let trackToLoad: Track | undefined
-      if (restoredQueue.length > 0 && restoredQueueIndex >= 0) {
-        const trackId = restoredQueue[restoredQueueIndex]
-        trackToLoad = tracks.find((t) => t.id === trackId)
-      }
-      if (!trackToLoad) {
-        trackToLoad = tracks[targetIndex]
-      }
-
-      if (trackToLoad?.filePath) {
-        player.load(trackToLoad.filePath, targetTime)
-      }
-
-      if (targetIndex !== 0) {
-        pendingRestoreRef.current = true
-        dispatch({ type: 'SET_TRACK_INDEX', index: targetIndex })
-      }
-
-      readyRef.current = true
-      dispatch({ type: 'SET_READY' })
-    }
-    restore()
-  }, [tracks])
+  const actions = usePlaybackActions(
+    state, dispatch, tracks, currentTrack, albumTracks, queueActive,
+    player, crossfade, playlists, nowPlayingList, addToNowPlaying,
+  )
 
   // ── Track-change autoplay ───────────────────────────────────────────────
 
@@ -359,14 +169,13 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     prevTrackIdRef.current = currentTrackId ?? null
 
     // If queue was just cleared, suppress autoplay on the fallback track
-    if (isClearingRef.current) {
-      isClearingRef.current = false
+    if (actions.isClearingRef.current) {
+      actions.isClearingRef.current = false
       return
     }
 
     // If crossfade already started playback on the incoming deck, skip play()
     if (isAutoAdvanceRef.current) {
-      // Don't clear the flag here — onEnded will clear it
       return
     }
 
@@ -382,245 +191,17 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('volume', String(state.volume))
   }, [state.volume])
 
-  // ── Playback state persistence ──────────────────────────────────────────
-
-  useEffect(() => {
-    if (!readyRef.current || !window.electronAPI?.savePlaybackState) return
-    window.electronAPI.savePlaybackState({
-      currentTrackIndex: state.currentTrackIndex,
-      currentTime: playbackTimeStore.get() || 0,
-      playQueue: state.playQueue,
-      queueIndex: state.queueIndex,
-      queueSource: state.queueSource,
-      shuffle: state.shuffle,
-      repeat: state.repeat,
-      playbackActive: state.playbackActive,
-    })
-  }, [state.currentTrackIndex, state.playQueue, state.queueIndex, state.queueSource, state.shuffle, state.repeat, state.playbackActive])
-
-  // Push currentTime to the main process periodically so it can
-  // persist the latest position on close (destroy() skips beforeunload)
-  useEffect(() => {
-    if (!window.electronAPI?.pushPlaybackTime) return
-    const id = setInterval(() => {
-      const t = playbackTimeStore.get()
-      if (t > 0) window.electronAPI!.pushPlaybackTime(t)
-    }, 5_000)
-    return () => clearInterval(id)
-  }, [])
-
-  // ── Track index clamping ────────────────────────────────────────────────
-
-  const tracksLength = tracks.length
-  useEffect(() => {
-    dispatch({ type: 'CLAMP_INDEX', tracksLength })
-  }, [tracksLength])
-
-  // ── Handlers ────────────────────────────────────────────────────────────
-
-  const handleNext = useCallback(() => {
-    consecutiveErrorsRef.current = 0
-    isAutoAdvanceRef.current = false // manual skip
-    if (state.repeat === 'one') {
-      playerRef.current?.seek(0)
-      playerRef.current?.resume()
-      return
-    }
-    // If prefire already set the intent, keep it; otherwise this is a manual skip
-    setTransitionIntent(prev => prev === 'prefire' ? prev : 'skip')
-    dispatch({ type: 'NEXT', tracksLength: tracks.length })
-  }, [state.repeat, tracks.length])
-
-  // Keep ref current for onEnded callback
-  handleNextRef.current = handleNext
-
-  const handlePrev = useCallback(() => {
-    consecutiveErrorsRef.current = 0
-    isAutoAdvanceRef.current = false // manual skip
-    if (playbackTimeStore.get() > 3) {
-      player.seek(0)
-    } else {
-      setTransitionIntent('skip')
-      dispatch({ type: 'PREV', tracksLength: tracks.length })
-    }
-  }, [tracks.length, player])
-
-  const handlePlayPause = useCallback(() => {
-    if (isPlaying) {
-      player.pause()
-    } else {
-      player.resume()
-    }
-  }, [isPlaying, player])
-
-  const handleShuffleToggle = useCallback(() => {
-    dispatch({
-      type: 'TOGGLE_SHUFFLE',
-      albumTrackIds: albumTracks.map((t) => t.id),
-      currentTrackId: currentTrack?.id,
-      tracks,
-    })
-  }, [albumTracks, currentTrack, tracks])
-
-  const handleRepeatToggle = useCallback(() => {
-    dispatch({ type: 'CYCLE_REPEAT' })
-  }, [])
-
-  const setVolume = useCallback((v: number) => {
-    dispatch({ type: 'SET_VOLUME', volume: v })
-  }, [])
-
-  // ── Unified track selection ─────────────────────────────────────────────
-
-  const selectTrack = useCallback(
-    (source: TrackSource, index: number) => {
-      isAutoAdvanceRef.current = false // manual selection
-      switch (source.kind) {
-        case 'queue':
-          if (queueActive) {
-            dispatch({ type: 'SET_QUEUE_INDEX', index })
-          } else {
-            // Fallback: treat as album track
-            const albumTrack = albumTracks[index]
-            if (albumTrack) {
-              dispatch({ type: 'DEACTIVATE_QUEUE', trackId: albumTrack.id, tracks })
-            }
-          }
-          break
-        case 'global':
-          {
-            const track = source.trackList[index]
-            if (track) dispatch({ type: 'DEACTIVATE_QUEUE', trackId: track.id, tracks })
-          }
-          break
-        case 'album':
-          {
-            const trackIds = source.albumTracks.map(t => t.id)
-            dispatch({ type: 'SET_QUEUE', queue: trackIds, index, shuffle: false, source: 'album' })
-          }
-          break
-        case 'playlist':
-          {
-            const playlist = playlists.find((p: Playlist) => p.id === source.playlistId)
-            if (!playlist) return
-            const validIds = playlist.trackIds.filter((id: string) => tracks.some((t) => t.id === id))
-            if (validIds.length === 0) return
-            dispatch({ type: 'SET_QUEUE', queue: validIds, index, shuffle: false, source: 'playlist' })
-          }
-          break
-        case 'now-playing':
-          {
-            const npList = nowPlayingList.trackIds
-            if (npList.length === 0) return
-            dispatch({ type: 'SET_QUEUE', queue: npList, index, shuffle: false, source: 'now-playing' })
-          }
-          break
-      }
-    },
-    [queueActive, albumTracks, tracks, playlists, nowPlayingList]
-  )
-
-  // ── Shuffle All ─────────────────────────────────────────────────────────
-
-  const shuffleAll = useCallback(
-    (trackList: Track[]) => {
-      if (!trackList || trackList.length === 0) return
-      const ids = trackList.map((t) => t.id)
-      const shuffled = shuffleArray(ids)
-      dispatch({ type: 'SET_QUEUE', queue: shuffled, index: 0, shuffle: true, source: 'none' })
-    },
-    []
-  )
-
-  // ── Play Album ────────────────────────────────────────────────────────
-
-  const playAlbum = useCallback(
-    (albumTrackList: Track[]) => {
-      if (albumTrackList.length === 0) return
-      const ids = albumTrackList.map((t) => t.id)
-      dispatch({ type: 'SET_QUEUE', queue: ids, index: 0, shuffle: false, source: 'album' })
-    },
-    []
-  )
-
-  // ── Play Now Playing ─────────────────────────────────────────────────
-
-  const playNowPlaying = useCallback(
-    (index?: number) => {
-      const ids = nowPlayingList.trackIds
-      if (ids.length === 0) return
-      dispatch({ type: 'SET_QUEUE', queue: ids, index: index ?? 0, shuffle: false, source: 'now-playing' })
-    },
-    [nowPlayingList]
-  )
-
-  // ── Add to Now Playing and Play ──────────────────────────────────────
-
-  const addToNowPlayingAndPlay = useCallback(
-    (trackId: string) => {
-      addToNowPlaying(trackId)
-      // We need to set the queue from the current now-playing list + the new track
-      const currentIds = nowPlayingList.trackIds
-      const newIds = currentIds.includes(trackId) ? currentIds : [...currentIds, trackId]
-      const idx = newIds.indexOf(trackId)
-      dispatch({ type: 'SET_QUEUE', queue: newIds, index: idx, shuffle: false, source: 'now-playing' })
-    },
-    [addToNowPlaying, nowPlayingList]
-  )
-
-  // ── Clear Queue (stop playback + deactivate) ─────────────────────────
-
-  const isClearingRef = useRef(false)
-
-  const clearQueue = useCallback(() => {
-    isClearingRef.current = true
-    player.pause()
-    dispatch({ type: 'CLEAR_PLAYBACK' })
-  }, [player])
-
-  // ── Sync now-playing list → playQueue when source is 'now-playing' ──
-
-  const prevNowPlayingIdsRef = useRef<string[]>([])
-  useEffect(() => {
-    if (state.queueSource !== 'now-playing') {
-      prevNowPlayingIdsRef.current = []
-      return
-    }
-    const newIds = nowPlayingList.trackIds
-    const prevIds = prevNowPlayingIdsRef.current
-    // Skip if unchanged
-    if (newIds.length === prevIds.length && newIds.every((id: string, i: number) => id === prevIds[i])) return
-    prevNowPlayingIdsRef.current = newIds
-
-    if (newIds.length === 0) {
-      dispatch({ type: 'DEACTIVATE_QUEUE', tracks })
-      return
-    }
-
-    // Find current track ID to preserve position
-    const currentId = state.playQueue[state.queueIndex]
-    const newIndex = currentId ? newIds.indexOf(currentId) : -1
-    dispatch({
-      type: 'SET_QUEUE',
-      queue: newIds,
-      index: newIndex >= 0 ? newIndex : Math.min(state.queueIndex, newIds.length - 1),
-      source: 'now-playing',
-    })
-  }, [nowPlayingList.trackIds, state.queueSource])
-
   // ── Media Session ───────────────────────────────────────────────────────
-
-  const currentAlbumWithColors = currentAlbum ?? null
 
   useMediaSession({
     track: currentTrack ?? null,
-    album: currentAlbumWithColors,
+    album: currentAlbum ?? null,
     isPlaying,
     duration,
     onPlay: () => player.resume(),
     onPause: () => player.pause(),
-    onNext: handleNext,
-    onPrev: handlePrev,
+    onNext: actions.handleNext,
+    onPrev: actions.handlePrev,
     onSeek: player.seek,
   })
 
@@ -643,25 +224,26 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       bassEnergyRef,
       transitionIntent,
       clearTransitionIntent,
-      handleNext,
-      handlePrev,
-      handlePlayPause,
-      handleShuffleToggle,
-      handleRepeatToggle,
-      setVolume,
+      handleNext: actions.handleNext,
+      handlePrev: actions.handlePrev,
+      handlePlayPause: actions.handlePlayPause,
+      handleShuffleToggle: actions.handleShuffleToggle,
+      handleRepeatToggle: actions.handleRepeatToggle,
+      setVolume: actions.setVolume,
       seek: player.seek,
-      selectTrack,
-      shuffleAll,
-      playAlbum,
-      playNowPlaying,
-      addToNowPlayingAndPlay,
-      clearQueue,
+      selectTrack: actions.selectTrack,
+      shuffleAll: actions.shuffleAll,
+      playAlbum: actions.playAlbum,
+      playNowPlaying: actions.playNowPlaying,
+      addToNowPlayingAndPlay: actions.addToNowPlayingAndPlay,
+      clearQueue: actions.clearQueue,
     }),
     [
       state, currentTrack, currentAlbum, albumTracks, queueActive, upNextTracks,
-      isPlaying, duration, transitionIntent, handleNext, handlePrev, handlePlayPause,
-      handleShuffleToggle, handleRepeatToggle, setVolume, player.seek,
-      selectTrack, shuffleAll, playAlbum, playNowPlaying, addToNowPlayingAndPlay, clearQueue,
+      isPlaying, duration, transitionIntent, actions.handleNext, actions.handlePrev,
+      actions.handlePlayPause, actions.handleShuffleToggle, actions.handleRepeatToggle,
+      actions.setVolume, player.seek, actions.selectTrack, actions.shuffleAll,
+      actions.playAlbum, actions.playNowPlaying, actions.addToNowPlayingAndPlay, actions.clearQueue,
     ]
   )
 
