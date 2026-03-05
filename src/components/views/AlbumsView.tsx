@@ -12,7 +12,7 @@ interface AlbumsViewProps {
 }
 
 export default function AlbumsView({ onAlbumSelect, onNavigateToNowPlaying }: AlbumsViewProps) {
-  const { albums, tracks, getTracksForAlbum } = useLibraryCtx()
+  const { albums, tracks } = useLibraryCtx()
   const { shuffleAll, playAlbum } = usePlayback()
 
   const sortedAlbums = useMemo(
@@ -26,11 +26,8 @@ export default function AlbumsView({ onAlbumSelect, onNavigateToNowPlaying }: Al
   }, [shuffleAll, tracks, onNavigateToNowPlaying])
 
   const handlePlayAlbum = useCallback(
-    (albumId: string) => {
-      const albumTracks = getTracksForAlbum(albumId)
-      if (albumTracks.length > 0) playAlbum(albumTracks)
-    },
-    [getTracksForAlbum, playAlbum]
+    (albumId: string) => playAlbum(albumId),
+    [playAlbum]
   )
 
   if (sortedAlbums.length === 0) {

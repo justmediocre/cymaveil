@@ -26,6 +26,7 @@ export function usePlaybackActions(
   playlists: Playlist[],
   nowPlayingList: { trackIds: string[] },
   addToNowPlaying: (id: string) => void,
+  getTracksForAlbum: (albumId: string) => Track[],
 ) {
   const { isAutoAdvanceRef, setTransitionIntent, consecutiveErrorsRef, playerRef, handleNextRef } = crossfade
 
@@ -146,12 +147,13 @@ export function usePlaybackActions(
   // ── Play Album ────────────────────────────────────────────────────────
 
   const playAlbum = useCallback(
-    (albumTrackList: Track[]) => {
+    (albumId: string) => {
+      const albumTrackList = getTracksForAlbum(albumId)
       if (albumTrackList.length === 0) return
       const ids = albumTrackList.map((t) => t.id)
       dispatch({ type: 'SET_QUEUE', queue: ids, index: 0, shuffle: false, source: 'album' })
     },
-    []
+    [getTracksForAlbum]
   )
 
   // ── Play Now Playing ─────────────────────────────────────────────────

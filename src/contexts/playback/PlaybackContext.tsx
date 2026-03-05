@@ -57,7 +57,7 @@ export interface PlaybackContextValue {
   seek: (seconds: number) => void
   selectTrack: (source: TrackSource, index: number) => void
   shuffleAll: (trackList: Track[]) => void
-  playAlbum: (albumTracks: Track[]) => void
+  playAlbum: (albumId: string) => void
   playNowPlaying: (index?: number) => void
   addToNowPlayingAndPlay: (trackId: string) => void
   clearQueue: () => void
@@ -150,7 +150,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const actions = usePlaybackActions(
     state, dispatch, tracks, currentTrack, albumTracks, queueActive,
-    player, crossfade, playlists, nowPlayingList, addToNowPlaying,
+    player, crossfade, playlists, nowPlayingList, addToNowPlaying, getTracksForAlbum,
   )
 
   // ── Track-change autoplay ───────────────────────────────────────────────

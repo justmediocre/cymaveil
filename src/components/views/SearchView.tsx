@@ -12,7 +12,7 @@ interface SearchViewProps {
 }
 
 export default function SearchView({ onAlbumSelect }: SearchViewProps) {
-  const { albums, tracks, getAlbumForTrack, getTracksForAlbum } = useLibraryCtx()
+  const { albums, tracks, getAlbumForTrack } = useLibraryCtx()
   const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists, isInNowPlaying } = usePlaylistCtx()
   const { currentTrack, isPlaying, selectTrack, playAlbum } = usePlayback()
 
@@ -53,11 +53,8 @@ export default function SearchView({ onAlbumSelect }: SearchViewProps) {
   const { handleTrackSelect, isQueueBuilding } = useTrackClickHandler(filteredTracks, handleClassicSelect)
 
   const handlePlayAlbum = useCallback(
-    (albumId: string) => {
-      const albumTracks = getTracksForAlbum(albumId)
-      if (albumTracks.length > 0) playAlbum(albumTracks)
-    },
-    [getTracksForAlbum, playAlbum]
+    (albumId: string) => playAlbum(albumId),
+    [playAlbum]
   )
 
   const hasAlbums = filteredAlbums.length > 0

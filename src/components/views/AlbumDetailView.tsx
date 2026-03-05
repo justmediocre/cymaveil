@@ -35,8 +35,8 @@ export default function AlbumDetailView({ albumId, onBack, onNavigateToNowPlayin
   }, [shuffleAll, tracks, onNavigateToNowPlaying])
 
   const handlePlayAlbum = useCallback(() => {
-    playAlbum(tracks)
-  }, [playAlbum, tracks])
+    if (album) playAlbum(album.id)
+  }, [playAlbum, album])
 
   if (!album) return null
 
