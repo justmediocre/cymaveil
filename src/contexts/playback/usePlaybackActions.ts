@@ -95,14 +95,18 @@ export function usePlaybackActions(
             // Fallback: treat as album track
             const albumTrack = albumTracks[index]
             if (albumTrack) {
-              dispatch({ type: 'DEACTIVATE_QUEUE', trackId: albumTrack.id, tracks })
+              const fallback = tracks.findIndex((t) => t.id === albumTrack.id)
+              dispatch({ type: 'EXIT_QUEUE', fallbackTrackIndex: fallback >= 0 ? fallback : state.currentTrackIndex })
             }
           }
           break
         case 'global':
           {
             const track = source.trackList[index]
-            if (track) dispatch({ type: 'DEACTIVATE_QUEUE', trackId: track.id, tracks })
+            if (track) {
+              const fallback = tracks.findIndex((t) => t.id === track.id)
+              dispatch({ type: 'EXIT_QUEUE', fallbackTrackIndex: fallback >= 0 ? fallback : state.currentTrackIndex })
+            }
           }
           break
         case 'album':
@@ -129,7 +133,7 @@ export function usePlaybackActions(
           break
       }
     },
-    [queueActive, albumTracks, tracks, playlists, nowPlayingList]
+    [queueActive, albumTracks, tracks, playlists, nowPlayingList, state.currentTrackIndex]
   )
 
   // ── Shuffle All ─────────────────────────────────────────────────────────
@@ -187,7 +191,7 @@ export function usePlaybackActions(
   const clearQueue = useCallback(() => {
     isClearingRef.current = true
     player.pause()
-    dispatch({ type: 'CLEAR_PLAYBACK' })
+    dispatch({ type: 'STOP_PLAYBACK' })
   }, [player])
 
   // ── Sync now-playing list → playQueue when source is 'now-playing' ──
@@ -205,7 +209,7 @@ export function usePlaybackActions(
     prevNowPlayingIdsRef.current = newIds
 
     if (newIds.length === 0) {
-      dispatch({ type: 'DEACTIVATE_QUEUE', tracks })
+      dispatch({ type: 'EXIT_QUEUE', fallbackTrackIndex: state.currentTrackIndex })
       return
     }
 

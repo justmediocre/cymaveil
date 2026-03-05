@@ -33,8 +33,8 @@ export type PlaybackAction =
   | { type: 'CYCLE_REPEAT' }
   | { type: 'SET_QUEUE'; queue: string[]; index: number; shuffle?: boolean; source?: QueueSource }
   | { type: 'SET_QUEUE_INDEX'; index: number }
-  | { type: 'DEACTIVATE_QUEUE'; trackId?: string; tracks: Track[] }
-  | { type: 'CLEAR_PLAYBACK' }
+  | { type: 'EXIT_QUEUE'; fallbackTrackIndex: number }
+  | { type: 'STOP_PLAYBACK' }
   | { type: 'RESTORE'; patch: Partial<PlaybackState> }
   | { type: 'SET_READY' }
   | { type: 'CLAMP_INDEX'; tracksLength: number }
@@ -151,23 +151,17 @@ export function playbackReducer(state: PlaybackState, action: PlaybackAction): P
     case 'SET_QUEUE_INDEX':
       return { ...state, queueIndex: action.index, playbackActive: true }
 
-    case 'DEACTIVATE_QUEUE': {
-      let newIndex = state.currentTrackIndex
-      if (action.trackId) {
-        const idx = action.tracks.findIndex((t) => t.id === action.trackId)
-        if (idx >= 0) newIndex = idx
-      }
+    case 'EXIT_QUEUE':
       return {
         ...state,
         playQueue: [],
         queueIndex: -1,
         queueSource: 'none',
         shuffle: false,
-        currentTrackIndex: newIndex,
+        currentTrackIndex: action.fallbackTrackIndex,
       }
-    }
 
-    case 'CLEAR_PLAYBACK':
+    case 'STOP_PLAYBACK':
       return {
         ...state,
         playQueue: [],
