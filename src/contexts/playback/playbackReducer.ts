@@ -21,6 +21,7 @@ export interface PlaybackState {
   queueIndex: number        // -1 = queue inactive
   queueSource: QueueSource
   playbackActive: boolean
+  suppressAutoplay: boolean
   isReady: boolean
 }
 
@@ -35,6 +36,7 @@ export type PlaybackAction =
   | { type: 'SET_QUEUE_INDEX'; index: number }
   | { type: 'EXIT_QUEUE'; fallbackTrackIndex: number }
   | { type: 'STOP_PLAYBACK' }
+  | { type: 'CLEAR_SUPPRESS_AUTOPLAY' }
   | { type: 'RESTORE'; patch: Partial<PlaybackState> }
   | { type: 'SET_READY' }
   | { type: 'CLAMP_INDEX'; tracksLength: number }
@@ -54,13 +56,14 @@ export const initialPlaybackState: PlaybackState = {
   queueIndex: -1,
   queueSource: 'none',
   playbackActive: false,
+  suppressAutoplay: false,
   isReady: false,
 }
 
 export function playbackReducer(state: PlaybackState, action: PlaybackAction): PlaybackState {
   switch (action.type) {
     case 'SET_TRACK_INDEX':
-      return { ...state, currentTrackIndex: action.index, playbackActive: true }
+      return { ...state, currentTrackIndex: action.index, playbackActive: true, suppressAutoplay: false }
 
     case 'NEXT': {
       const queueActive = state.queueIndex >= 0 && state.playQueue.length > 0
@@ -146,10 +149,11 @@ export function playbackReducer(state: PlaybackState, action: PlaybackAction): P
         shuffle: action.shuffle ?? state.shuffle,
         queueSource: action.source ?? state.queueSource,
         playbackActive: true,
+        suppressAutoplay: false,
       }
 
     case 'SET_QUEUE_INDEX':
-      return { ...state, queueIndex: action.index, playbackActive: true }
+      return { ...state, queueIndex: action.index, playbackActive: true, suppressAutoplay: false }
 
     case 'EXIT_QUEUE':
       return {
@@ -169,7 +173,11 @@ export function playbackReducer(state: PlaybackState, action: PlaybackAction): P
         queueSource: 'none',
         shuffle: false,
         playbackActive: false,
+        suppressAutoplay: true,
       }
+
+    case 'CLEAR_SUPPRESS_AUTOPLAY':
+      return { ...state, suppressAutoplay: false }
 
     case 'RESTORE':
       return { ...state, ...action.patch }

@@ -169,8 +169,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     prevTrackIdRef.current = currentTrackId ?? null
 
     // If queue was just cleared, suppress autoplay on the fallback track
-    if (actions.isClearingRef.current) {
-      actions.isClearingRef.current = false
+    if (state.suppressAutoplay) {
+      dispatch({ type: 'CLEAR_SUPPRESS_AUTOPLAY' })
       return
     }
 

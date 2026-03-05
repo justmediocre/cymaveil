@@ -186,10 +186,7 @@ export function usePlaybackActions(
 
   // ── Clear Queue (stop playback + deactivate) ─────────────────────────
 
-  const isClearingRef = useRef(false)
-
   const clearQueue = useCallback(() => {
-    isClearingRef.current = true
     player.pause()
     dispatch({ type: 'STOP_PLAYBACK' })
   }, [player])
@@ -237,6 +234,5 @@ export function usePlaybackActions(
     playNowPlaying,
     addToNowPlayingAndPlay,
     clearQueue,
-    isClearingRef,
   }
 }
