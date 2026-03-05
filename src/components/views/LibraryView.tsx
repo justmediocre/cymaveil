@@ -35,17 +35,6 @@ export default function LibraryView({ onNavigateToNowPlaying }: LibraryViewProps
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
-  if (tracks.length === 0) {
-    return (
-      <EmptyState
-        icon="music"
-        title="No tracks yet"
-        subtitle="Add a music folder to get started"
-        showImport
-      />
-    )
-  }
-
   // Playlist menu state
   const [menuTrackId, setMenuTrackId] = useState<string | null>(null)
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null)
@@ -153,6 +142,17 @@ export default function LibraryView({ onNavigateToNowPlaying }: LibraryViewProps
       visibleLetter = getLetterForTitle(item.track.title)
       break
     }
+  }
+
+  if (tracks.length === 0) {
+    return (
+      <EmptyState
+        icon="music"
+        title="No tracks yet"
+        subtitle="Add a music folder to get started"
+        showImport
+      />
+    )
   }
 
   const totalSize = virtualizer.getTotalSize()
