@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { createPortal } from 'react-dom'
 import { motion } from 'motion/react'
@@ -9,6 +9,8 @@ import TrackRow, { ROW_HEIGHT } from '../TrackRow'
 import AddToPlaylistMenu from '../AddToPlaylistMenu'
 import { ShuffleIcon } from '../Icons'
 import EmptyState from '../EmptyState'
+import { useClickHandler } from '../../hooks/useClickMode'
+import { playbackSettingsStore } from '../../lib/playbackSettingsStore'
 import type { Track, Album } from '../../types'
 
 const HEADER_HEIGHT = 36
@@ -29,8 +31,9 @@ interface LibraryViewProps {
 
 export default function LibraryView({ onNavigateToNowPlaying }: LibraryViewProps) {
   const { tracks, getAlbumForTrack } = useLibraryCtx()
-  const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists } = usePlaylistCtx()
-  const { currentTrack, isPlaying, selectTrack, shuffleAll } = usePlayback()
+  const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists, addToNowPlaying, isInNowPlaying } = usePlaylistCtx()
+  const { currentTrack, isPlaying, selectTrack, shuffleAll, addToNowPlayingAndPlay } = usePlayback()
+  const { clickMode } = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
@@ -86,24 +89,46 @@ export default function LibraryView({ onNavigateToNowPlaying }: LibraryViewProps
     overscan: 10,
   })
 
-  // Pre-compute album map + favorites set in a single pass
-  const { albumsByTrack, favSet } = useMemo(() => {
+  // Pre-compute album map + favorites set + now-playing set in a single pass
+  const { albumsByTrack, favSet, queuedSet } = useMemo(() => {
     const albumsByTrack = new Map<string, Album | null>()
     const favSet = new Set<string>()
+    const queuedSet = new Set<string>()
+    const showQueued = clickMode === 'queue-building'
     for (const track of sortedTracks) {
       if (!albumsByTrack.has(track.id)) {
         albumsByTrack.set(track.id, getAlbumForTrack(track))
       }
       if (isTrackFavorited(track.id)) favSet.add(track.id)
+      if (showQueued && isInNowPlaying(track.id)) queuedSet.add(track.id)
     }
-    return { albumsByTrack, favSet }
-  }, [sortedTracks, getAlbumForTrack, isTrackFavorited])
+    return { albumsByTrack, favSet, queuedSet }
+  }, [sortedTracks, getAlbumForTrack, isTrackFavorited, isInNowPlaying, clickMode])
 
   // Track selection
-  const handleSelect = useCallback(
+  const handleClassicSelect = useCallback(
     (index: number) => selectTrack({ kind: 'global', trackList: sortedTracks }, index),
     [selectTrack, sortedTracks]
   )
+
+  const handleQueueSingle = useCallback(
+    (index: number) => {
+      const track = sortedTracks[index]
+      if (track) addToNowPlaying(track.id)
+    },
+    [sortedTracks, addToNowPlaying]
+  )
+
+  const handleQueueDouble = useCallback(
+    (index: number) => {
+      const track = sortedTracks[index]
+      if (track) addToNowPlayingAndPlay(track.id)
+    },
+    [sortedTracks, addToNowPlayingAndPlay]
+  )
+
+  const clickHandler = useClickHandler(handleQueueSingle, handleQueueDouble)
+  const handleSelect = clickMode === 'queue-building' ? clickHandler : handleClassicSelect
 
   // Shuffle all
   const handleShuffleAll = useCallback(() => {
@@ -244,6 +269,7 @@ export default function LibraryView({ onNavigateToNowPlaying }: LibraryViewProps
                     isCurrent={isCurrent}
                     isFav={favSet.has(track.id)}
                     isPlaying={isCurrent && isPlaying}
+                    isQueued={queuedSet.has(track.id)}
                     onSelect={handleSelect}
                     onToggleFavorite={toggleFavorite}
                     onOpenMenu={hasPlaylistMenu ? handleOpenMenu : undefined}

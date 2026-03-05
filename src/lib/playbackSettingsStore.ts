@@ -6,12 +6,14 @@
 
 export interface PlaybackSettings {
   crossfadeDuration: number // 0–12 seconds, 0 = disabled
+  clickMode: 'classic' | 'queue-building'
 }
 
 const STORAGE_KEY = 'cymaveil-playback-settings'
 
 const DEFAULTS: PlaybackSettings = {
   crossfadeDuration: 0,
+  clickMode: 'classic',
 }
 
 function load(): PlaybackSettings {

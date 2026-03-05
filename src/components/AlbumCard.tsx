@@ -1,12 +1,14 @@
 import { motion } from 'motion/react'
 import type { Album } from '../types'
+import { PlayIcon } from './Icons'
 
 interface AlbumCardProps {
   album: Album
   onClick: (albumId: string) => void
+  onPlayAlbum?: (albumId: string) => void
 }
 
-export default function AlbumCard({ album, onClick }: AlbumCardProps) {
+export default function AlbumCard({ album, onClick, onPlayAlbum }: AlbumCardProps) {
   return (
     <motion.button
       onClick={() => onClick(album.id)}
@@ -15,7 +17,7 @@ export default function AlbumCard({ album, onClick }: AlbumCardProps) {
       whileTap={{ scale: 0.97 }}
     >
       <div
-        className="aspect-square rounded-xl overflow-hidden mb-2"
+        className="aspect-square rounded-xl overflow-hidden mb-2 relative"
         style={{ background: 'var(--bg-elevated)' }}
       >
         {album.art ? (
@@ -26,6 +28,20 @@ export default function AlbumCard({ album, onClick }: AlbumCardProps) {
               <circle cx="12" cy="12" r="10" />
               <circle cx="12" cy="12" r="3" />
             </svg>
+          </div>
+        )}
+        {onPlayAlbum && (
+          <div
+            className="absolute bottom-2 right-2 w-9 h-9 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            style={{ background: 'var(--accent)', color: 'var(--bg-primary)' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onPlayAlbum(album.id)
+            }}
+            role="button"
+            aria-label={`Play ${album.title}`}
+          >
+            <PlayIcon size={18} />
           </div>
         )}
       </div>

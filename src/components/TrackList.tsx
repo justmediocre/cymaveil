@@ -18,6 +18,7 @@ interface TrackListProps {
   onAddToPlaylist?: (playlistId: string, trackId: string) => void
   onCreatePlaylist?: (name: string) => Playlist | null
   playlists?: Playlist[]
+  isInNowPlaying?: (trackId: string) => boolean
 }
 
 // ── TrackList ─────────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ export default function TrackList({
   onAddToPlaylist,
   onCreatePlaylist,
   playlists,
+  isInNowPlaying,
 }: TrackListProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const needsScrollRef = useRef(false)
@@ -73,6 +75,16 @@ export default function TrackList({
     }
     return set
   }, [tracks, isTrackFavorited])
+
+  // Pre-compute now-playing set for O(1) per-row
+  const queuedSet = useMemo(() => {
+    if (!isInNowPlaying) return new Set<string>()
+    const set = new Set<string>()
+    for (const track of tracks) {
+      if (isInNowPlaying(track.id)) set.add(track.id)
+    }
+    return set
+  }, [tracks, isInNowPlaying])
 
   // Flag that we need to scroll when the current track changes
   useEffect(() => {
@@ -151,6 +163,7 @@ export default function TrackList({
                 isCurrent={isCurrent}
                 isFav={favSet.has(track.id)}
                 isPlaying={isCurrent && isPlaying}
+                isQueued={queuedSet.has(track.id)}
                 onSelect={handleSelect}
                 onToggleFavorite={onToggleFavorite}
                 onRemoveTrack={onRemoveTrack}

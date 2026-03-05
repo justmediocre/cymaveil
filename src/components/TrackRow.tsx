@@ -11,6 +11,7 @@ export interface TrackRowProps {
   isCurrent: boolean
   isFav: boolean
   isPlaying: boolean
+  isQueued?: boolean
   onSelect: (index: number) => void
   onToggleFavorite?: (trackId: string) => void
   onRemoveTrack?: (trackId: string) => void
@@ -25,6 +26,7 @@ const TrackRow = memo(function TrackRow({
   isCurrent,
   isFav,
   isPlaying,
+  isQueued,
   onSelect,
   onToggleFavorite,
   onRemoveTrack,
@@ -49,6 +51,14 @@ const TrackRow = memo(function TrackRow({
         height: ROW_HEIGHT,
       }}
     >
+      {/* Now Playing queue indicator */}
+      {isQueued && (
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ background: 'var(--accent)' }}
+        />
+      )}
+
       {/* Track number / playing indicator */}
       <span
         className="font-mono text-xs w-5 text-right shrink-0 tabular-nums"

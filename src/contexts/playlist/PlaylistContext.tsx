@@ -10,6 +10,8 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
     playlists, createPlaylist, deletePlaylist, renamePlaylist,
     addTrackToPlaylist, removeTrackFromPlaylist, reorderPlaylist,
     isTrackFavorited, toggleFavorite, exportPlaylist, importPlaylist,
+    nowPlayingList, addToNowPlaying, removeFromNowPlaying,
+    clearNowPlaying, replaceNowPlaying, isInNowPlaying,
   } = usePlaylists()
 
   const value = useMemo<PlaylistContextValue>(
@@ -17,11 +19,15 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
       playlists, createPlaylist, deletePlaylist, renamePlaylist,
       addTrackToPlaylist, removeTrackFromPlaylist, reorderPlaylist,
       isTrackFavorited, toggleFavorite, exportPlaylist, importPlaylist,
+      nowPlayingList, addToNowPlaying, removeFromNowPlaying,
+      clearNowPlaying, replaceNowPlaying, isInNowPlaying,
     }),
     [
       playlists, createPlaylist, deletePlaylist, renamePlaylist,
       addTrackToPlaylist, removeTrackFromPlaylist, reorderPlaylist,
       isTrackFavorited, toggleFavorite, exportPlaylist, importPlaylist,
+      nowPlayingList, addToNowPlaying, removeFromNowPlaying,
+      clearNowPlaying, replaceNowPlaying, isInNowPlaying,
     ],
   )
 

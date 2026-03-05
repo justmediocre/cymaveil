@@ -1,10 +1,13 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { motion } from 'motion/react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
 import { ChevronLeftIcon, ShuffleIcon, HeartIcon } from '../Icons'
 import TrackList from '../TrackList'
+import { useClickHandler } from '../../hooks/useClickMode'
+import { playbackSettingsStore } from '../../lib/playbackSettingsStore'
+import { NOW_PLAYING_ID } from '../../hooks/usePlaylists'
 import type { Track } from '../../types'
 
 interface PlaylistDetailViewProps {
@@ -24,9 +27,10 @@ export default function PlaylistDetailView({
   const {
     playlists, renamePlaylist, deletePlaylist, exportPlaylist,
     removeTrackFromPlaylist, isTrackFavorited, toggleFavorite,
-    addTrackToPlaylist, createPlaylist,
+    addTrackToPlaylist, createPlaylist, addToNowPlaying, isInNowPlaying,
   } = usePlaylistCtx()
-  const { currentTrack, isPlaying, selectTrack, shuffleAll } = usePlayback()
+  const { currentTrack, isPlaying, selectTrack, shuffleAll, addToNowPlayingAndPlay } = usePlayback()
+  const { clickMode } = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
 
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
@@ -41,10 +45,29 @@ export default function PlaylistDetailView({
       .filter((t): t is Track => Boolean(t))
   }, [playlist, allTracks])
 
-  const handleTrackSelect = useCallback(
+  const handleClassicSelect = useCallback(
     (idx: number) => selectTrack({ kind: 'playlist', playlistId }, idx),
     [selectTrack, playlistId],
   )
+
+  const handleQueueSingle = useCallback(
+    (idx: number) => {
+      const track = playlistTracks[idx]
+      if (track) addToNowPlaying(track.id)
+    },
+    [playlistTracks, addToNowPlaying]
+  )
+
+  const handleQueueDouble = useCallback(
+    (idx: number) => {
+      const track = playlistTracks[idx]
+      if (track) addToNowPlayingAndPlay(track.id)
+    },
+    [playlistTracks, addToNowPlayingAndPlay]
+  )
+
+  const clickHandler = useClickHandler(handleQueueSingle, handleQueueDouble)
+  const handleTrackSelect = clickMode === 'queue-building' ? clickHandler : handleClassicSelect
 
   const handleRemoveTrack = useCallback(
     (trackId: string) => removeTrackFromPlaylist(playlistId, trackId),
@@ -59,6 +82,7 @@ export default function PlaylistDetailView({
   if (!playlist) return null
 
   const isFavorites = playlist.id === 'favorites'
+  const isProtected = isFavorites || playlist.id === NOW_PLAYING_ID
 
   const handleDelete = () => {
     if (confirm(`Delete "${playlist.name}"?`)) {
@@ -136,9 +160,9 @@ export default function PlaylistDetailView({
           ) : (
             <h1
               className="font-display text-2xl font-bold truncate"
-              style={{ color: 'var(--text-primary)', cursor: isFavorites ? 'default' : 'pointer' }}
-              onClick={!isFavorites ? handleStartRename : undefined}
-              title={!isFavorites ? 'Click to rename' : undefined}
+              style={{ color: 'var(--text-primary)', cursor: isProtected ? 'default' : 'pointer' }}
+              onClick={!isProtected ? handleStartRename : undefined}
+              title={!isProtected ? 'Click to rename' : undefined}
             >
               {playlist.name}
             </h1>
@@ -170,7 +194,7 @@ export default function PlaylistDetailView({
                 Export
               </motion.button>
             )}
-            {!isFavorites && (
+            {!isProtected && (
               <motion.button
                 onClick={handleDelete}
                 className="no-drag flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
@@ -200,6 +224,7 @@ export default function PlaylistDetailView({
             onAddToPlaylist={addTrackToPlaylist}
             onCreatePlaylist={createPlaylist}
             playlists={playlists}
+            isInNowPlaying={clickMode === 'queue-building' ? isInNowPlaying : undefined}
           />
         ) : (
           <div className="flex items-center justify-center h-32">

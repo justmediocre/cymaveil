@@ -1,10 +1,12 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { motion } from 'motion/react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
-import { ChevronLeftIcon, ShuffleIcon } from '../Icons'
+import { ChevronLeftIcon, ShuffleIcon, PlayIcon } from '../Icons'
 import TrackList from '../TrackList'
+import { useClickHandler } from '../../hooks/useClickMode'
+import { playbackSettingsStore } from '../../lib/playbackSettingsStore'
 import type { Album } from '../../types'
 
 interface AlbumDetailViewProps {
@@ -15,21 +17,46 @@ interface AlbumDetailViewProps {
 
 export default function AlbumDetailView({ albumId, onBack, onNavigateToNowPlaying }: AlbumDetailViewProps) {
   const { albums, getAlbumForTrack, getTracksForAlbum } = useLibraryCtx()
-  const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists } = usePlaylistCtx()
-  const { currentTrack, isPlaying, selectTrack, shuffleAll } = usePlayback()
+  const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists, addToNowPlaying, isInNowPlaying } = usePlaylistCtx()
+  const { currentTrack, isPlaying, selectTrack, shuffleAll, playAlbum, addToNowPlayingAndPlay } = usePlayback()
+  const { clickMode } = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
 
   const album = useMemo(() => albums.find((a) => a.id === albumId) || null, [albums, albumId])
   const tracks = useMemo(() => albumId ? getTracksForAlbum(albumId) : [], [albumId, getTracksForAlbum])
 
-  const handleTrackSelect = useCallback(
+  const handleClassicSelect = useCallback(
     (idx: number) => selectTrack({ kind: 'album', albumTracks: tracks }, idx),
     [selectTrack, tracks]
   )
+
+  const handleQueueSingle = useCallback(
+    (idx: number) => {
+      const track = tracks[idx]
+      if (track) addToNowPlaying(track.id)
+    },
+    [tracks, addToNowPlaying]
+  )
+
+  const handleQueueDouble = useCallback(
+    (idx: number) => {
+      const track = tracks[idx]
+      if (track) addToNowPlayingAndPlay(track.id)
+    },
+    [tracks, addToNowPlayingAndPlay]
+  )
+
+  const clickHandler = useClickHandler(handleQueueSingle, handleQueueDouble)
+
+  const handleTrackSelect = clickMode === 'queue-building' ? clickHandler : handleClassicSelect
 
   const handleShuffleAll = useCallback(() => {
     shuffleAll(tracks)
     onNavigateToNowPlaying()
   }, [shuffleAll, tracks, onNavigateToNowPlaying])
+
+  const handlePlayAlbum = useCallback(() => {
+    playAlbum(tracks)
+  }, [playAlbum, tracks])
 
   if (!album) return null
 
@@ -78,19 +105,34 @@ export default function AlbumDetailView({ albumId, onBack, onNavigateToNowPlayin
             {tracks.length} {tracks.length === 1 ? 'track' : 'tracks'}
           </p>
           {tracks.length > 0 && (
-            <motion.button
-              onClick={handleShuffleAll}
-              className="no-drag flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium mt-3 self-start"
-              style={{
-                background: 'var(--accent-dim)',
-                color: 'var(--accent)',
-              }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <ShuffleIcon size={14} />
-              Shuffle
-            </motion.button>
+            <div className="flex items-center gap-2 mt-3">
+              <motion.button
+                onClick={handlePlayAlbum}
+                className="no-drag flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                style={{
+                  background: 'var(--accent-dim)',
+                  color: 'var(--accent)',
+                }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <PlayIcon size={14} />
+                Play
+              </motion.button>
+              <motion.button
+                onClick={handleShuffleAll}
+                className="no-drag flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                style={{
+                  background: 'var(--accent-dim)',
+                  color: 'var(--accent)',
+                }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <ShuffleIcon size={14} />
+                Shuffle
+              </motion.button>
+            </div>
           )}
         </div>
       </div>
@@ -108,6 +150,7 @@ export default function AlbumDetailView({ albumId, onBack, onNavigateToNowPlayin
           onAddToPlaylist={addTrackToPlaylist}
           onCreatePlaylist={createPlaylist}
           playlists={playlists}
+          isInNowPlaying={clickMode === 'queue-building' ? isInNowPlaying : undefined}
         />
       </div>
     </div>

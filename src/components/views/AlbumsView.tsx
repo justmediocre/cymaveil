@@ -12,8 +12,8 @@ interface AlbumsViewProps {
 }
 
 export default function AlbumsView({ onAlbumSelect, onNavigateToNowPlaying }: AlbumsViewProps) {
-  const { albums, tracks } = useLibraryCtx()
-  const { shuffleAll } = usePlayback()
+  const { albums, tracks, getTracksForAlbum } = useLibraryCtx()
+  const { shuffleAll, playAlbum } = usePlayback()
 
   const sortedAlbums = useMemo(
     () => [...albums].sort((a, b) => a.title.localeCompare(b.title)),
@@ -24,6 +24,14 @@ export default function AlbumsView({ onAlbumSelect, onNavigateToNowPlaying }: Al
     shuffleAll(tracks)
     onNavigateToNowPlaying()
   }, [shuffleAll, tracks, onNavigateToNowPlaying])
+
+  const handlePlayAlbum = useCallback(
+    (albumId: string) => {
+      const albumTracks = getTracksForAlbum(albumId)
+      if (albumTracks.length > 0) playAlbum(albumTracks)
+    },
+    [getTracksForAlbum, playAlbum]
+  )
 
   if (sortedAlbums.length === 0) {
     return (
@@ -66,7 +74,7 @@ export default function AlbumsView({ onAlbumSelect, onNavigateToNowPlaying }: Al
         style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
       >
         {sortedAlbums.map((album) => (
-          <AlbumCard key={album.id} album={album} onClick={onAlbumSelect} />
+          <AlbumCard key={album.id} album={album} onClick={onAlbumSelect} onPlayAlbum={handlePlayAlbum} />
         ))}
       </div>
     </div>

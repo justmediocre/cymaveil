@@ -2,7 +2,7 @@ import { createContext, useContext, useReducer, useCallback, useMemo, useRef, us
 import { useLibraryCtx } from '../library/LibraryContext'
 import { usePlaylistCtx } from '../playlist/PlaylistContext'
 import { playbackReducer, initialPlaybackState, shuffleArray } from './playbackReducer'
-import type { PlaybackState, PlaybackAction } from './playbackReducer'
+import type { PlaybackState, PlaybackAction, QueueSource } from './playbackReducer'
 import useAudioPlayer from '../../hooks/useAudioPlayer'
 import useAudioAnalyser from '../../hooks/useAudioAnalyser'
 import useMediaSession from '../../hooks/useMediaSession'
@@ -17,6 +17,7 @@ export type TrackSource =
   | { kind: 'global'; trackList: Track[] }
   | { kind: 'album'; albumTracks: Track[] }
   | { kind: 'playlist'; playlistId: string }
+  | { kind: 'now-playing' }
 
 export interface UpNextTrack {
   id: string
@@ -58,6 +59,10 @@ export interface PlaybackContextValue {
   seek: (seconds: number) => void
   selectTrack: (source: TrackSource, index: number) => void
   shuffleAll: (trackList: Track[]) => void
+  playAlbum: (albumTracks: Track[]) => void
+  playNowPlaying: (index?: number) => void
+  addToNowPlayingAndPlay: (trackId: string) => void
+  clearQueue: () => void
 }
 
 // ── Context ──────────────────────────────────────────────────────────────────
@@ -68,20 +73,21 @@ const PlaybackContext = createContext<PlaybackContextValue | null>(null)
 
 export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const { tracks, getAlbumForTrack, getTracksForAlbum } = useLibraryCtx()
-  const { playlists } = usePlaylistCtx()
+  const { playlists, nowPlayingList, replaceNowPlaying, addToNowPlaying } = usePlaylistCtx()
 
   const [state, dispatch] = useReducer(playbackReducer, initialPlaybackState)
 
   const queueActive = state.queueIndex >= 0 && state.playQueue.length > 0
 
-  // Derive current track: queue takes priority
+  // Derive current track: queue takes priority; undefined when playback cleared
   const currentTrack = useMemo(() => {
+    if (!state.playbackActive) return undefined
     if (queueActive) {
       const trackId = state.playQueue[state.queueIndex]
       return tracks.find((t) => t.id === trackId) ?? undefined
     }
     return tracks[state.currentTrackIndex]
-  }, [queueActive, state.playQueue, state.queueIndex, tracks, state.currentTrackIndex])
+  }, [state.playbackActive, queueActive, state.playQueue, state.queueIndex, tracks, state.currentTrackIndex])
 
   const currentAlbum = useMemo(
     () => getAlbumForTrack(currentTrack ?? null),
@@ -94,6 +100,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   // Compute "Up Next" tracks
   const upNextTracks = useMemo(() => {
+    if (!state.playbackActive) return []
     const nextTracks: UpNextTrack[] = []
     if (queueActive) {
       for (let i = 1; i <= 2; i++) {
@@ -127,7 +134,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       }
     }
     return nextTracks
-  }, [queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, getAlbumForTrack])
+  }, [state.playbackActive, queueActive, state.queueIndex, state.playQueue, state.currentTrackIndex, tracks, getAlbumForTrack])
 
   // ── Crossfade state ───────────────────────────────────────────────────
 
@@ -275,6 +282,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       let restoredQueueIndex = -1
       let restoredShuffle = false
       let restoredRepeat: 'off' | 'all' | 'one' = 'off'
+      let restoredQueueSource: 'none' | 'album' | 'playlist' | 'now-playing' = 'none'
+      let restoredPlaybackActive = false
 
       if (window.electronAPI?.loadPlaybackState) {
         try {
@@ -283,29 +292,31 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
             targetIndex = saved.currentTrackIndex
             targetTime = saved.currentTime || 0
           }
+          restoredPlaybackActive = saved.playbackActive ?? (saved.currentTrackIndex >= 0)
           if (Array.isArray(saved.playQueue) && saved.playQueue.length > 0) {
             restoredQueue = saved.playQueue
             restoredQueueIndex = saved.queueIndex ?? -1
             restoredShuffle = saved.shuffle ?? false
             restoredRepeat = saved.repeat ?? 'off'
+            restoredQueueSource = (saved.queueSource as typeof restoredQueueSource) ?? 'none'
           }
         } catch (err) {
           if (import.meta.env.DEV) console.warn('Failed to restore playback state:', err)
         }
       }
 
-      // Restore queue state
-      if (restoredQueue.length > 0 && restoredQueueIndex >= 0) {
-        dispatch({
-          type: 'RESTORE',
-          patch: {
-            playQueue: restoredQueue,
-            queueIndex: restoredQueueIndex,
-            shuffle: restoredShuffle,
-            repeat: restoredRepeat,
-          },
-        })
+      // Restore queue state and playbackActive
+      const restorePatch: Partial<import('./playbackReducer').PlaybackState> = {
+        playbackActive: restoredPlaybackActive,
       }
+      if (restoredQueue.length > 0 && restoredQueueIndex >= 0) {
+        restorePatch.playQueue = restoredQueue
+        restorePatch.queueIndex = restoredQueueIndex
+        restorePatch.queueSource = restoredQueueSource
+        restorePatch.shuffle = restoredShuffle
+        restorePatch.repeat = restoredRepeat
+      }
+      dispatch({ type: 'RESTORE', patch: restorePatch })
 
       // Determine which track to load — queue takes priority
       let trackToLoad: Track | undefined
@@ -347,6 +358,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     if (currentTrackId === prevTrackIdRef.current) return
     prevTrackIdRef.current = currentTrackId ?? null
 
+    // If queue was just cleared, suppress autoplay on the fallback track
+    if (isClearingRef.current) {
+      isClearingRef.current = false
+      return
+    }
+
     // If crossfade already started playback on the incoming deck, skip play()
     if (isAutoAdvanceRef.current) {
       // Don't clear the flag here — onEnded will clear it
@@ -374,10 +391,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       currentTime: playbackTimeStore.get() || 0,
       playQueue: state.playQueue,
       queueIndex: state.queueIndex,
+      queueSource: state.queueSource,
       shuffle: state.shuffle,
       repeat: state.repeat,
+      playbackActive: state.playbackActive,
     })
-  }, [state.currentTrackIndex, state.playQueue, state.queueIndex, state.shuffle, state.repeat])
+  }, [state.currentTrackIndex, state.playQueue, state.queueIndex, state.queueSource, state.shuffle, state.repeat, state.playbackActive])
 
   // Push currentTime to the main process periodically so it can
   // persist the latest position on close (destroy() skips beforeunload)
@@ -477,7 +496,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
         case 'album':
           {
             const trackIds = source.albumTracks.map(t => t.id)
-            dispatch({ type: 'SET_QUEUE', queue: trackIds, index, shuffle: false })
+            dispatch({ type: 'SET_QUEUE', queue: trackIds, index, shuffle: false, source: 'album' })
           }
           break
         case 'playlist':
@@ -486,12 +505,19 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
             if (!playlist) return
             const validIds = playlist.trackIds.filter((id: string) => tracks.some((t) => t.id === id))
             if (validIds.length === 0) return
-            dispatch({ type: 'SET_QUEUE', queue: validIds, index, shuffle: false })
+            dispatch({ type: 'SET_QUEUE', queue: validIds, index, shuffle: false, source: 'playlist' })
+          }
+          break
+        case 'now-playing':
+          {
+            const npList = nowPlayingList.trackIds
+            if (npList.length === 0) return
+            dispatch({ type: 'SET_QUEUE', queue: npList, index, shuffle: false, source: 'now-playing' })
           }
           break
       }
     },
-    [queueActive, albumTracks, tracks, playlists]
+    [queueActive, albumTracks, tracks, playlists, nowPlayingList]
   )
 
   // ── Shuffle All ─────────────────────────────────────────────────────────
@@ -501,10 +527,86 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       if (!trackList || trackList.length === 0) return
       const ids = trackList.map((t) => t.id)
       const shuffled = shuffleArray(ids)
-      dispatch({ type: 'SET_QUEUE', queue: shuffled, index: 0, shuffle: true })
+      dispatch({ type: 'SET_QUEUE', queue: shuffled, index: 0, shuffle: true, source: 'none' })
     },
     []
   )
+
+  // ── Play Album ────────────────────────────────────────────────────────
+
+  const playAlbum = useCallback(
+    (albumTrackList: Track[]) => {
+      if (albumTrackList.length === 0) return
+      const ids = albumTrackList.map((t) => t.id)
+      dispatch({ type: 'SET_QUEUE', queue: ids, index: 0, shuffle: false, source: 'album' })
+    },
+    []
+  )
+
+  // ── Play Now Playing ─────────────────────────────────────────────────
+
+  const playNowPlaying = useCallback(
+    (index?: number) => {
+      const ids = nowPlayingList.trackIds
+      if (ids.length === 0) return
+      dispatch({ type: 'SET_QUEUE', queue: ids, index: index ?? 0, shuffle: false, source: 'now-playing' })
+    },
+    [nowPlayingList]
+  )
+
+  // ── Add to Now Playing and Play ──────────────────────────────────────
+
+  const addToNowPlayingAndPlay = useCallback(
+    (trackId: string) => {
+      addToNowPlaying(trackId)
+      // We need to set the queue from the current now-playing list + the new track
+      const currentIds = nowPlayingList.trackIds
+      const newIds = currentIds.includes(trackId) ? currentIds : [...currentIds, trackId]
+      const idx = newIds.indexOf(trackId)
+      dispatch({ type: 'SET_QUEUE', queue: newIds, index: idx, shuffle: false, source: 'now-playing' })
+    },
+    [addToNowPlaying, nowPlayingList]
+  )
+
+  // ── Clear Queue (stop playback + deactivate) ─────────────────────────
+
+  const isClearingRef = useRef(false)
+
+  const clearQueue = useCallback(() => {
+    isClearingRef.current = true
+    player.pause()
+    dispatch({ type: 'CLEAR_PLAYBACK' })
+  }, [player])
+
+  // ── Sync now-playing list → playQueue when source is 'now-playing' ──
+
+  const prevNowPlayingIdsRef = useRef<string[]>([])
+  useEffect(() => {
+    if (state.queueSource !== 'now-playing') {
+      prevNowPlayingIdsRef.current = []
+      return
+    }
+    const newIds = nowPlayingList.trackIds
+    const prevIds = prevNowPlayingIdsRef.current
+    // Skip if unchanged
+    if (newIds.length === prevIds.length && newIds.every((id: string, i: number) => id === prevIds[i])) return
+    prevNowPlayingIdsRef.current = newIds
+
+    if (newIds.length === 0) {
+      dispatch({ type: 'DEACTIVATE_QUEUE', tracks })
+      return
+    }
+
+    // Find current track ID to preserve position
+    const currentId = state.playQueue[state.queueIndex]
+    const newIndex = currentId ? newIds.indexOf(currentId) : -1
+    dispatch({
+      type: 'SET_QUEUE',
+      queue: newIds,
+      index: newIndex >= 0 ? newIndex : Math.min(state.queueIndex, newIds.length - 1),
+      source: 'now-playing',
+    })
+  }, [nowPlayingList.trackIds, state.queueSource])
 
   // ── Media Session ───────────────────────────────────────────────────────
 
@@ -550,12 +652,16 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       seek: player.seek,
       selectTrack,
       shuffleAll,
+      playAlbum,
+      playNowPlaying,
+      addToNowPlayingAndPlay,
+      clearQueue,
     }),
     [
       state, currentTrack, currentAlbum, albumTracks, queueActive, upNextTracks,
       isPlaying, duration, transitionIntent, handleNext, handlePrev, handlePlayPause,
       handleShuffleToggle, handleRepeatToggle, setVolume, player.seek,
-      selectTrack, shuffleAll,
+      selectTrack, shuffleAll, playAlbum, playNowPlaying, addToNowPlayingAndPlay, clearQueue,
     ]
   )
 

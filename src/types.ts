@@ -34,8 +34,10 @@ export interface PlaybackState {
   currentTime: number
   playQueue: string[]
   queueIndex: number
+  queueSource: 'none' | 'album' | 'playlist' | 'now-playing'
   shuffle: boolean
   repeat: 'off' | 'all' | 'one'
+  playbackActive?: boolean
 }
 
 /** Library data persisted to disk */

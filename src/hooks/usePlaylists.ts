@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { Playlist, Track } from '../types'
 
 const FAVORITES_ID = 'favorites'
+export const NOW_PLAYING_ID = 'now-playing'
 
 function createPlaylistObj(name: string): Playlist {
   return {
@@ -21,8 +22,11 @@ export default function usePlaylists() {
   useEffect(() => {
     async function load() {
       if (!window.electronAPI?.loadPlaylists) {
-        // No electron — create favorites in-memory
-        setPlaylists([{ id: FAVORITES_ID, name: 'Favorites', trackIds: [], createdAt: 0 }])
+        // No electron — create favorites and now-playing in-memory
+        setPlaylists([
+          { id: FAVORITES_ID, name: 'Favorites', trackIds: [], createdAt: 0 },
+          { id: NOW_PLAYING_ID, name: 'Now Playing', trackIds: [], createdAt: 0 },
+        ])
         hasLoadedRef.current = true
         return
       }
@@ -35,11 +39,18 @@ export default function usePlaylists() {
         if (!data.find((p) => p.id === FAVORITES_ID)) {
           data = [{ id: FAVORITES_ID, name: 'Favorites', trackIds: [], createdAt: 0 }, ...data]
         }
+        // Ensure now-playing playlist exists
+        if (!data.find((p) => p.id === NOW_PLAYING_ID)) {
+          data = [...data, { id: NOW_PLAYING_ID, name: 'Now Playing', trackIds: [], createdAt: 0 }]
+        }
 
         setPlaylists(data)
       } catch (err) {
         console.error('Failed to load playlists:', err)
-        setPlaylists([{ id: FAVORITES_ID, name: 'Favorites', trackIds: [], createdAt: 0 }])
+        setPlaylists([
+          { id: FAVORITES_ID, name: 'Favorites', trackIds: [], createdAt: 0 },
+          { id: NOW_PLAYING_ID, name: 'Now Playing', trackIds: [], createdAt: 0 },
+        ])
       } finally {
         hasLoadedRef.current = true
       }
@@ -69,13 +80,13 @@ export default function usePlaylists() {
   }, [])
 
   const deletePlaylist = useCallback((id: string) => {
-    if (id === FAVORITES_ID) return
+    if (id === FAVORITES_ID || id === NOW_PLAYING_ID) return
     setPlaylists((prev) => prev.filter((p) => p.id !== id))
   }, [])
 
   const renamePlaylist = useCallback((id: string, name: string) => {
     const trimmed = name.trim()
-    if (id === FAVORITES_ID || !trimmed) return
+    if (id === FAVORITES_ID || id === NOW_PLAYING_ID || !trimmed) return
     setPlaylists((prev) => prev.map((p) => (p.id === id ? { ...p, name: trimmed } : p)))
   }, [])
 
@@ -130,6 +141,48 @@ export default function usePlaylists() {
     )
   }, [])
 
+  // Now Playing helpers
+  const nowPlayingList = useMemo(
+    () => playlists.find((p) => p.id === NOW_PLAYING_ID) ?? { id: NOW_PLAYING_ID, name: 'Now Playing', trackIds: [] as string[], createdAt: 0 },
+    [playlists]
+  )
+
+  const addToNowPlaying = useCallback((trackId: string) => {
+    setPlaylists((prev) =>
+      prev.map((p) => {
+        if (p.id !== NOW_PLAYING_ID) return p
+        if (p.trackIds.includes(trackId)) return p
+        return { ...p, trackIds: [...p.trackIds, trackId] }
+      })
+    )
+  }, [])
+
+  const removeFromNowPlaying = useCallback((trackId: string) => {
+    setPlaylists((prev) =>
+      prev.map((p) => {
+        if (p.id !== NOW_PLAYING_ID) return p
+        return { ...p, trackIds: p.trackIds.filter((id) => id !== trackId) }
+      })
+    )
+  }, [])
+
+  const clearNowPlaying = useCallback(() => {
+    setPlaylists((prev) =>
+      prev.map((p) => (p.id === NOW_PLAYING_ID ? { ...p, trackIds: [] } : p))
+    )
+  }, [])
+
+  const replaceNowPlaying = useCallback((trackIds: string[]) => {
+    setPlaylists((prev) =>
+      prev.map((p) => (p.id === NOW_PLAYING_ID ? { ...p, trackIds } : p))
+    )
+  }, [])
+
+  const isInNowPlaying = useCallback(
+    (trackId: string): boolean => nowPlayingList.trackIds.includes(trackId),
+    [nowPlayingList]
+  )
+
   const exportPlaylist = useCallback(async (playlist: Playlist, tracks: Track[]): Promise<string | null> => {
     if (!window.electronAPI?.exportPlaylist) return null
     return await window.electronAPI.exportPlaylist(playlist, tracks)
@@ -175,5 +228,11 @@ export default function usePlaylists() {
     toggleFavorite,
     exportPlaylist,
     importPlaylist,
+    nowPlayingList,
+    addToNowPlaying,
+    removeFromNowPlaying,
+    clearNowPlaying,
+    replaceNowPlaying,
+    isInNowPlaying,
   }
 }

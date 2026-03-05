@@ -10,6 +10,8 @@ export function shuffleArray<T>(arr: T[]): T[] {
   return a
 }
 
+export type QueueSource = 'none' | 'album' | 'playlist' | 'now-playing'
+
 export interface PlaybackState {
   currentTrackIndex: number
   shuffle: boolean
@@ -17,6 +19,8 @@ export interface PlaybackState {
   volume: number
   playQueue: string[]       // track IDs
   queueIndex: number        // -1 = queue inactive
+  queueSource: QueueSource
+  playbackActive: boolean
   isReady: boolean
 }
 
@@ -27,9 +31,10 @@ export type PlaybackAction =
   | { type: 'SET_VOLUME'; volume: number }
   | { type: 'TOGGLE_SHUFFLE'; albumTrackIds: string[]; currentTrackId?: string; tracks: Track[] }
   | { type: 'CYCLE_REPEAT' }
-  | { type: 'SET_QUEUE'; queue: string[]; index: number; shuffle?: boolean }
+  | { type: 'SET_QUEUE'; queue: string[]; index: number; shuffle?: boolean; source?: QueueSource }
   | { type: 'SET_QUEUE_INDEX'; index: number }
   | { type: 'DEACTIVATE_QUEUE'; trackId?: string; tracks: Track[] }
+  | { type: 'CLEAR_PLAYBACK' }
   | { type: 'RESTORE'; patch: Partial<PlaybackState> }
   | { type: 'SET_READY' }
   | { type: 'CLAMP_INDEX'; tracksLength: number }
@@ -47,13 +52,15 @@ export const initialPlaybackState: PlaybackState = {
   })(),
   playQueue: [],
   queueIndex: -1,
+  queueSource: 'none',
+  playbackActive: false,
   isReady: false,
 }
 
 export function playbackReducer(state: PlaybackState, action: PlaybackAction): PlaybackState {
   switch (action.type) {
     case 'SET_TRACK_INDEX':
-      return { ...state, currentTrackIndex: action.index }
+      return { ...state, currentTrackIndex: action.index, playbackActive: true }
 
     case 'NEXT': {
       const queueActive = state.queueIndex >= 0 && state.playQueue.length > 0
@@ -137,10 +144,12 @@ export function playbackReducer(state: PlaybackState, action: PlaybackAction): P
         playQueue: action.queue,
         queueIndex: action.index,
         shuffle: action.shuffle ?? state.shuffle,
+        queueSource: action.source ?? state.queueSource,
+        playbackActive: true,
       }
 
     case 'SET_QUEUE_INDEX':
-      return { ...state, queueIndex: action.index }
+      return { ...state, queueIndex: action.index, playbackActive: true }
 
     case 'DEACTIVATE_QUEUE': {
       let newIndex = state.currentTrackIndex
@@ -152,10 +161,21 @@ export function playbackReducer(state: PlaybackState, action: PlaybackAction): P
         ...state,
         playQueue: [],
         queueIndex: -1,
+        queueSource: 'none',
         shuffle: false,
         currentTrackIndex: newIndex,
       }
     }
+
+    case 'CLEAR_PLAYBACK':
+      return {
+        ...state,
+        playQueue: [],
+        queueIndex: -1,
+        queueSource: 'none',
+        shuffle: false,
+        playbackActive: false,
+      }
 
     case 'RESTORE':
       return { ...state, ...action.patch }
