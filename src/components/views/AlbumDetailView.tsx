@@ -1,12 +1,11 @@
-import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useMemo } from 'react'
 import { motion } from 'motion/react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
 import { ChevronLeftIcon, ShuffleIcon, PlayIcon } from '../Icons'
 import TrackList from '../TrackList'
-import { useClickHandler } from '../../hooks/useClickMode'
-import { playbackSettingsStore } from '../../lib/playbackSettingsStore'
+import { useTrackClickHandler } from '../../hooks/useClickMode'
 import type { Album } from '../../types'
 
 interface AlbumDetailViewProps {
@@ -17,9 +16,8 @@ interface AlbumDetailViewProps {
 
 export default function AlbumDetailView({ albumId, onBack, onNavigateToNowPlaying }: AlbumDetailViewProps) {
   const { albums, getAlbumForTrack, getTracksForAlbum } = useLibraryCtx()
-  const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists, addToNowPlaying, isInNowPlaying } = usePlaylistCtx()
-  const { currentTrack, isPlaying, selectTrack, shuffleAll, playAlbum, addToNowPlayingAndPlay } = usePlayback()
-  const { clickMode } = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
+  const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists, isInNowPlaying } = usePlaylistCtx()
+  const { currentTrack, isPlaying, selectTrack, shuffleAll, playAlbum } = usePlayback()
 
   const album = useMemo(() => albums.find((a) => a.id === albumId) || null, [albums, albumId])
   const tracks = useMemo(() => albumId ? getTracksForAlbum(albumId) : [], [albumId, getTracksForAlbum])
@@ -29,25 +27,7 @@ export default function AlbumDetailView({ albumId, onBack, onNavigateToNowPlayin
     [selectTrack, tracks]
   )
 
-  const handleQueueSingle = useCallback(
-    (idx: number) => {
-      const track = tracks[idx]
-      if (track) addToNowPlaying(track.id)
-    },
-    [tracks, addToNowPlaying]
-  )
-
-  const handleQueueDouble = useCallback(
-    (idx: number) => {
-      const track = tracks[idx]
-      if (track) addToNowPlayingAndPlay(track.id)
-    },
-    [tracks, addToNowPlayingAndPlay]
-  )
-
-  const clickHandler = useClickHandler(handleQueueSingle, handleQueueDouble)
-
-  const handleTrackSelect = clickMode === 'queue-building' ? clickHandler : handleClassicSelect
+  const { handleTrackSelect, isQueueBuilding } = useTrackClickHandler(tracks, handleClassicSelect)
 
   const handleShuffleAll = useCallback(() => {
     shuffleAll(tracks)
@@ -150,7 +130,7 @@ export default function AlbumDetailView({ albumId, onBack, onNavigateToNowPlayin
           onAddToPlaylist={addTrackToPlaylist}
           onCreatePlaylist={createPlaylist}
           playlists={playlists}
-          isInNowPlaying={clickMode === 'queue-building' ? isInNowPlaying : undefined}
+          isInNowPlaying={isQueueBuilding ? isInNowPlaying : undefined}
         />
       </div>
     </div>

@@ -1,13 +1,11 @@
-import { useState, useTransition, useMemo, useRef, useEffect, useCallback, useSyncExternalStore } from 'react'
+import { useState, useTransition, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
 import { SearchIcon } from '../Icons'
 import AlbumCard from '../AlbumCard'
 import TrackList from '../TrackList'
-import { useClickHandler } from '../../hooks/useClickMode'
-import { playbackSettingsStore } from '../../lib/playbackSettingsStore'
-import type { Track } from '../../types'
+import { useTrackClickHandler } from '../../hooks/useClickMode'
 
 interface SearchViewProps {
   onAlbumSelect: (albumId: string) => void
@@ -15,9 +13,8 @@ interface SearchViewProps {
 
 export default function SearchView({ onAlbumSelect }: SearchViewProps) {
   const { albums, tracks, getAlbumForTrack, getTracksForAlbum } = useLibraryCtx()
-  const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists, addToNowPlaying, isInNowPlaying } = usePlaylistCtx()
-  const { currentTrack, isPlaying, selectTrack, playAlbum, addToNowPlayingAndPlay } = usePlayback()
-  const { clickMode } = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
+  const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists, isInNowPlaying } = usePlaylistCtx()
+  const { currentTrack, isPlaying, selectTrack, playAlbum } = usePlayback()
 
   const [query, setQuery] = useState('')
   const [deferredQuery, setDeferredQuery] = useState('')
@@ -53,24 +50,7 @@ export default function SearchView({ onAlbumSelect }: SearchViewProps) {
     [selectTrack, filteredTracks]
   )
 
-  const handleQueueSingle = useCallback(
-    (idx: number) => {
-      const track = filteredTracks[idx]
-      if (track) addToNowPlaying(track.id)
-    },
-    [filteredTracks, addToNowPlaying]
-  )
-
-  const handleQueueDouble = useCallback(
-    (idx: number) => {
-      const track = filteredTracks[idx]
-      if (track) addToNowPlayingAndPlay(track.id)
-    },
-    [filteredTracks, addToNowPlayingAndPlay]
-  )
-
-  const clickHandler = useClickHandler(handleQueueSingle, handleQueueDouble)
-  const handleTrackSelect = clickMode === 'queue-building' ? clickHandler : handleClassicSelect
+  const { handleTrackSelect, isQueueBuilding } = useTrackClickHandler(filteredTracks, handleClassicSelect)
 
   const handlePlayAlbum = useCallback(
     (albumId: string) => {
@@ -156,7 +136,7 @@ export default function SearchView({ onAlbumSelect }: SearchViewProps) {
                   onAddToPlaylist={addTrackToPlaylist}
                   onCreatePlaylist={createPlaylist}
                   playlists={playlists}
-                  isInNowPlaying={clickMode === 'queue-building' ? isInNowPlaying : undefined}
+                  isInNowPlaying={isQueueBuilding ? isInNowPlaying : undefined}
                 />
               </div>
             </div>

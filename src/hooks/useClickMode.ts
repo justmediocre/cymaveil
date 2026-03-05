@@ -1,4 +1,8 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useSyncExternalStore } from 'react'
+import { usePlaylistCtx } from '../contexts/playlist/PlaylistContext'
+import { usePlayback } from '../contexts/playback/PlaybackContext'
+import { playbackSettingsStore } from '../lib/playbackSettingsStore'
+import type { Track } from '../types'
 
 const DOUBLE_CLICK_DELAY = 250
 
@@ -35,4 +39,43 @@ export function useClickHandler(
     },
     [onSingle, onDouble],
   )
+}
+
+/**
+ * Encapsulates click-mode wiring for track lists.
+ * In classic mode, delegates to onClassicSelect.
+ * In queue-building mode, single-click adds to Now Playing,
+ * double-click adds and starts playback.
+ */
+export function useTrackClickHandler(
+  tracks: Track[],
+  onClassicSelect: (index: number) => void,
+): { handleTrackSelect: (index: number) => void; isQueueBuilding: boolean } {
+  const { addToNowPlaying, isInNowPlaying } = usePlaylistCtx()
+  const { addToNowPlayingAndPlay } = usePlayback()
+  const { clickMode } = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
+
+  const handleQueueSingle = useCallback(
+    (idx: number) => {
+      const track = tracks[idx]
+      if (track) addToNowPlaying(track.id)
+    },
+    [tracks, addToNowPlaying],
+  )
+
+  const handleQueueDouble = useCallback(
+    (idx: number) => {
+      const track = tracks[idx]
+      if (track) addToNowPlayingAndPlay(track.id)
+    },
+    [tracks, addToNowPlayingAndPlay],
+  )
+
+  const clickHandler = useClickHandler(handleQueueSingle, handleQueueDouble)
+  const isQueueBuilding = clickMode === 'queue-building'
+
+  return {
+    handleTrackSelect: isQueueBuilding ? clickHandler : onClassicSelect,
+    isQueueBuilding,
+  }
 }

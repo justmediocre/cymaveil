@@ -1,12 +1,11 @@
-import { useState, useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { motion } from 'motion/react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
 import { usePlayback } from '../../contexts/playback/PlaybackContext'
 import { ChevronLeftIcon, ShuffleIcon, HeartIcon } from '../Icons'
 import TrackList from '../TrackList'
-import { useClickHandler } from '../../hooks/useClickMode'
-import { playbackSettingsStore } from '../../lib/playbackSettingsStore'
+import { useTrackClickHandler } from '../../hooks/useClickMode'
 import { NOW_PLAYING_ID } from '../../hooks/usePlaylists'
 import type { Track } from '../../types'
 
@@ -27,10 +26,9 @@ export default function PlaylistDetailView({
   const {
     playlists, renamePlaylist, deletePlaylist, exportPlaylist,
     removeTrackFromPlaylist, isTrackFavorited, toggleFavorite,
-    addTrackToPlaylist, createPlaylist, addToNowPlaying, isInNowPlaying,
+    addTrackToPlaylist, createPlaylist, isInNowPlaying,
   } = usePlaylistCtx()
-  const { currentTrack, isPlaying, selectTrack, shuffleAll, addToNowPlayingAndPlay } = usePlayback()
-  const { clickMode } = useSyncExternalStore(playbackSettingsStore.subscribe, playbackSettingsStore.get)
+  const { currentTrack, isPlaying, selectTrack, shuffleAll } = usePlayback()
 
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
@@ -50,24 +48,7 @@ export default function PlaylistDetailView({
     [selectTrack, playlistId],
   )
 
-  const handleQueueSingle = useCallback(
-    (idx: number) => {
-      const track = playlistTracks[idx]
-      if (track) addToNowPlaying(track.id)
-    },
-    [playlistTracks, addToNowPlaying]
-  )
-
-  const handleQueueDouble = useCallback(
-    (idx: number) => {
-      const track = playlistTracks[idx]
-      if (track) addToNowPlayingAndPlay(track.id)
-    },
-    [playlistTracks, addToNowPlayingAndPlay]
-  )
-
-  const clickHandler = useClickHandler(handleQueueSingle, handleQueueDouble)
-  const handleTrackSelect = clickMode === 'queue-building' ? clickHandler : handleClassicSelect
+  const { handleTrackSelect, isQueueBuilding } = useTrackClickHandler(playlistTracks, handleClassicSelect)
 
   const handleRemoveTrack = useCallback(
     (trackId: string) => removeTrackFromPlaylist(playlistId, trackId),
@@ -224,7 +205,7 @@ export default function PlaylistDetailView({
             onAddToPlaylist={addTrackToPlaylist}
             onCreatePlaylist={createPlaylist}
             playlists={playlists}
-            isInNowPlaying={clickMode === 'queue-building' ? isInNowPlaying : undefined}
+            isInNowPlaying={isQueueBuilding ? isInNowPlaying : undefined}
           />
         ) : (
           <div className="flex items-center justify-center h-32">
