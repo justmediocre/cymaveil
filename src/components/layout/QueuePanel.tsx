@@ -5,10 +5,17 @@ import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { PlayIcon } from '../Icons'
 import TrackList from '../TrackList'
+import type { Track } from '../../types'
 
 interface QueuePanelProps {
   show: boolean
 }
+
+type PanelMode =
+  | { kind: 'now-playing'; tracks: Track[]; header: string }
+  | { kind: 'queue'; tracks: Track[]; header: string; shuffled: boolean }
+  | { kind: 'album'; tracks: Track[]; header: string }
+  | { kind: 'empty' }
 
 export default function QueuePanel({ show }: QueuePanelProps) {
   const { state, queueActive, currentTrack, currentAlbum, albumTracks, selectTrack, isPlaying, playNowPlaying, clearQueue } = usePlayback()
@@ -21,46 +28,68 @@ export default function QueuePanel({ show }: QueuePanelProps) {
   // Track whether the user explicitly cleared — suppresses album fallback
   const [cleared, setCleared] = useState(false)
 
-  // Show Now Playing list when source is now-playing, or when idle with a user-built list
-  const showNowPlaying = isNowPlayingSource || (!queueActive && !cleared && hasNowPlayingTracks)
-
   // Reset cleared flag when a queue becomes active again
   useEffect(() => {
-    if (queueActive || showNowPlaying) setCleared(false)
-  }, [queueActive, showNowPlaying])
+    if (queueActive || (isNowPlayingSource || (!queueActive && !cleared && hasNowPlayingTracks))) {
+      setCleared(false)
+    }
+  }, [queueActive, isNowPlayingSource, cleared, hasNowPlayingTracks])
 
-  const queuePanelTracks = useMemo(() => {
+  const panelMode = useMemo((): PanelMode => {
+    const showNowPlaying = isNowPlayingSource || (!queueActive && !cleared && hasNowPlayingTracks)
+
     if (showNowPlaying) {
-      return nowPlayingList.trackIds
+      const npTracks = nowPlayingList.trackIds
         .map((id: string) => tracks.find((t) => t.id === id))
         .filter((t): t is NonNullable<typeof t> => t !== undefined)
+      return {
+        kind: 'now-playing',
+        tracks: npTracks,
+        header: `Now Playing \u00b7 ${nowPlayingList.trackIds.length} tracks`,
+      }
     }
+
     if (queueActive) {
-      return state.playQueue
+      const qTracks = state.playQueue
         .map((id) => tracks.find((t) => t.id === id))
         .filter((t): t is NonNullable<typeof t> => t !== undefined)
+      return {
+        kind: 'queue',
+        tracks: qTracks,
+        header: state.shuffle
+          ? `Shuffle Queue \u00b7 ${state.playQueue.length} tracks`
+          : `Now Playing \u00b7 ${currentAlbum?.title || ''}`,
+        shuffled: state.shuffle,
+      }
     }
-    if (cleared) return []
-    return albumTracks
-  }, [showNowPlaying, nowPlayingList.trackIds, queueActive, state.playQueue, tracks, albumTracks, cleared])
 
-  const queuePanelHeader = cleared
-    ? 'Queue'
-    : showNowPlaying
-      ? `Now Playing \u00b7 ${nowPlayingList.trackIds.length} tracks`
-      : queueActive && state.shuffle
-        ? `Shuffle Queue \u00b7 ${state.playQueue.length} tracks`
-        : `Now Playing \u00b7 ${currentAlbum?.title || ''}`
+    if (cleared) {
+      return { kind: 'empty' }
+    }
+
+    if (albumTracks.length > 0) {
+      return {
+        kind: 'album',
+        tracks: albumTracks,
+        header: `Now Playing \u00b7 ${currentAlbum?.title || ''}`,
+      }
+    }
+
+    return { kind: 'empty' }
+  }, [isNowPlayingSource, queueActive, cleared, hasNowPlayingTracks, nowPlayingList.trackIds, state.playQueue, state.shuffle, tracks, albumTracks, currentAlbum])
+
+  const panelTracks = panelMode.kind === 'empty' ? [] : panelMode.tracks
+  const panelHeader = panelMode.kind === 'empty' ? 'Queue' : panelMode.header
 
   const handleQueueTrackSelect = useCallback(
     (trackIndex: number) => {
-      if (showNowPlaying) {
+      if (panelMode.kind === 'now-playing') {
         selectTrack({ kind: 'now-playing' }, trackIndex)
       } else {
         selectTrack({ kind: 'queue' }, trackIndex)
       }
     },
-    [selectTrack, showNowPlaying],
+    [selectTrack, panelMode.kind],
   )
 
   const handleRemoveTrack = useCallback(
@@ -100,7 +129,7 @@ export default function QueuePanel({ show }: QueuePanelProps) {
                 className="font-display text-xs font-bold tracking-wider uppercase"
                 style={{ color: 'var(--text-tertiary)' }}
               >
-                {queuePanelHeader}
+                {panelHeader}
               </h2>
               <div className="flex items-center gap-1">
                 {/* Play button when now-playing has tracks but nothing is playing from it */}
@@ -115,7 +144,7 @@ export default function QueuePanel({ show }: QueuePanelProps) {
                     <PlayIcon size={14} />
                   </button>
                 )}
-                {(queuePanelTracks.length > 0) && (
+                {(panelTracks.length > 0) && (
                   <button
                     onClick={handleClear}
                     className="text-[10px] font-medium uppercase tracking-wider cursor-pointer px-1.5 py-0.5 rounded"
@@ -130,13 +159,13 @@ export default function QueuePanel({ show }: QueuePanelProps) {
             </div>
             <div className="flex-1 min-h-0">
               <TrackList
-                tracks={queuePanelTracks}
+                tracks={panelTracks}
                 currentTrackId={currentTrack?.id}
                 onTrackSelect={handleQueueTrackSelect}
                 getAlbumForTrack={getAlbumForTrack}
                 autoScrollToCurrent
                 isPlaying={isPlaying}
-                onRemoveTrack={showNowPlaying ? handleRemoveTrack : undefined}
+                onRemoveTrack={panelMode.kind === 'now-playing' ? handleRemoveTrack : undefined}
               />
             </div>
           </div>
