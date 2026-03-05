@@ -1,6 +1,7 @@
 import useVisualSettings from '../../hooks/useVisualSettings'
 import useDebouncedSlider from '../../hooks/useDebouncedSlider'
 import { SettingToggle, SettingSlider, SettingSelect, SettingSection } from './SettingsControls'
+import { useTheme, type ThemePreference } from '../../contexts/ThemeContext'
 import type { VisualSettings, MosaicTransition } from '../../types'
 
 interface VisualToggle {
@@ -47,8 +48,15 @@ function ImpactBadge({ impact }: { impact: 'High' | 'Medium' | 'Low' }) {
   )
 }
 
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+]
+
 export default function VisualsTab() {
   const { settings, toggle, setSetting, onBattery } = useVisualSettings()
+  const { preference, setPreference } = useTheme()
   const batterySaverActive = settings.disableVisualsOnBattery && onBattery
 
   const [localOpacity, setLocalOpacity] = useDebouncedSlider(settings.mosaicOpacity, (v) => setSetting('mosaicOpacity', v))
@@ -57,7 +65,17 @@ export default function VisualsTab() {
 
   return (
     <>
-      <SettingSection title="Effects">
+      <SettingSection title="Appearance">
+        <SettingSelect
+          label="Theme"
+          description="Choose light, dark, or follow your system setting"
+          value={preference}
+          onChange={(v) => setPreference(v as ThemePreference)}
+          options={THEME_OPTIONS}
+        />
+      </SettingSection>
+
+      <SettingSection title="Effects" className="mt-8">
         {batterySaverActive && (
           <div
             className="flex items-center gap-2 mb-3 px-4 py-2.5 rounded-xl text-xs"
