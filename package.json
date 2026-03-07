@@ -34,6 +34,8 @@
     "screenshot": "electron . --screenshot",
     "screenshot:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron . --screenshot\"",
     "dist": "vite build && electron-builder --win",
+    "dist:win-portable": "vite build && electron-builder --win portable --x64",
+    "dist:win-setup": "vite build && electron-builder --win nsis --x64",
     "dist:linux": "vite build && electron-builder --linux",
     "dist:mac": "vite build && electron-builder --mac",
     "dist:all": "vite build && electron-builder --win --linux",
