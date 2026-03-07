@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react'
 import { motion } from 'motion/react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
-import { HeartIcon, ListIcon } from '../Icons'
+import { HeartIcon, ListIcon, PlayIcon } from '../Icons'
+import { NOW_PLAYING_ID } from '../../hooks/usePlaylists'
 
 interface PlaylistsViewProps {
   onPlaylistSelect: (playlistId: string) => void
@@ -35,8 +36,9 @@ export default function PlaylistsView({ onPlaylistSelect }: PlaylistsViewProps) 
     await importPlaylist(tracks)
   }, [importPlaylist, tracks])
 
-  const userPlaylists = playlists.filter((p) => p.id !== 'favorites')
+  const userPlaylists = playlists.filter((p) => p.id !== 'favorites' && p.id !== NOW_PLAYING_ID)
   const favorites = playlists.find((p) => p.id === 'favorites')
+  const nowPlaying = playlists.find((p) => p.id === NOW_PLAYING_ID)
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden px-10 pb-6">
@@ -126,6 +128,33 @@ export default function PlaylistsView({ onPlaylistSelect }: PlaylistsViewProps) 
               </p>
               <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                 {favorites.trackIds.length} {favorites.trackIds.length === 1 ? 'track' : 'tracks'}
+              </p>
+            </div>
+          </motion.button>
+        )}
+
+        {/* Now Playing */}
+        {nowPlaying && (
+          <motion.button
+            onClick={() => onPlaylistSelect(NOW_PLAYING_ID)}
+            className="no-drag w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left"
+            style={{ background: 'transparent' }}
+            whileHover={{ background: 'var(--bg-hover)' }}
+            whileTap={{ scale: 0.99 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+          >
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
+            >
+              <PlayIcon size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                Now Playing
+              </p>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                {nowPlaying.trackIds.length} {nowPlaying.trackIds.length === 1 ? 'track' : 'tracks'}
               </p>
             </div>
           </motion.button>
