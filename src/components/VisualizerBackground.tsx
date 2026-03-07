@@ -2,6 +2,7 @@ import { useRef, useEffect, memo } from 'react'
 import type React from 'react'
 import { perfMarkStart } from '../lib/perf'
 import { onTick } from '../lib/tickLoop'
+import useVisualSettings from '../hooks/useVisualSettings'
 
 interface VisualizerBackgroundProps {
   analyserRef: React.RefObject<AnalyserNode | null>
@@ -17,10 +18,11 @@ interface VisualizerBackgroundProps {
  * Uses its own data array to avoid conflicts with the Visualizer canvas.
  */
 export default memo(function VisualizerBackground({ analyserRef, isPlaying, bassEnergyRef }: VisualizerBackgroundProps) {
+  const { settings } = useVisualSettings()
   const localDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
 
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || !settings.bassShake) {
       bassEnergyRef.current = 0
       return
     }
@@ -45,7 +47,7 @@ export default memo(function VisualizerBackground({ analyserRef, isPlaying, bass
       }
       markEnd()
     })
-  }, [isPlaying, analyserRef, bassEnergyRef])
+  }, [isPlaying, analyserRef, bassEnergyRef, settings.bassShake])
 
   return null
 })
