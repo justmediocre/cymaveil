@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import NewPlaylistInput from './NewPlaylistInput'
 import type { Playlist } from '../types'
 
 interface AddToPlaylistMenuProps {
@@ -26,13 +27,11 @@ export default function AddToPlaylistMenu({
   const isPortal = !!(anchorRect && onClose)
   const [isOpen, setIsOpen] = useState<boolean>(isPortal)
   const [showNewInput, setShowNewInput] = useState<boolean>(false)
-  const [newName, setNewName] = useState<string>('')
   const menuRef = useRef<HTMLDivElement | null>(null)
 
   const closeMenu = useCallback(() => {
     setIsOpen(false)
     setShowNewInput(false)
-    setNewName('')
     onClose?.()
   }, [onClose])
 
@@ -56,9 +55,7 @@ export default function AddToPlaylistMenu({
     return () => window.removeEventListener('scroll', handleScroll, { capture: true } as EventListenerOptions)
   }, [isPortal, closeMenu])
 
-  const handleCreate = () => {
-    const name = newName.trim()
-    if (!name) return
+  const handleCreate = (name: string) => {
     const playlist = onCreatePlaylist(name)
     if (playlist) {
       onAddToPlaylist(playlist.id, trackId)
@@ -154,28 +151,11 @@ export default function AddToPlaylistMenu({
         <div className="mx-3 my-1" style={{ height: 1, background: 'var(--border-subtle)' }} />
 
         {showNewInput ? (
-          <div className="px-3 py-2 flex items-center gap-1">
-            <input
-              autoFocus
-              type="text"
-              value={newName}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
-              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                if (e.key === 'Enter') handleCreate()
-                if (e.key === 'Escape') closeMenu()
-              }}
-              placeholder="Name..."
-              className="bg-transparent border-none text-xs flex-1 min-w-0"
-              style={{ color: 'var(--text-primary)' }}
-            />
-            <button
-              onClick={handleCreate}
-              className="text-xs font-medium px-2 py-0.5 rounded"
-              style={{ color: 'var(--accent)' }}
-            >
-              Add
-            </button>
-          </div>
+          <NewPlaylistInput
+            compact
+            onSubmit={handleCreate}
+            onCancel={closeMenu}
+          />
         ) : (
           <button
             onClick={() => setShowNewInput(true)}

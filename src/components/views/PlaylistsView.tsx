@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import { useLibraryCtx } from '../../contexts/library/LibraryContext'
 import { usePlaylistCtx } from '../../contexts/playlist/PlaylistContext'
 import { HeartIcon, ListIcon, PlayIcon } from '../Icons'
+import NewPlaylistInput from '../NewPlaylistInput'
 import { NOW_PLAYING_ID } from '../../hooks/usePlaylists'
 
 interface PlaylistsViewProps {
@@ -14,22 +15,10 @@ export default function PlaylistsView({ onPlaylistSelect }: PlaylistsViewProps) 
   const { playlists, createPlaylist, importPlaylist } = usePlaylistCtx()
 
   const [showNewInput, setShowNewInput] = useState(false)
-  const [newName, setNewName] = useState('')
 
-  const handleCreate = () => {
-    const name = newName.trim()
-    if (!name) return
+  const handleCreate = (name: string) => {
     createPlaylist(name)
-    setNewName('')
     setShowNewInput(false)
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleCreate()
-    if (e.key === 'Escape') {
-      setShowNewInput(false)
-      setNewName('')
-    }
   }
 
   const handleImportPlaylist = useCallback(async () => {
@@ -73,35 +62,10 @@ export default function PlaylistsView({ onPlaylistSelect }: PlaylistsViewProps) 
 
       {/* New playlist inline input */}
       {showNewInput && (
-        <div className="flex items-center gap-2 mb-4">
-          <input
-            autoFocus
-            type="text"
-            value={newName}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Playlist name..."
-            className="bg-transparent border-none text-sm flex-1 px-3 py-2 rounded-lg"
-            style={{ color: 'var(--text-primary)', background: 'var(--bg-elevated)' }}
-          />
-          <motion.button
-            onClick={handleCreate}
-            className="px-3 py-2 rounded-lg text-xs font-medium"
-            style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            Create
-          </motion.button>
-          <motion.button
-            onClick={() => { setShowNewInput(false); setNewName('') }}
-            className="px-3 py-2 rounded-lg text-xs"
-            style={{ color: 'var(--text-tertiary)' }}
-            whileTap={{ scale: 0.95 }}
-          >
-            Cancel
-          </motion.button>
-        </div>
+        <NewPlaylistInput
+          onSubmit={handleCreate}
+          onCancel={() => setShowNewInput(false)}
+        />
       )}
 
       {/* Playlist list */}
