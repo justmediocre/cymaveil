@@ -65,7 +65,7 @@ export default function SearchView({ onAlbumSelect }: SearchViewProps) {
       {/* Search input */}
       <div className="pt-6 pb-5 shrink-0">
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl focus-within:outline focus-within:outline-2 focus-within:outline-[var(--accent)]"
           style={{ background: 'var(--bg-elevated)' }}
         >
           <SearchIcon size={18} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
@@ -79,7 +79,7 @@ export default function SearchView({ onAlbumSelect }: SearchViewProps) {
             }}
             placeholder="Search tracks and albums..."
             className="bg-transparent border-none w-full text-sm"
-            style={{ color: 'var(--text-primary)' }}
+            style={{ color: 'var(--text-primary)', outline: 'none' }}
           />
         </div>
       </div>
