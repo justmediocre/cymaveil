@@ -271,6 +271,35 @@ ipcMain.handle('watcher:stop', async () => {
   stopWatching()
 })
 
+// IPC: Reconcile library with filesystem on startup
+// Finds new files added while the app was closed and files that were removed
+ipcMain.handle('music:reconcile', async (_event, folders, existingFilePaths) => {
+  if (!Array.isArray(folders) || !Array.isArray(existingFilePaths)) {
+    throw new Error('folders and existingFilePaths must be arrays')
+  }
+  for (const f of folders) validatePath(f)
+
+  const { findAudioFiles, scanSingleFile } = await getScanner()
+
+  // Gather all audio files currently on disk across all watched folders
+  const diskFiles = new Set(
+    (await Promise.all(folders.map((f) => findAudioFiles(f)))).flat()
+  )
+
+  const existingSet = new Set(existingFilePaths)
+
+  // Files on disk but not in the library → added while app was closed
+  const addedPaths = [...diskFiles].filter((f) => !existingSet.has(f))
+
+  // Files in the library but no longer on disk → removed while app was closed
+  const removedPaths = existingFilePaths.filter((f) => !diskFiles.has(f))
+
+  // Scan new files
+  const added = await Promise.all(addedPaths.map((f) => scanSingleFile(f)))
+
+  return { added, removedPaths }
+})
+
 // IPC: Single file scan
 ipcMain.handle('music:scanFile', async (_event, filePath) => {
   validatePath(filePath)

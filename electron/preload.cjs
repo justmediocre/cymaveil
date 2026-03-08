@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('watcher:event', handler)
   },
   scanSingleFile: (filePath) => ipcRenderer.invoke('music:scanFile', filePath),
+  reconcileLibrary: (folders, existingFilePaths) => ipcRenderer.invoke('music:reconcile', folders, existingFilePaths),
   windowMinimize: () => ipcRenderer.invoke('window:minimize'),
   windowMaximize: () => ipcRenderer.invoke('window:maximize'),
   windowClose: () => ipcRenderer.invoke('window:close'),

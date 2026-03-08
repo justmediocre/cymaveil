@@ -226,6 +226,7 @@ export interface ElectronAPI {
   stopWatching: () => Promise<void>
   onWatcherEvent: (callback: (event: WatcherEvent) => void) => () => void
   scanSingleFile: (filePath: string) => Promise<SingleFileScanResult>
+  reconcileLibrary: (folders: string[], existingFilePaths: string[]) => Promise<{ added: SingleFileScanResult[], removedPaths: string[] }>
   windowMinimize: () => Promise<void>
   windowMaximize: () => Promise<void>
   windowClose: () => Promise<void>

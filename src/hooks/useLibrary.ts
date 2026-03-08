@@ -18,7 +18,7 @@ export default function useLibrary() {
   const tracksRef = useRef(tracks)
   tracksRef.current = tracks
 
-  // Load persisted library on mount
+  // Load persisted library on mount, then reconcile with filesystem
   useEffect(() => {
     async function load() {
       if (!window.electronAPI?.loadLibrary) {
@@ -28,10 +28,46 @@ export default function useLibrary() {
 
       try {
         const data = await window.electronAPI.loadLibrary()
-        if (data.albums.length > 0 || data.tracks.length > 0) {
-          setAlbums(data.albums)
-          setTracks(data.tracks)
-          setFolders(data.folders || [])
+        let albums = data.albums
+        let tracks = data.tracks
+        const loadedFolders = data.folders || []
+
+        // Reconcile: detect files added/removed while the app was closed
+        if (loadedFolders.length > 0 && window.electronAPI.reconcileLibrary) {
+          try {
+            const existingPaths = tracks.map((t) => t.filePath)
+            const { added, removedPaths } = await window.electronAPI.reconcileLibrary(loadedFolders, existingPaths)
+
+            if (removedPaths.length > 0) {
+              const removedSet = new Set(removedPaths)
+              tracks = tracks.filter((t) => !removedSet.has(t.filePath))
+              const albumIdsWithTracks = new Set(tracks.map((t) => t.albumId))
+              albums = albums.filter((a) => albumIdsWithTracks.has(a.id))
+            }
+
+            if (added.length > 0) {
+              const existingTrackIds = new Set(tracks.map((t) => t.id))
+              const existingAlbumIds = new Set(albums.map((a) => a.id))
+              for (const result of added) {
+                if (!existingTrackIds.has(result.track.id)) {
+                  tracks.push(result.track)
+                  existingTrackIds.add(result.track.id)
+                }
+                if (!existingAlbumIds.has(result.album.id)) {
+                  albums.push(result.album)
+                  existingAlbumIds.add(result.album.id)
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Failed to reconcile library:', err)
+          }
+        }
+
+        if (albums.length > 0 || tracks.length > 0) {
+          setAlbums(albums)
+          setTracks(tracks)
+          setFolders(loadedFolders)
         }
       } catch (err) {
         console.error('Failed to load library:', err)

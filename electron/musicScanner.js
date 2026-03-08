@@ -20,7 +20,7 @@ const BATCH_SIZE = 20
  * @param {string} dir
  * @returns {Promise<string[]>}
  */
-async function findAudioFiles(dir) {
+export async function findAudioFiles(dir) {
   /** @type {string[]} */
   const files = []
 
