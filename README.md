@@ -41,7 +41,7 @@ Cymaveil is currently English-only with no internationalization (i18n) infrastru
 
 ## Download
 
-Download the latest release for Windows, macOS, and Linux from the [v0.1.0 release page](https://github.com/justmediocre/cymaveil/releases/tag/v0.1.0).
+Download the latest release for Windows, macOS, and Linux from the [v0.1.2 release page](https://github.com/justmediocre/cymaveil/releases/tag/v0.1.2).
 
 > **Note — Unsigned binaries:** Cymaveil is not code-signed. On Windows you'll see a SmartScreen warning ("Windows protected your PC"), and on macOS Gatekeeper will block the app by default. This is normal for independent open-source software — you can bypass SmartScreen by clicking "More info" → "Run anyway", or on macOS by right-clicking the app and selecting "Open". We'd love to sign releases eventually, but code-signing certificates aren't free and this is a hobby project.
 
