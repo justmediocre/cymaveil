@@ -210,7 +210,7 @@ export interface ElectronAPI {
   selectFolder: () => Promise<string | null>
   scanMusicFolder: (folderPath: string) => Promise<ScanResult>
   loadLibrary: () => Promise<LibraryData>
-  saveLibrary: (data: LibraryData) => Promise<void>
+  saveLibrary: (data: LibraryData) => Promise<Record<string, string>>
   clearLibrary: () => Promise<void>
   loadPlaybackState: () => Promise<PlaybackState>
   savePlaybackState: (data: PlaybackState) => Promise<void>

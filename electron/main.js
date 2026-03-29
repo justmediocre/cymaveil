@@ -181,7 +181,7 @@ if (!isScreenshotMode) {
   ipcMain.handle('library:save', async (_event, data) => {
     if (!data || !Array.isArray(data.albums) || !Array.isArray(data.tracks)) return
     const { saveLibrary } = await getStore()
-    saveLibrary(data)
+    return saveLibrary(data)
   })
 
   ipcMain.handle('library:clear', async () => {

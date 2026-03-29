@@ -92,7 +92,19 @@ export default function useLibrary() {
 
     clearTimeout(saveTimerRef.current!)
     saveTimerRef.current = setTimeout(() => {
-      window.electronAPI!.saveLibrary({ albums, tracks, folders }).catch((err: unknown) => {
+      window.electronAPI!.saveLibrary({ albums, tracks, folders }).then((artUpdates) => {
+        // When base64 data URIs are externalized to artwork:// URLs on disk,
+        // update in-memory albums so caches (e.g. segmentation) use stable keys
+        // that will match on the next app launch.
+        if (artUpdates && Object.keys(artUpdates).length > 0) {
+          setAlbums((prev) =>
+            prev.map((a) => {
+              const newArt = artUpdates[a.id]
+              return newArt ? { ...a, art: newArt } : a
+            })
+          )
+        }
+      }).catch((err: unknown) => {
         console.error('Failed to save library:', err)
       })
     }, 500)

@@ -84,6 +84,9 @@ export function getArtworkPath(filename) {
  * @returns {void}
  */
 export function saveLibrary({ albums, tracks, folders }) {
+  /** @type {Record<string, string>} */
+  const artUpdates = {}
+
   try {
     ensureArtworkDir()
 
@@ -94,6 +97,8 @@ export function saveLibrary({ albums, tracks, folders }) {
       if (isBase64DataUri(art)) {
         const artFile = saveArtwork(album.id, /** @type {string} */ (art))
         if (artFile) {
+          // Tell the renderer the new artwork:// URL so it can update in-memory
+          artUpdates[album.id] = `artwork://file/${encodeURIComponent(artFile)}`
           return { ...rest, artFile }
         }
       }
@@ -121,6 +126,8 @@ export function saveLibrary({ albums, tracks, folders }) {
   } catch (err) {
     console.error('Failed to save library:', err)
   }
+
+  return artUpdates
 }
 
 /**
