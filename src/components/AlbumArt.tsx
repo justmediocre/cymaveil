@@ -47,8 +47,8 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
   useShortcut(DEBUG_TOGGLE_IMG, () => setDebugLayers(p => ({ ...p, img: !p.img })), { enabled: import.meta.env.DEV })
   useShortcut(DEBUG_TOGGLE_VISUALIZER, () => setDebugLayers(p => ({ ...p, visualizer: !p.visualizer })), { enabled: import.meta.env.DEV })
   useShortcut(DEBUG_TOGGLE_MASK, () => setDebugLayers(p => ({ ...p, mask: !p.mask })), { enabled: import.meta.env.DEV })
-  useShortcut(EDIT_MASK, () => { onEditMask?.() })
-  useShortcut(EDIT_BRUSH, () => { onEditBrush?.() })
+  useShortcut(EDIT_MASK, () => { onEditMask?.() }, { skipInput: true })
+  useShortcut(EDIT_BRUSH, () => { onEditBrush?.() }, { skipInput: true })
 
   // --- Sequenced vinyl / album-art transition state ---
   const [displayedAlbum, _setDisplayedAlbum] = useState<Album>(album)
