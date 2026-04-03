@@ -3,6 +3,7 @@ import type React from 'react'
 import { getFrequencyData, getTimeDomainData } from '../lib/audioAnalyser'
 import { perfMarkStart } from '../lib/perf'
 import useVisualSettings from '../hooks/useVisualSettings'
+import { useBatteryOnBattery } from '../hooks/useBatteryStatus'
 import { createRenderer, computeFrameStyle } from '../lib/visualizers'
 import type { VisualizerRenderer } from '../lib/visualizers'
 import type { ContourData, VisualizerStyle, SegmentationResult } from '../types'
@@ -25,8 +26,10 @@ interface VisualizerProps {
  */
 export default function Visualizer({ contourData, analyserRef, dataArrayRef, accentColor, accentSecondary, isPlaying, segmentation, resolvedStyle }: VisualizerProps) {
   const { settings } = useVisualSettings()
+  const onBattery = useBatteryOnBattery()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const smoothedRef = useRef<Float32Array | null>(null)
   const sizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 })
   const timeDomainRef = useRef<Uint8Array | null>(null)
@@ -39,6 +42,9 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
   const accentColorRef = useRef(accentColor)
   const accentSecondaryRef = useRef(accentSecondary)
   const segmentationRef = useRef(segmentation)
+  const fpsLimitRef = useRef(settings.visualizerFpsLimit)
+  const fpsLimitBatteryOnlyRef = useRef(settings.fpsLimitOnBatteryOnly)
+  const onBatteryRef = useRef(onBattery)
 
   intensityRef.current = settings.visualizerIntensity
   colorModeRef.current = settings.visualizerColorMode
@@ -46,6 +52,9 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
   accentColorRef.current = accentColor
   accentSecondaryRef.current = accentSecondary
   segmentationRef.current = segmentation
+  fpsLimitRef.current = settings.visualizerFpsLimit
+  fpsLimitBatteryOnlyRef.current = settings.fpsLimitOnBatteryOnly
+  onBatteryRef.current = onBattery
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -105,7 +114,22 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
       }
     }
 
+    function scheduleNext() {
+      const limit = fpsLimitBatteryOnlyRef.current && !onBatteryRef.current
+        ? 0
+        : fpsLimitRef.current
+      if (limit > 0) {
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null
+          rafRef.current = requestAnimationFrame(render)
+        }, 1000 / limit)
+      } else {
+        rafRef.current = requestAnimationFrame(render)
+      }
+    }
+
     function render() {
+      rafRef.current = null
       const markEnd = perfMarkStart('visualizer:frame')
 
       const analyser = analyserRef?.current
@@ -147,11 +171,11 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
       }
 
       markEnd()
-      rafRef.current = requestAnimationFrame(render)
+      scheduleNext()
     }
 
     if (isPlaying && settings.canvasVisualizer) {
-      rafRef.current = requestAnimationFrame(render)
+      scheduleNext()
     } else {
       const { w, h } = sizeRef.current
       ctx.clearRect(0, 0, w, h)
@@ -160,6 +184,10 @@ export default function Visualizer({ contourData, analyserRef, dataArrayRef, acc
     return () => {
       observer.disconnect()
       if (resizeRafId !== null) cancelAnimationFrame(resizeRafId)
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null

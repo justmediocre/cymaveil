@@ -26,6 +26,8 @@ const DEFAULTS: VisualSettings = {
   visualizerIntensity: 65,
   visualizerColorMode: 'auto',
   visualizerCustomColor: '#00ffff',
+  visualizerFpsLimit: 0,
+  fpsLimitOnBatteryOnly: false,
   maskDefaults: {},
   maskCacheVersion: 0,
 }

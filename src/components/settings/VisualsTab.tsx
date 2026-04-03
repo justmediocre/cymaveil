@@ -48,6 +48,13 @@ function ImpactBadge({ impact }: { impact: 'High' | 'Medium' | 'Low' }) {
   )
 }
 
+const FPS_LIMIT_OPTIONS: { value: string; label: string }[] = [
+  { value: '0', label: 'Unlimited' },
+  { value: '60', label: '60 FPS' },
+  { value: '30', label: '30 FPS' },
+  { value: '15', label: '15 FPS' },
+]
+
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'System' },
   { value: 'dark', label: 'Dark' },
@@ -162,6 +169,22 @@ export default function VisualsTab() {
           description="Turn off all visual effects when unplugged to save power"
           enabled={settings.disableVisualsOnBattery}
           onToggle={() => toggle('disableVisualsOnBattery')}
+        />
+
+        <SettingSelect
+          label="Visualizer FPS limit"
+          description="Cap the visualizer frame rate to reduce CPU usage"
+          value={String(settings.visualizerFpsLimit)}
+          onChange={(v) => setSetting('visualizerFpsLimit', Number(v))}
+          options={FPS_LIMIT_OPTIONS}
+        />
+
+        <SettingToggle
+          label="Only limit on battery"
+          description="Apply the FPS limit only when running on battery power"
+          disabled={settings.visualizerFpsLimit === 0}
+          enabled={settings.fpsLimitOnBatteryOnly}
+          onToggle={() => toggle('fpsLimitOnBatteryOnly')}
         />
       </SettingSection>
     </>

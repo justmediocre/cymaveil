@@ -190,6 +190,8 @@ export interface VisualSettings {
   visualizerIntensity: number
   visualizerColorMode: VisualizerColorMode
   visualizerCustomColor: string
+  visualizerFpsLimit: number
+  fpsLimitOnBatteryOnly: boolean
   maskDefaults: Partial<MaskPostProcessParams>
   /** Bumped when mask cache is cleared or imported — triggers re-evaluation */
   maskCacheVersion: number
