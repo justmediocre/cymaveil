@@ -1,6 +1,6 @@
 import useVisualSettings from '../../hooks/useVisualSettings'
 import useDebouncedSlider from '../../hooks/useDebouncedSlider'
-import { SettingToggle, SettingSlider, SettingSelect, SettingSection } from './SettingsControls'
+import { SettingToggle, SettingSlider, SettingSelect, SettingNumberInput, SettingSection } from './SettingsControls'
 import { useTheme, type ThemePreference } from '../../contexts/ThemeContext'
 import type { VisualSettings, MosaicTransition } from '../../types'
 
@@ -47,13 +47,6 @@ function ImpactBadge({ impact }: { impact: 'High' | 'Medium' | 'Low' }) {
     </span>
   )
 }
-
-const FPS_LIMIT_OPTIONS: { value: string; label: string }[] = [
-  { value: '0', label: 'Unlimited' },
-  { value: '60', label: '60 FPS' },
-  { value: '30', label: '30 FPS' },
-  { value: '15', label: '15 FPS' },
-]
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -171,12 +164,15 @@ export default function VisualsTab() {
           onToggle={() => toggle('disableVisualsOnBattery')}
         />
 
-        <SettingSelect
+        <SettingNumberInput
           label="Visualizer FPS limit"
-          description="Cap the visualizer frame rate to reduce CPU usage"
-          value={String(settings.visualizerFpsLimit)}
-          onChange={(v) => setSetting('visualizerFpsLimit', Number(v))}
-          options={FPS_LIMIT_OPTIONS}
+          description="Cap the visualizer frame rate to reduce CPU usage (empty = unlimited)"
+          value={settings.visualizerFpsLimit}
+          onChange={(v) => setSetting('visualizerFpsLimit', v)}
+          min={0}
+          max={240}
+          placeholder="Off"
+          suffix="FPS"
         />
 
         <SettingToggle

@@ -132,6 +132,56 @@ export function SettingSlider({
   )
 }
 
+/* ── SettingNumberInput ── */
+
+interface SettingNumberInputProps {
+  label: string
+  description?: string
+  disabled?: boolean
+  value: number
+  onChange: (value: number) => void
+  min: number
+  max: number
+  placeholder?: string
+  suffix?: string
+  inputWidth?: string
+}
+
+export function SettingNumberInput({
+  label, description, disabled, value, onChange,
+  min, max, placeholder, suffix, inputWidth = 'w-16',
+}: SettingNumberInputProps) {
+  return (
+    <SettingRow label={label} description={description} disabled={disabled}>
+      <div className="shrink-0 flex items-center gap-1.5">
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={value || ''}
+          placeholder={placeholder}
+          onChange={(e) => {
+            const n = e.target.value === '' ? 0 : Math.max(min, Math.min(max, Number(e.target.value)))
+            onChange(n)
+          }}
+          className={`${inputWidth} text-sm text-right rounded-lg px-2 py-1.5 tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
+          style={{
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border)',
+            fontFamily: 'var(--font-mono)',
+          }}
+        />
+        {suffix && (
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {suffix}
+          </span>
+        )}
+      </div>
+    </SettingRow>
+  )
+}
+
 /* ── SettingSelect ── */
 
 interface SettingSelectProps {
