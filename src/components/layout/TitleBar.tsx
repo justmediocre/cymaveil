@@ -95,8 +95,8 @@ export default function TitleBar({
         </motion.button>
         <ThemeToggle />
 
-        {/* Windows title bar buttons */}
-        {window.electronAPI?.platform === 'win32' && (
+        {/* Title bar buttons for Windows and Linux */}
+        {(window.electronAPI?.platform === 'win32' || window.electronAPI?.platform === 'linux') && (
           <div className="flex items-center ml-2">
             <button
               onClick={() => window.electronAPI!.windowMinimize()}
