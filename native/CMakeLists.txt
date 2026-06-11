@@ -18,6 +18,11 @@ endif()
 # waits). FLAC is enabled via a compile definition below instead.
 set(RAYLIB_VERSION 6.0)
 
+# Build GLFW with both backends; it picks Wayland at runtime when
+# WAYLAND_DISPLAY is set and falls back to X11 otherwise.
+set(GLFW_BUILD_WAYLAND ON CACHE BOOL "" FORCE)
+set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+
 # PATCH_COMMAND: fixes a double free in raylib 6.0's FLAC unload path
 # (see cmake/patch-raylib-flac.cmake).
 FetchContent_Declare(
