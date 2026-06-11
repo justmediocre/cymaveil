@@ -16,6 +16,7 @@ void Config::Load() {
         shuffle = j.value("shuffle", shuffle);
         repeat = std::clamp(j.value("repeat", repeat), 0, 2);
         depthLayers = j.value("depthLayers", depthLayers);
+        vinylDisc = j.value("vinylDisc", vinylDisc);
         mosaicEnabled = j.value("mosaicEnabled", mosaicEnabled);
         mosaicOpacity = std::clamp(j.value("mosaicOpacity", mosaicOpacity), 0.0f, 1.0f);
         mosaicDensity = std::clamp(j.value("mosaicDensity", mosaicDensity), 2, 16);
@@ -32,6 +33,7 @@ void Config::Save() const {
         {"shuffle", shuffle},
         {"repeat", repeat},
         {"depthLayers", depthLayers},
+        {"vinylDisc", vinylDisc},
         {"mosaicEnabled", mosaicEnabled},
         {"mosaicOpacity", mosaicOpacity},
         {"mosaicDensity", mosaicDensity},

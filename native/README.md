@@ -68,6 +68,11 @@ Done in this first slice:
       foreground on top — so the bars play behind the subject. The ~25 MB model
       downloads to `~/.local/share/cymaveil/models/` on first use (needs `curl`).
       Disable with `depthLayers: false` in config.json.
+- [x] Vinyl disc behind the Now Playing art (groove rings, rotating light-catch
+      sheen at 1.8s/rev, accent-colored center label): slides out while playing,
+      retracts on pause, and album changes sequence retract → art fade/scale
+      entrance → extend, with faster timings on manual skips — ported from
+      `AlbumArt.tsx`. Disable with `vinylDisc: false` in config.json.
 - [x] Background mosaic: isometric drifting grid of album art with flip /
       shrink-grow / cross-fade / fade / iris tile transitions and the radial
       vignette, ported from `AlbumArtBackground.tsx`. Drift and tile swaps only

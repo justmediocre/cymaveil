@@ -13,6 +13,8 @@ struct Config {
     // Depth layers: ML foreground masks so the visualizer plays behind the
     // album art subject. First use downloads the ~25 MB model.
     bool depthLayers = true;
+    // Vinyl disc that slides out from behind the Now Playing album art
+    bool vinylDisc = true;
 
     // Background mosaic (no settings UI yet; editable in config.json)
     bool mosaicEnabled = true;

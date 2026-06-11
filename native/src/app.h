@@ -12,6 +12,7 @@
 #include "library.h"
 #include "mosaic.h"
 #include "player.h"
+#include "vinyl.h"
 #include "visualizer.h"
 
 // Lazy GPU cache for album artwork. Views request textures while drawing;
@@ -58,7 +59,7 @@ private:
     void DrawEmptyState(Rectangle r);
     void DrawDebugOverlay();
 
-    void DrawAlbumArt(Rectangle r, const Album* album, float iconScale);
+    void DrawAlbumArt(Rectangle r, const Album* album, float iconScale, float alpha = 1.0f);
     // Returns the index of a clicked row, or -1.
     int DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, float* scroll,
                        bool showAlbum);
@@ -76,6 +77,8 @@ private:
     ArtCache art_;
     Mosaic mosaic_;
     DepthEngine depth_;
+    Vinyl vinyl_;
+    bool manualSkip_ = false;  // user-initiated track change this frame
 
     // Album art with the segmentation mask baked into its alpha channel
     struct Foreground {

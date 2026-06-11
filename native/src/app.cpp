@@ -112,6 +112,7 @@ int App::Run() {
     player_.Shutdown();
     visualizer_.Detach();
     mosaic_.Unload();
+    vinyl_.Unload();
     if (fg_.tex.id != 0) UnloadTexture(fg_.tex);
     art_.Clear();
     ui::Shutdown();
@@ -138,6 +139,12 @@ void App::Frame() {
     visualizer_.Update(GetFrameTime(), player_.IsPlaying());
     mosaic_.Update(GetFrameTime(), player_.IsPlaying(), MosaicCfg());
     art_.ProcessQueue(2);
+    {
+        const Track* cur = player_.Current();
+        vinyl_.Update(GetFrameTime(), cur != nullptr ? cur->albumId : std::string{},
+                      player_.IsPlaying(), manualSkip_, config_.vinylDisc);
+        manualSkip_ = false;
+    }
     UpdateForeground();
 
     const float W = static_cast<float>(GetScreenWidth());
@@ -187,12 +194,20 @@ void App::HandleInput() {
     if (IsKeyPressed(KEY_SPACE)) player_.TogglePause();
     const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     if (IsKeyPressed(KEY_RIGHT)) {
-        if (ctrl) player_.Next();
-        else player_.SeekTo(player_.TimePlayed() + 5.0f);
+        if (ctrl) {
+            player_.Next();
+            manualSkip_ = true;
+        } else {
+            player_.SeekTo(player_.TimePlayed() + 5.0f);
+        }
     }
     if (IsKeyPressed(KEY_LEFT)) {
-        if (ctrl) player_.Prev();
-        else player_.SeekTo(player_.TimePlayed() - 5.0f);
+        if (ctrl) {
+            player_.Prev();
+            manualSkip_ = true;
+        } else {
+            player_.SeekTo(player_.TimePlayed() - 5.0f);
+        }
     }
     if (IsKeyPressed(KEY_UP)) player_.SetVolume(player_.Volume() + 0.05f);
     if (IsKeyPressed(KEY_DOWN)) player_.SetVolume(player_.Volume() - 0.05f);
@@ -212,23 +227,32 @@ MosaicSettings App::MosaicCfg() const {
 }
 
 void App::UpdateForeground() {
-    const Track* cur = player_.Current();
-    const Album* album = cur != nullptr ? library_.AlbumById(cur->albumId) : nullptr;
+    if (!config_.depthLayers) return;
 
-    if (config_.depthLayers && album != nullptr && !album->artPath.empty() &&
-        fg_.checkedAlbum != album->id) {
-        fg_.checkedAlbum = album->id;
-        if (DepthEngine::MaskExists(album->id)) {
-            BuildForeground(*album);
-        } else {
-            depth_.Request(album->id, album->artPath);
+    // Warm the mask for the incoming album as soon as the track changes, so
+    // it's ready by the time the vinyl swap finishes.
+    const Track* cur = player_.Current();
+    const Album* curAlbum = cur != nullptr ? library_.AlbumById(cur->albumId) : nullptr;
+    if (curAlbum != nullptr && !curAlbum->artPath.empty() && fg_.checkedAlbum != curAlbum->id) {
+        fg_.checkedAlbum = curAlbum->id;
+        if (!DepthEngine::MaskExists(curAlbum->id)) {
+            depth_.Request(curAlbum->id, curAlbum->artPath);
         }
+    }
+
+    // Build the texture for the album actually on screen — the old album's
+    // foreground persists through the vinyl retract, like the web's
+    // snapshotted segmentation.
+    const Album* shown = library_.AlbumById(vinyl_.DisplayedAlbumId());
+    if (shown != nullptr && !shown->artPath.empty() && fg_.albumId != shown->id &&
+        DepthEngine::MaskExists(shown->id)) {
+        BuildForeground(*shown);
     }
 
     DepthEngine::Result result;
     while (depth_.PollResult(&result)) {
-        if (result.ok && album != nullptr && result.albumId == album->id) {
-            BuildForeground(*album);
+        if (result.ok && shown != nullptr && result.albumId == shown->id) {
+            BuildForeground(*shown);
         }
     }
 }
@@ -282,7 +306,8 @@ void App::UpdatePacing() {
     //  - recent input / scan / pending art decodes: 60 fps
     //  - otherwise: block on OS events (near-zero usage until input arrives)
     const bool busy = library_.ScanActive() || art_.HasPendingWork() || seekDragging_ ||
-                      volumeDragging_ || mosaic_.Animating() || depth_.Busy();
+                      volumeDragging_ || mosaic_.Animating() || depth_.Busy() ||
+                      vinyl_.Animating();
     const bool recentInput = GetTime() - lastActivity_ < 2.5;
 
     int fps;
@@ -389,7 +414,10 @@ void App::DrawPlayerBar(Rectangle r) {
     const Rectangle prevR = iconButton(-60, 14);
     ui::IconPrev(Vector2{cx - 60, by}, 18,
                  ui::Hover(prevR) ? ui::theme.text : ui::theme.textSecondary);
-    if (ui::Clicked(prevR)) player_.Prev();
+    if (ui::Clicked(prevR)) {
+        player_.Prev();
+        manualSkip_ = true;
+    }
 
     const Rectangle playR = iconButton(0, 21);
     const bool playHover = ui::Hover(playR);
@@ -404,7 +432,10 @@ void App::DrawPlayerBar(Rectangle r) {
     const Rectangle nextR = iconButton(60, 14);
     ui::IconNext(Vector2{cx + 60, by}, 18,
                  ui::Hover(nextR) ? ui::theme.text : ui::theme.textSecondary);
-    if (ui::Clicked(nextR)) player_.Next();
+    if (ui::Clicked(nextR)) {
+        player_.Next();
+        manualSkip_ = true;
+    }
 
     const Rectangle repeatR = iconButton(110, 14);
     const bool repeatOn = player_.Repeat() != RepeatMode::Off;
@@ -511,6 +542,7 @@ void App::PlayFromTrackList(const std::vector<const Track*>& list, int index) {
     ids.reserve(list.size());
     for (const Track* t : list) ids.push_back(t->id);
     player_.PlayQueue(std::move(ids), index);
+    manualSkip_ = true;
     MarkActivity();
 }
 
@@ -623,8 +655,13 @@ void App::DrawNowPlayingView(Rectangle r) {
         return;
     }
     const Album* album = library_.AlbumById(cur->albumId);
-    const Color glow = album != nullptr ? album->dominant : ui::theme.accent;
-    const bool hasFg = fg_.tex.id != 0 && album != nullptr && fg_.albumId == album->id;
+    // Art (and the layers on it) shows the vinyl-sequenced album, which lags
+    // the current track during retract -> swap -> extend transitions.
+    const Album* shownAlbum = library_.AlbumById(vinyl_.DisplayedAlbumId());
+    if (shownAlbum == nullptr) shownAlbum = album;
+    const Color glow = shownAlbum != nullptr ? shownAlbum->dominant : ui::theme.accent;
+    const bool hasFg = fg_.tex.id != 0 && shownAlbum != nullptr && fg_.albumId == shownAlbum->id;
+    const float artAlpha = vinyl_.ArtAlpha();
 
     // Ambient wash from the album's dominant color, breathing with the bass
     const float bass = visualizer_.BassLevel();
@@ -643,16 +680,27 @@ void App::DrawNowPlayingView(Rectangle r) {
 
     DrawRectangleRounded(Rectangle{artX - 14, artY - 14, artSize + 28, artSize + 28}, 0.04f, 6,
                          Fade(glow, 0.10f + 0.18f * bass));
-    DrawAlbumArt(artRect, album, 1.4f);
 
-    if (hasFg) {
+    if (config_.vinylDisc && shownAlbum != nullptr) {
+        vinyl_.Draw(artRect, shownAlbum->accent, shownAlbum->dominant);
+    }
+
+    // Entrance animation: scale up and fade in around the art center
+    const float s = vinyl_.ArtScale();
+    const Rectangle shownRect{artRect.x + artRect.width * (1 - s) / 2,
+                              artRect.y + artRect.height * (1 - s) / 2, artRect.width * s,
+                              artRect.height * s};
+    DrawAlbumArt(shownRect, shownAlbum, 1.4f, artAlpha);
+
+    if (hasFg && vinyl_.ArtEntered()) {
         // The headline feature: bars play between the art and its subject.
         // Insets match the web's frame style (padX 6%, padBot 4%).
         BeginScissorMode(static_cast<int>(artRect.x), static_cast<int>(artRect.y),
                          static_cast<int>(artRect.width), static_cast<int>(artRect.height));
         visualizer_.DrawFullSurface(
             Rectangle{artRect.x + artSize * 0.06f, artRect.y, artSize * 0.88f, artSize * 0.96f},
-            album->accent, album->hasSecondary ? &album->accentSecondary : nullptr, 0.65f);
+            shownAlbum->accent, shownAlbum->hasSecondary ? &shownAlbum->accentSecondary : nullptr,
+            0.65f);
         EndScissorMode();
         const float side = static_cast<float>(std::min(fg_.tex.width, fg_.tex.height));
         const Rectangle src{(fg_.tex.width - side) / 2, (fg_.tex.height - side) / 2, side, side};
@@ -691,18 +739,19 @@ void App::DrawEmptyState(Rectangle r) {
     }
 }
 
-void App::DrawAlbumArt(Rectangle r, const Album* album, float iconScale) {
+void App::DrawAlbumArt(Rectangle r, const Album* album, float iconScale, float alpha) {
     const Texture2D* tex = album != nullptr ? art_.Get(*album) : nullptr;
     if (tex != nullptr) {
         const float side = static_cast<float>(std::min(tex->width, tex->height));
         const Rectangle src{(tex->width - side) / 2, (tex->height - side) / 2, side, side};
-        DrawTexturePro(*tex, src, r, Vector2{0, 0}, 0, WHITE);
+        DrawTexturePro(*tex, src, r, Vector2{0, 0}, 0, Fade(WHITE, alpha));
     } else {
-        DrawRectangleRounded(r, 0.06f, 6, ui::theme.elevated);
+        DrawRectangleRounded(r, 0.06f, 6, Fade(ui::theme.elevated, alpha));
         ui::IconNote(Vector2{r.x + r.width / 2, r.y + r.height / 2},
-                     std::min(r.width, r.height) * 0.3f * iconScale + 8, ui::theme.textTertiary);
+                     std::min(r.width, r.height) * 0.3f * iconScale + 8,
+                     Fade(ui::theme.textTertiary, alpha));
     }
-    DrawRectangleLinesEx(r, 1, ui::theme.borderSubtle);
+    DrawRectangleLinesEx(r, 1, Fade(ui::theme.borderSubtle, alpha));
 }
 
 void App::DrawDebugOverlay() {
