@@ -1,0 +1,36 @@
+{
+    "name": "cymaveil-native",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "remoteUser": "vscode",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "llvm-vs-code-extensions.vscode-clangd"
+            ],
+            "settings": {
+                "cmake.configureOnOpen": true,
+                "cmake.sourceDirectory": "${workspaceFolder}/native",
+                "cmake.buildDirectory": "${workspaceFolder}/native/build",
+                "C_Cpp.default.compileCommands": "${workspaceFolder}/native/build/compile_commands.json"
+            }
+        }
+    },
+    "postCreateCommand": "cmake -S native -B native/build -G Ninja",
+    "containerEnv": {
+        "DISPLAY": "${localEnv:DISPLAY}",
+        "WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
+        "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
+        "PULSE_SERVER": "unix:/run/host-pulse/native"
+    },
+    "mounts": [
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+        "source=${localEnv:XDG_RUNTIME_DIR}/pulse,target=/run/host-pulse,type=bind"
+    ],
+    "runArgs": [
+        "--device=/dev/dri:/dev/dri"
+    ]
+}
