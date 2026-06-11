@@ -55,11 +55,6 @@ void ArtCache::ProcessQueue(int budget) {
         auto it = wanted_.begin();
         Image img = LoadImage(it->second.c_str());
         if (img.data != nullptr) {
-            if (img.width > 600 || img.height > 600) {
-                const float scale = 600.0f / std::max(img.width, img.height);
-                ImageResize(&img, static_cast<int>(img.width * scale),
-                            static_cast<int>(img.height * scale));
-            }
             Texture2D tex = LoadTextureFromImage(img);
             UnloadImage(img);
             GenTextureMipmaps(&tex);
