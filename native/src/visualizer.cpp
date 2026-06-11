@@ -109,15 +109,22 @@ Color SaturateAndBrighten(Color c, float intensity) {
 
 }  // namespace
 
-void Visualizer::DrawFullSurface(Rectangle area, Color accent, float intensity) const {
+void Visualizer::DrawFullSurface(Rectangle area, Color accent, const Color* secondary,
+                                 float intensity) const {
     constexpr int kCount = 48;
 
-    // computeFrameStyle port ('auto' color mode, single accent)
+    // computeFrameStyle port ('auto' color mode): secondary accent drives the
+    // core when present, otherwise the core is a further-brightened glow
     const Color glow = SaturateAndBrighten(accent, intensity);
-    const float coreBrighten = 0.3f + intensity * 0.3f;
-    const Color core{static_cast<unsigned char>(glow.r + (255 - glow.r) * coreBrighten),
+    Color core;
+    if (secondary != nullptr) {
+        core = SaturateAndBrighten(*secondary, intensity);
+    } else {
+        const float coreBrighten = 0.3f + intensity * 0.3f;
+        core = Color{static_cast<unsigned char>(glow.r + (255 - glow.r) * coreBrighten),
                      static_cast<unsigned char>(glow.g + (255 - glow.g) * coreBrighten),
                      static_cast<unsigned char>(glow.b + (255 - glow.b) * coreBrighten), 255};
+    }
     const float glowMul = 0.3f + intensity * 0.7f;
     const float coreMul = 0.4f + intensity * 0.6f;
 

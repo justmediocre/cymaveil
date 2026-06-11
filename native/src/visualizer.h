@@ -14,8 +14,10 @@ public:
     void DrawBars(Rectangle area, Color color) const;
     // The web app's default "full-surface" style: 48 bars rising over the
     // album art with shadow, glow, and core gradient passes. accent drives
-    // the palette (computeFrameStyle port); intensity is 0..1.
-    void DrawFullSurface(Rectangle area, Color accent, float intensity) const;
+    // the glow; secondary (when non-null) drives the bar cores for the
+    // two-tone look (computeFrameStyle port); intensity is 0..1.
+    void DrawFullSurface(Rectangle area, Color accent, const Color* secondary,
+                         float intensity) const;
     // Overall low-frequency energy 0..1, for ambient glow effects.
     float BassLevel() const { return bass_; }
 

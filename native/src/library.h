@@ -26,7 +26,11 @@ struct Album {
     std::string artist;
     int year = 0;
     std::string artPath;  // extracted artwork file; empty if none
-    Color dominant{110, 110, 122, 255};
+    // Palette extracted from the artwork (see colorextract.h)
+    Color dominant{110, 110, 122, 255};        // darkened, for background washes
+    Color accent{212, 165, 116, 255};          // vivid, for visualizer glow
+    Color accentSecondary{0, 0, 0, 255};       // distinct hue, for two-tone bar cores
+    bool hasSecondary = false;
 };
 
 struct ScanStatus {

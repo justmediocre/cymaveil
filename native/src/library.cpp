@@ -11,6 +11,7 @@
 #include <tag.h>
 #include <tpropertymap.h>
 
+#include "colorextract.h"
 #include "paths.h"
 
 namespace fs = std::filesystem;
@@ -43,29 +44,17 @@ bool IsKnownUnsupported(const std::string& ext) {
     return ext == ".m4a" || ext == ".aac" || ext == ".opus" || ext == ".wma" || ext == ".aiff";
 }
 
-// Average pixel color weighted by saturation, so artwork accents win over
-// large flat dark/light areas. Operates on CPU-side Image data (thread-safe).
-Color DominantColor(const unsigned char* bytes, int size, const char* ext) {
+// Runs the ported web-app color extraction on embedded artwork bytes.
+// Operates on CPU-side Image data (thread-safe).
+AlbumColors ColorsFromArt(const unsigned char* bytes, int size, const char* ext) {
+    AlbumColors colors;
     Image img = LoadImageFromMemory(ext, bytes, size);
-    if (img.data == nullptr) return Color{110, 110, 122, 255};
-    ImageResize(&img, 32, 32);
+    if (img.data == nullptr) return colors;
     ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-    const auto* px = static_cast<const unsigned char*>(img.data);
-    double r = 0, g = 0, b = 0, wsum = 0;
-    for (int i = 0; i < 32 * 32; i++) {
-        const float pr = px[i * 4 + 0], pg = px[i * 4 + 1], pb = px[i * 4 + 2];
-        const float mx = std::max({pr, pg, pb}), mn = std::min({pr, pg, pb});
-        const float sat = mx > 0 ? (mx - mn) / mx : 0.0f;
-        const float w = 0.15f + sat;  // never zero so grayscale art still averages
-        r += pr * w;
-        g += pg * w;
-        b += pb * w;
-        wsum += w;
-    }
+    ImageResize(&img, 64, 64);
+    ExtractAlbumColors(static_cast<const unsigned char*>(img.data), &colors);
     UnloadImage(img);
-    if (wsum <= 0) return Color{110, 110, 122, 255};
-    return Color{static_cast<unsigned char>(r / wsum), static_cast<unsigned char>(g / wsum),
-                 static_cast<unsigned char>(b / wsum), 255};
+    return colors;
 }
 
 }  // namespace
@@ -99,11 +88,17 @@ void Library::Load() {
             a.artist = ja.value("artist", "");
             a.year = ja.value("year", 0);
             a.artPath = ja.value("artPath", "");
-            const auto c = ja.value("dominant", std::vector<int>{110, 110, 122});
-            if (c.size() == 3) {
-                a.dominant = Color{static_cast<unsigned char>(c[0]), static_cast<unsigned char>(c[1]),
-                                   static_cast<unsigned char>(c[2]), 255};
-            }
+            const auto readColor = [&ja](const char* key, Color fallback) {
+                const auto c = ja.value(key, std::vector<int>{});
+                if (c.size() != 3) return fallback;
+                return Color{static_cast<unsigned char>(c[0]), static_cast<unsigned char>(c[1]),
+                             static_cast<unsigned char>(c[2]), 255};
+            };
+            a.dominant = readColor("dominant", a.dominant);
+            // Caches written before accent extraction fall back to dominant
+            a.accent = readColor("accent", a.dominant);
+            a.accentSecondary = readColor("accent2", Color{0, 0, 0, 255});
+            a.hasSecondary = ja.contains("accent2");
             albums_.push_back(std::move(a));
         }
         SortAndIndex();
@@ -127,12 +122,17 @@ void Library::Save() const {
     }
     json ja = json::array();
     for (const auto& a : albums_) {
-        ja.push_back({{"id", a.id},
-                      {"title", a.title},
-                      {"artist", a.artist},
-                      {"year", a.year},
-                      {"artPath", a.artPath},
-                      {"dominant", {a.dominant.r, a.dominant.g, a.dominant.b}}});
+        json entry{{"id", a.id},
+                   {"title", a.title},
+                   {"artist", a.artist},
+                   {"year", a.year},
+                   {"artPath", a.artPath},
+                   {"dominant", {a.dominant.r, a.dominant.g, a.dominant.b}},
+                   {"accent", {a.accent.r, a.accent.g, a.accent.b}}};
+        if (a.hasSecondary) {
+            entry["accent2"] = {a.accentSecondary.r, a.accentSecondary.g, a.accentSecondary.b};
+        }
+        ja.push_back(std::move(entry));
     }
     json j{{"folders", folders_}, {"tracks", std::move(jt)}, {"albums", std::move(ja)}};
     std::ofstream out(paths::LibraryFile());
@@ -296,9 +296,13 @@ void Library::ScanWorker(std::vector<std::string> folders) {
                         std::ofstream out(artPath, std::ios::binary);
                         if (out.write(data.data(), static_cast<std::streamsize>(data.size()))) {
                             album.artPath = artPath;
-                            album.dominant = DominantColor(
+                            const AlbumColors colors = ColorsFromArt(
                                 reinterpret_cast<const unsigned char*>(data.data()),
                                 static_cast<int>(data.size()), ext);
+                            album.dominant = colors.dominant;
+                            album.accent = colors.accent;
+                            album.accentSecondary = colors.accentSecondary;
+                            album.hasSecondary = colors.hasSecondary;
                         }
                     }
                 }

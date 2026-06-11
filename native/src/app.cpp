@@ -652,7 +652,7 @@ void App::DrawNowPlayingView(Rectangle r) {
                          static_cast<int>(artRect.width), static_cast<int>(artRect.height));
         visualizer_.DrawFullSurface(
             Rectangle{artRect.x + artSize * 0.06f, artRect.y, artSize * 0.88f, artSize * 0.96f},
-            glow, 0.65f);
+            album->accent, album->hasSecondary ? &album->accentSecondary : nullptr, 0.65f);
         EndScissorMode();
         const float side = static_cast<float>(std::min(fg_.tex.width, fg_.tex.height));
         const Rectangle src{(fg_.tex.width - side) / 2, (fg_.tex.height - side) / 2, side, side};
@@ -670,7 +670,7 @@ void App::DrawNowPlayingView(Rectangle r) {
 
     if (!hasFg) {
         visualizer_.DrawBars(Rectangle{r.x + 32, r.y + r.height - visH - 8, r.width - 64, visH},
-                             Brighten(glow, 0.25f));
+                             album != nullptr ? album->accent : Brighten(glow, 0.25f));
         if (config_.depthLayers && depth_.Busy()) {
             ui::TextCentered(TextFormat("preparing depth layers (%s)...", depth_.StatusText()),
                              Vector2{r.x + r.width / 2, r.y + r.height - visH - 28}, 13,
