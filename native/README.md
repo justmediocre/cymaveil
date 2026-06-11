@@ -72,7 +72,8 @@ Not yet ported from the Electron app:
 
 Known limitations:
 
-- **No m4a/aac/opus playback** — raylib's miniaudio decoders cover mp3/flac/ogg/wav. Such
-  files are counted and skipped during scans. (Likely fix: a custom miniaudio decoder or
-  ffmpeg-based decode feeding a raw `AudioStream`.)
+- **No m4a/aac/opus playback — deliberately out of scope for now.** raylib's miniaudio
+  decoders cover mp3/flac/ogg/wav, which is the bulk of any real library; such files are
+  counted and skipped during scans. If it ever matters, the fix is pulling in a decoder
+  library (or ffmpeg) feeding a raw `AudioStream` — not planned for this rewrite's roadmap.
 - Visualizer assumes a 48 kHz output device for its frequency axis (visual-only nicety).
