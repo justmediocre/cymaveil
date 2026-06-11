@@ -58,7 +58,10 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(raylib taglib json)
 
-target_compile_definitions(raylib PRIVATE SUPPORT_FILEFORMAT_FLAC=1)
+# FLAC (music) and JPG (album art) are off in raylib's default config.h
+target_compile_definitions(raylib PRIVATE
+    SUPPORT_FILEFORMAT_FLAC=1
+    SUPPORT_FILEFORMAT_JPG=1)
 
 find_package(Threads REQUIRED)
 
