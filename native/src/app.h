@@ -8,6 +8,7 @@
 #include "raylib.h"
 
 #include "config.h"
+#include "depth.h"
 #include "library.h"
 #include "mosaic.h"
 #include "player.h"
@@ -64,6 +65,9 @@ private:
     void PlayFromTrackList(const std::vector<const Track*>& list, int index);
 
     MosaicSettings MosaicCfg() const;
+    // Keeps the masked-foreground texture in sync with the playing album.
+    void UpdateForeground();
+    void BuildForeground(const Album& album);
 
     Config config_;
     Library library_;
@@ -71,6 +75,14 @@ private:
     Visualizer visualizer_;
     ArtCache art_;
     Mosaic mosaic_;
+    DepthEngine depth_;
+
+    // Album art with the segmentation mask baked into its alpha channel
+    struct Foreground {
+        std::string albumId;       // album the texture belongs to
+        std::string checkedAlbum;  // album we last looked for a mask for
+        Texture2D tex{};
+    } fg_;
 
     std::vector<std::string> startupFolders_;
 

@@ -10,6 +10,10 @@ struct Config {
     bool shuffle = false;
     int repeat = 0;  // 0=off 1=all 2=one
 
+    // Depth layers: ML foreground masks so the visualizer plays behind the
+    // album art subject. First use downloads the ~25 MB model.
+    bool depthLayers = true;
+
     // Background mosaic (no settings UI yet; editable in config.json)
     bool mosaicEnabled = true;
     float mosaicOpacity = 0.18f;

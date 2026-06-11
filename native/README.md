@@ -59,6 +59,15 @@ Done in this first slice:
 - [x] Lazy album-art texture cache with per-frame upload budget
 - [x] Idle-aware frame pacing (the point of the exercise)
 - [x] Dark theme ported from the web app's design tokens
+- [x] **Depth layers** (the headline feature): Depth Anything v2 small (q8 ONNX, the
+      same model the web app uses) runs via ONNX Runtime on a worker thread, followed
+      by a faithful port of the `depthToMask` post-processing chain (median, bilateral,
+      Otsu, text promotion, edge refinement, morph close/open, feather). Masks cache to
+      disk as 256px grayscale PNGs; the Now Playing view renders art, then the
+      full-surface visualizer (48 bars, shadow/glow/core passes), then the masked
+      foreground on top — so the bars play behind the subject. The ~25 MB model
+      downloads to `~/.local/share/cymaveil/models/` on first use (needs `curl`).
+      Disable with `depthLayers: false` in config.json.
 - [x] Background mosaic: isometric drifting grid of album art with flip /
       shrink-grow / cross-fade / fade / iris tile transitions and the radial
       vignette, ported from `AlbumArtBackground.tsx`. Drift and tile swaps only
@@ -70,7 +79,9 @@ Not yet ported from the Electron app:
 
 - [ ] Playlists (+ M3U8 import/export) and Favorites
 - [ ] Search
-- [ ] Depth-layer masks, additional visualizer styles
+- [ ] Manual mask painting (brush editor), mask import/export, batch pre-generation
+- [ ] Alternative visualizer styles (contour bars, radial burst, waveform, mirrored)
+      — full-surface (the default) is in
 - [ ] Light theme, settings UI
 - [ ] File watching / incremental rescan (currently full rescan per change)
 - [ ] Playback-position restore across sessions

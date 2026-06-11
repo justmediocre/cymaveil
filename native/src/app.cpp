@@ -78,7 +78,10 @@ void ArtCache::Clear() {
 // ── App ──
 
 int App::Run() {
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
+    // Fixed-size in screenshot mode so tiling WMs float the window at the
+    // requested resolution instead of fitting it into the layout.
+    SetConfigFlags(screenshotPath_.empty() ? (FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT)
+                                           : FLAG_MSAA_4X_HINT);
     InitWindow(1280, 800, "Cymaveil");
     SetWindowMinSize(980, 640);
     SetExitKey(KEY_NULL);  // ESC navigates, doesn't quit
@@ -109,6 +112,7 @@ int App::Run() {
     player_.Shutdown();
     visualizer_.Detach();
     mosaic_.Unload();
+    if (fg_.tex.id != 0) UnloadTexture(fg_.tex);
     art_.Clear();
     ui::Shutdown();
     CloseAudioDevice();
@@ -134,6 +138,7 @@ void App::Frame() {
     visualizer_.Update(GetFrameTime(), player_.IsPlaying());
     mosaic_.Update(GetFrameTime(), player_.IsPlaying(), MosaicCfg());
     art_.ProcessQueue(2);
+    UpdateForeground();
 
     const float W = static_cast<float>(GetScreenWidth());
     const float H = static_cast<float>(GetScreenHeight());
@@ -161,6 +166,8 @@ void App::Frame() {
     // Catch a mosaic tile mid-transition in the capture
     if (!screenshotPath_.empty() && frameCount_ == 90) mosaic_.Trigger(MosaicCfg());
     if (!screenshotPath_.empty() && ++frameCount_ == 120) {
+        TraceLog(LOG_INFO, "SHOT: screen %dx%d render %dx%d", GetScreenWidth(),
+                 GetScreenHeight(), GetRenderWidth(), GetRenderHeight());
         // Not TakeScreenshot(): it forces the path relative to the working dir
         Image shot = LoadImageFromScreen();
         ExportImage(shot, screenshotPath_.c_str());
@@ -204,6 +211,53 @@ MosaicSettings App::MosaicCfg() const {
                           config_.mosaicTransition, config_.mosaicFlat};
 }
 
+void App::UpdateForeground() {
+    const Track* cur = player_.Current();
+    const Album* album = cur != nullptr ? library_.AlbumById(cur->albumId) : nullptr;
+
+    if (config_.depthLayers && album != nullptr && !album->artPath.empty() &&
+        fg_.checkedAlbum != album->id) {
+        fg_.checkedAlbum = album->id;
+        if (DepthEngine::MaskExists(album->id)) {
+            BuildForeground(*album);
+        } else {
+            depth_.Request(album->id, album->artPath);
+        }
+    }
+
+    DepthEngine::Result result;
+    while (depth_.PollResult(&result)) {
+        if (result.ok && album != nullptr && result.albumId == album->id) {
+            BuildForeground(*album);
+        }
+    }
+}
+
+void App::BuildForeground(const Album& album) {
+    Image art = LoadImage(album.artPath.c_str());
+    if (art.data == nullptr) return;
+    Image mask = LoadImage(DepthEngine::MaskPath(album.id).c_str());
+    if (mask.data == nullptr) {
+        UnloadImage(art);
+        return;
+    }
+    ImageFormat(&art, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    ImageFormat(&mask, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE);
+    ImageResize(&mask, art.width, art.height);
+    auto* ap = static_cast<unsigned char*>(art.data);
+    const auto* mp = static_cast<const unsigned char*>(mask.data);
+    for (int i = 0; i < art.width * art.height; i++) ap[i * 4 + 3] = mp[i];
+    UnloadImage(mask);
+
+    if (fg_.tex.id != 0) UnloadTexture(fg_.tex);
+    fg_.tex = LoadTextureFromImage(art);
+    UnloadImage(art);
+    GenTextureMipmaps(&fg_.tex);
+    SetTextureFilter(fg_.tex, TEXTURE_FILTER_TRILINEAR);
+    fg_.albumId = album.id;
+    MarkActivity();
+}
+
 void App::HandleDroppedFolders() {
     if (!IsFileDropped()) return;
     FilePathList files = LoadDroppedFiles();
@@ -228,7 +282,7 @@ void App::UpdatePacing() {
     //  - recent input / scan / pending art decodes: 60 fps
     //  - otherwise: block on OS events (near-zero usage until input arrives)
     const bool busy = library_.ScanActive() || art_.HasPendingWork() || seekDragging_ ||
-                      volumeDragging_ || mosaic_.Animating();
+                      volumeDragging_ || mosaic_.Animating() || depth_.Busy();
     const bool recentInput = GetTime() - lastActivity_ < 2.5;
 
     int fps;
@@ -570,6 +624,7 @@ void App::DrawNowPlayingView(Rectangle r) {
     }
     const Album* album = library_.AlbumById(cur->albumId);
     const Color glow = album != nullptr ? album->dominant : ui::theme.accent;
+    const bool hasFg = fg_.tex.id != 0 && album != nullptr && fg_.albumId == album->id;
 
     // Ambient wash from the album's dominant color, breathing with the bass
     const float bass = visualizer_.BassLevel();
@@ -577,14 +632,32 @@ void App::DrawNowPlayingView(Rectangle r) {
                            static_cast<int>(r.width), static_cast<int>(r.height * 0.75f),
                            Fade(glow, 0.10f + 0.10f * bass), Fade(glow, 0.0f));
 
-    const float visH = 170;
-    const float artSize = std::min({380.0f, r.height - visH - 200, r.width - 160});
+    // With depth layers the visualizer lives inside the art, so give the
+    // artwork the space the bottom bar strip used to take.
+    const float visH = hasFg ? 0.0f : 170.0f;
+    const float artSize = hasFg ? std::min({480.0f, r.height - 220, r.width - 200})
+                                : std::min({380.0f, r.height - visH - 200, r.width - 160});
     const float artX = r.x + (r.width - artSize) / 2;
-    const float artY = r.y + 56;
+    const float artY = r.y + (hasFg ? 44 : 56);
+    const Rectangle artRect{artX, artY, artSize, artSize};
 
     DrawRectangleRounded(Rectangle{artX - 14, artY - 14, artSize + 28, artSize + 28}, 0.04f, 6,
                          Fade(glow, 0.10f + 0.18f * bass));
-    DrawAlbumArt(Rectangle{artX, artY, artSize, artSize}, album, 1.4f);
+    DrawAlbumArt(artRect, album, 1.4f);
+
+    if (hasFg) {
+        // The headline feature: bars play between the art and its subject.
+        // Insets match the web's frame style (padX 6%, padBot 4%).
+        BeginScissorMode(static_cast<int>(artRect.x), static_cast<int>(artRect.y),
+                         static_cast<int>(artRect.width), static_cast<int>(artRect.height));
+        visualizer_.DrawFullSurface(
+            Rectangle{artRect.x + artSize * 0.06f, artRect.y, artSize * 0.88f, artSize * 0.96f},
+            glow, 0.65f);
+        EndScissorMode();
+        const float side = static_cast<float>(std::min(fg_.tex.width, fg_.tex.height));
+        const Rectangle src{(fg_.tex.width - side) / 2, (fg_.tex.height - side) / 2, side, side};
+        DrawTexturePro(fg_.tex, src, artRect, Vector2{0, 0}, 0, WHITE);
+    }
 
     const float textY = artY + artSize + 30;
     ui::TextCentered(cur->title, Vector2{r.x + r.width / 2, textY}, 28, ui::theme.text);
@@ -595,8 +668,15 @@ void App::DrawNowPlayingView(Rectangle r) {
                          ui::theme.textTertiary);
     }
 
-    visualizer_.DrawBars(Rectangle{r.x + 32, r.y + r.height - visH - 8, r.width - 64, visH},
-                         Brighten(glow, 0.25f));
+    if (!hasFg) {
+        visualizer_.DrawBars(Rectangle{r.x + 32, r.y + r.height - visH - 8, r.width - 64, visH},
+                             Brighten(glow, 0.25f));
+        if (config_.depthLayers && depth_.Busy()) {
+            ui::TextCentered(TextFormat("preparing depth layers (%s)...", depth_.StatusText()),
+                             Vector2{r.x + r.width / 2, r.y + r.height - visH - 28}, 13,
+                             ui::theme.textTertiary);
+        }
+    }
 }
 
 void App::DrawEmptyState(Rectangle r) {
@@ -628,7 +708,7 @@ void App::DrawAlbumArt(Rectangle r, const Album* album, float iconScale) {
 void App::DrawDebugOverlay() {
     const float W = static_cast<float>(GetScreenWidth());
     const float H = static_cast<float>(GetScreenHeight());
-    const Rectangle box{W - 230, H - kPlayerH - 78, 218, 66};
+    const Rectangle box{W - 230, H - kPlayerH - 96, 218, 84};
     DrawRectangleRounded(box, 0.15f, 6, Fade(ui::theme.bg, 0.85f));
     DrawRectangleLinesEx(box, 1, ui::theme.border);
     const char* mode = eventWaiting_ ? "idle (event-wait)" : TextFormat("target %d fps", targetFps_);
@@ -640,4 +720,7 @@ void App::DrawDebugOverlay() {
                         player_.IsPlaying() ? "playing" : "stopped", player_.TimePlayed(),
                         player_.TimeLength(), visualizer_.BassLevel()),
              Vector2{box.x + 12, box.y + 44}, 13, ui::theme.textSecondary);
+    ui::Text(TextFormat("depth: %s · fg %s", depth_.StatusText(),
+                        fg_.tex.id != 0 ? "ready" : "none"),
+             Vector2{box.x + 12, box.y + 62}, 13, ui::theme.textSecondary);
 }

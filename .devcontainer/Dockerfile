@@ -9,6 +9,7 @@ RUN apt-get update \
         pkg-config \
         git \
         ca-certificates \
+        curl \
         libglfw3 \
         libglfw3-dev \
         libx11-dev \

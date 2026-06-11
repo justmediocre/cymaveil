@@ -93,6 +93,70 @@ void Visualizer::Update(float dt, bool playing) {
     bass_ = bassNow > bass_ ? bassNow : std::max(bassNow, bass_ - 2.0f * dt);
 }
 
+namespace {
+
+// saturateAndBrighten() from the web app's colorUtils.ts
+Color SaturateAndBrighten(Color c, float intensity) {
+    const float maxC = std::max({c.r, c.g, c.b, static_cast<unsigned char>(1)});
+    const float satBoost = 0.3f + intensity * 0.4f;
+    const float brighten = 0.15f + intensity * 0.15f;
+    const auto chan = [&](unsigned char v) {
+        const float sat = std::min(255.0f, v + (v / maxC) * 255.0f * satBoost);
+        return static_cast<unsigned char>(std::lround(sat + (255.0f - sat) * brighten));
+    };
+    return Color{chan(c.r), chan(c.g), chan(c.b), 255};
+}
+
+}  // namespace
+
+void Visualizer::DrawFullSurface(Rectangle area, Color accent, float intensity) const {
+    constexpr int kCount = 48;
+
+    // computeFrameStyle port ('auto' color mode, single accent)
+    const Color glow = SaturateAndBrighten(accent, intensity);
+    const float coreBrighten = 0.3f + intensity * 0.3f;
+    const Color core{static_cast<unsigned char>(glow.r + (255 - glow.r) * coreBrighten),
+                     static_cast<unsigned char>(glow.g + (255 - glow.g) * coreBrighten),
+                     static_cast<unsigned char>(glow.b + (255 - glow.b) * coreBrighten), 255};
+    const float glowMul = 0.3f + intensity * 0.7f;
+    const float coreMul = 0.4f + intensity * 0.6f;
+
+    const float slot = area.width / kCount;
+    const float gap = slot * 0.15f;
+    const float barW = slot - gap;
+
+    for (int i = 0; i < kCount; i++) {
+        // Resample our kBars log-spaced bins down to 48
+        const float pos = static_cast<float>(i) * (kBars - 1) / (kCount - 1);
+        const int i0 = static_cast<int>(pos);
+        const float frac = pos - i0;
+        const float v = bars_[i0] * (1 - frac) + bars_[std::min(i0 + 1, kBars - 1)] * frac;
+        if (v < 0.02f) continue;
+
+        const float barH = v * area.height;
+        const float x = area.x + i * slot + gap / 2;
+        const float y = area.y + area.height - barH;
+        const float alpha = 0.4f + v * 0.6f;
+
+        // Shadow pass: darken behind the bar for separation from the art
+        DrawRectangleGradientV(static_cast<int>(x - 3), static_cast<int>(y - 3),
+                               static_cast<int>(barW + 6), static_cast<int>(barH + 6),
+                               Fade(BLACK, alpha * 0.35f), Fade(BLACK, 0.0f));
+        // Glow pass
+        DrawRectangleGradientV(static_cast<int>(x - 2), static_cast<int>(y - 2),
+                               static_cast<int>(barW + 4), static_cast<int>(barH + 4),
+                               Fade(glow, alpha * glowMul), Fade(glow, 0.0f));
+        // Core pass (3-stop gradient: core -> glow at 70% -> transparent)
+        const float split = barH * 0.7f;
+        DrawRectangleGradientV(static_cast<int>(x), static_cast<int>(y), static_cast<int>(barW),
+                               static_cast<int>(split), Fade(core, alpha * coreMul),
+                               Fade(glow, alpha * coreMul * 0.8f));
+        DrawRectangleGradientV(static_cast<int>(x), static_cast<int>(y + split),
+                               static_cast<int>(barW), static_cast<int>(barH - split),
+                               Fade(glow, alpha * coreMul * 0.8f), Fade(glow, 0.0f));
+    }
+}
+
 void Visualizer::DrawBars(Rectangle area, Color color) const {
     const float slot = area.width / kBars;
     const float gap = std::max(1.0f, slot * 0.25f);
