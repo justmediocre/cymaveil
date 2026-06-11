@@ -202,7 +202,7 @@ std::vector<const Track*> Library::AlbumTracks(const std::string& albumId) const
     for (const auto& t : tracks_) {
         if (t.albumId == albumId) out.push_back(&t);
     }
-    // tracks_ is sorted by track artist, which scrambles compilations —
+    // tracks_ is sorted by title, which scrambles album order —
     // within an album, disc/track number is the order that matters.
     std::sort(out.begin(), out.end(), [](const Track* a, const Track* b) {
         if (a->discNum != b->discNum) return a->discNum < b->discNum;
@@ -214,11 +214,8 @@ std::vector<const Track*> Library::AlbumTracks(const std::string& albumId) const
 
 void Library::SortAndIndex() {
     std::sort(tracks_.begin(), tracks_.end(), [](const Track& a, const Track& b) {
-        if (a.artist != b.artist) return Lower(a.artist) < Lower(b.artist);
-        if (a.albumId != b.albumId) return a.albumId < b.albumId;
-        if (a.discNum != b.discNum) return a.discNum < b.discNum;
-        if (a.trackNum != b.trackNum) return a.trackNum < b.trackNum;
-        return Lower(a.title) < Lower(b.title);
+        if (a.title != b.title) return Lower(a.title) < Lower(b.title);
+        return Lower(a.artist) < Lower(b.artist);
     });
     std::sort(albums_.begin(), albums_.end(), [](const Album& a, const Album& b) {
         if (a.artist != b.artist) return Lower(a.artist) < Lower(b.artist);
