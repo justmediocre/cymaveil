@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <filesystem>
 
 #include "raymath.h"
@@ -81,9 +83,13 @@ void ArtCache::Clear() {
 
 int App::Run() {
     // Fixed-size in screenshot mode so tiling WMs float the window at the
-    // requested resolution instead of fitting it into the layout.
-    SetConfigFlags(screenshotPath_.empty() ? (FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT)
-                                           : FLAG_MSAA_4X_HINT);
+    // requested resolution instead of fitting it into the layout, and no
+    // HIGHDPI so shots come out at the exact requested pixel size on any
+    // display. Interactively, HIGHDPI keeps layout in logical units: raylib
+    // scales the framebuffer (Wayland) or window + mouse (X11) for us.
+    SetConfigFlags(screenshotPath_.empty()
+                       ? (FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI)
+                       : FLAG_MSAA_4X_HINT);
     InitWindow(1280, 800, "Cymaveil");
     Image icon = LoadImageFromMemory(".png", kIconPng, kIconPngSize);
     if (icon.data != nullptr) {
@@ -93,7 +99,16 @@ int App::Run() {
         SetWindowIcon(icon);
         UnloadImage(icon);
     }
-    SetWindowMinSize(980, 640);
+    // GLFW size limits are physical pixels on X11 but logical units on
+    // Wayland; convert so the minimum stays 980x640 logical either way.
+    // Backend check mirrors GLFW's own platform selection (platform.c).
+    const char* session = std::getenv("XDG_SESSION_TYPE");
+    const bool onWayland =
+        std::getenv("WAYLAND_DISPLAY") != nullptr &&
+        !(session != nullptr && std::strcmp(session, "x11") == 0 && std::getenv("DISPLAY") != nullptr);
+    const Vector2 dpi = GetWindowScaleDPI();  // {1,1} without FLAG_WINDOW_HIGHDPI
+    SetWindowMinSize(static_cast<int>(980 * (onWayland ? 1.0f : dpi.x)),
+                     static_cast<int>(640 * (onWayland ? 1.0f : dpi.y)));
     SetExitKey(KEY_NULL);  // ESC navigates, doesn't quit
     SetTargetFPS(targetFps_);
     InitAudioDevice();
