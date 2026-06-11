@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <unordered_map>
 #include <vector>
 
 #include "raymath.h"
@@ -14,11 +15,12 @@ Theme theme;
 
 namespace {
 
-Font g_font{};
-bool g_fontLoaded = false;
-
-// One font atlas rendered at high size, scaled down at draw time (bilinear).
-constexpr int kAtlasSize = 48;
+// Glyphs downscaled from a single large atlas look smeared at UI sizes, so
+// each requested pixel size gets its own atlas, rasterized on first use.
+unsigned char* g_fontData = nullptr;
+int g_fontDataSize = 0;
+std::vector<int> g_cps;
+std::unordered_map<int, Font> g_fonts;
 
 const char* kFontCandidates[] = {
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",       // debian/ubuntu (dev container)
@@ -38,8 +40,35 @@ std::vector<int> Codepoints() {
     return cps;
 }
 
-Font F() { return g_fontLoaded ? g_font : GetFontDefault(); }
-float Spacing(float size) { return g_fontLoaded ? 0.0f : size / 10.0f; }
+// Framebuffer pixels per screen unit; 1.0 unless the window is DPI-scaled.
+float DpiScale() {
+    const int sw = GetScreenWidth();
+    return sw > 0 ? static_cast<float>(GetRenderWidth()) / static_cast<float>(sw) : 1.0f;
+}
+
+Font& FontPx(int px) {
+    auto it = g_fonts.find(px);
+    if (it == g_fonts.end()) {
+        Font f = LoadFontFromMemory(".ttf", g_fontData, g_fontDataSize, px, g_cps.data(),
+                                    static_cast<int>(g_cps.size()));
+        SetTextureFilter(f.texture, TEXTURE_FILTER_BILINEAR);
+        it = g_fonts.emplace(px, f).first;
+    }
+    return it->second;
+}
+
+struct Face {
+    Font font;
+    float size;
+    float spacing;
+};
+
+Face FaceFor(float size) {
+    if (g_fontData == nullptr) return {GetFontDefault(), size, size / 10.0f};
+    const float scale = DpiScale();
+    const int px = std::max(1, static_cast<int>(std::lround(size * scale)));
+    return {FontPx(px), static_cast<float>(px) / scale, 0.0f};
+}
 
 // DrawTriangle culls based on winding; draw both windings so icon geometry
 // never silently disappears.
@@ -51,30 +80,45 @@ void Tri(Vector2 a, Vector2 b, Vector2 c, Color col) {
 }  // namespace
 
 void Init() {
-    auto cps = Codepoints();
+    g_cps = Codepoints();
     for (const char* path : kFontCandidates) {
         if (std::filesystem::exists(path)) {
-            g_font = LoadFontEx(path, kAtlasSize, cps.data(), static_cast<int>(cps.size()));
-            if (g_font.texture.id != 0) {
-                SetTextureFilter(g_font.texture, TEXTURE_FILTER_BILINEAR);
-                g_fontLoaded = true;
+            int dataSize = 0;
+            unsigned char* data = LoadFileData(path, &dataSize);
+            if (data != nullptr && dataSize > 0) {
+                g_fontData = data;
+                g_fontDataSize = dataSize;
+                TraceLog(LOG_INFO, "UI: font %s, dpi scale %.2f", path, DpiScale());
                 break;
             }
+            if (data != nullptr) UnloadFileData(data);
         }
     }
+    if (g_fontData == nullptr) TraceLog(LOG_WARNING, "UI: no system font found, using default");
 }
 
 void Shutdown() {
-    if (g_fontLoaded) UnloadFont(g_font);
-    g_fontLoaded = false;
+    for (auto& [px, font] : g_fonts) UnloadFont(font);
+    g_fonts.clear();
+    if (g_fontData != nullptr) {
+        UnloadFileData(g_fontData);
+        g_fontData = nullptr;
+        g_fontDataSize = 0;
+    }
 }
 
 void Text(const std::string& s, Vector2 pos, float size, Color c) {
-    DrawTextEx(F(), s.c_str(), pos, size, Spacing(size), c);
+    const Face f = FaceFor(size);
+    // Snap to the device pixel grid so atlas texels map 1:1 to pixels.
+    const float scale = DpiScale();
+    pos.x = std::round(pos.x * scale) / scale;
+    pos.y = std::round(pos.y * scale) / scale;
+    DrawTextEx(f.font, s.c_str(), pos, f.size, f.spacing, c);
 }
 
 Vector2 Measure(const std::string& s, float size) {
-    return MeasureTextEx(F(), s.c_str(), size, Spacing(size));
+    const Face f = FaceFor(size);
+    return MeasureTextEx(f.font, s.c_str(), f.size, f.spacing);
 }
 
 void TextEllipsis(const std::string& s, Vector2 pos, float maxWidth, float size, Color c) {
