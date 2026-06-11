@@ -9,6 +9,8 @@ int main(int argc, char** argv) {
             app.SetAutoplay(true);
         } else if (arg == "--shot" && i + 1 < argc) {
             app.SetScreenshotPath(argv[++i]);
+        } else if (arg == "--view" && i + 1 < argc) {
+            app.SetStartView(argv[++i]);
         } else {
             app.AddStartupFolder(arg);
         }

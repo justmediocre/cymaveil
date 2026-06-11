@@ -12,6 +12,7 @@ namespace {
 
 constexpr float kSidebarW = 220.0f;
 constexpr float kPlayerH = 88.0f;
+constexpr float kMiniPlayerH = 72.0f;
 constexpr float kRowH = 44.0f;
 
 Color Brighten(Color c, float t) {
@@ -100,6 +101,9 @@ int App::Run() {
     for (const auto& f : startupFolders_) {
         if (DirectoryExists(f.c_str())) library_.AddFolder(f);
     }
+    if (startView_ == "library") view_ = View::Library;
+    else if (startView_ == "albums") view_ = View::Albums;
+    else if (startView_ == "now") view_ = View::NowPlaying;
     MarkActivity();
 
     while (!WindowShouldClose()) Frame();
@@ -134,7 +138,7 @@ void App::Frame() {
         std::vector<const Track*> all;
         for (const auto& t : library_.Tracks()) all.push_back(&t);
         PlayFromTrackList(all, 0);
-        view_ = View::NowPlaying;
+        if (startView_.empty()) view_ = View::NowPlaying;
     }
     visualizer_.Update(GetFrameTime(), player_.IsPlaying());
     mosaic_.Update(GetFrameTime(), player_.IsPlaying(), MosaicCfg());
@@ -149,9 +153,13 @@ void App::Frame() {
 
     const float W = static_cast<float>(GetScreenWidth());
     const float H = static_cast<float>(GetScreenHeight());
-    const Rectangle sidebar{0, 0, kSidebarW, H - kPlayerH};
-    const Rectangle content{kSidebarW, 0, W - kSidebarW, H - kPlayerH};
-    const Rectangle bar{0, H - kPlayerH, W, kPlayerH};
+    // Full transport on Now Playing; compact mini player while browsing
+    // (none at all when nothing is loaded), like the web app's AppLayout.
+    const bool fullBar = view_ == View::NowPlaying;
+    const float barH = fullBar ? kPlayerH : (player_.Current() != nullptr ? kMiniPlayerH : 0.0f);
+    const Rectangle sidebar{0, 0, kSidebarW, H - barH};
+    const Rectangle content{kSidebarW, 0, W - kSidebarW, H - barH};
+    const Rectangle bar{0, H - barH, W, barH};
 
     BeginDrawing();
     ClearBackground(ui::theme.bg);
@@ -164,7 +172,11 @@ void App::Frame() {
         case View::NowPlaying: DrawNowPlayingView(content); break;
     }
     DrawSidebar(sidebar);
-    DrawPlayerBar(bar);
+    if (fullBar) {
+        DrawPlayerBar(bar);
+    } else if (barH > 0) {
+        DrawMiniPlayer(bar);
+    }
     if (showDebug_) DrawDebugOverlay();
 
     EndDrawing();
@@ -470,6 +482,58 @@ void App::DrawPlayerBar(Rectangle r) {
     }
     const Rectangle volIconR{volIcon.x - 12, volIcon.y - 12, 24, 24};
     if (ui::Clicked(volIconR)) player_.SetVolume(vol > 0.01f ? 0.0f : 0.8f);
+}
+
+void App::DrawMiniPlayer(Rectangle r) {
+    const Track* cur = player_.Current();
+    if (cur == nullptr) return;
+    const Album* album = library_.AlbumById(cur->albumId);
+
+    DrawRectangleRec(r, ui::theme.surface);
+    DrawLineEx(Vector2{r.x, r.y}, Vector2{r.x + r.width, r.y}, 1, ui::theme.borderSubtle);
+
+    const float cy = r.y + r.height / 2;
+    const Rectangle playR{r.x + r.width - 104, cy - 20, 40, 40};
+    const Rectangle nextR{r.x + r.width - 56, cy - 20, 40, 40};
+    const Rectangle progressHit{r.x, r.y - 8, r.width, 20};
+
+    // Scrubbable hairline progress sitting on the top edge (2px, 4px hovered)
+    const float length = player_.TimeLength();
+    if (!seekDragging_) seekValue_ = length > 0 ? player_.TimePlayed() / length : 0;
+    const bool wasDragging = seekDragging_;
+    ui::Slider(Rectangle{r.x, r.y - 2, r.width, 4}, &seekValue_, &seekDragging_);
+    if (wasDragging && !seekDragging_) player_.SeekTo(seekValue_ * length);
+    const float lineH = (ui::Hover(progressHit) || seekDragging_) ? 4.0f : 2.0f;
+    DrawRectangleRec(Rectangle{r.x, r.y, r.width, lineH}, ui::theme.borderSubtle);
+    DrawRectangleRec(Rectangle{r.x, r.y, r.width * Clamp(seekValue_, 0.0f, 1.0f), lineH},
+                     ui::theme.accent);
+
+    // Art thumb + track info
+    DrawAlbumArt(Rectangle{r.x + 16, cy - 24, 48, 48}, album, 0.5f);
+    const float infoW = playR.x - (r.x + 80) - 12;
+    ui::TextEllipsis(cur->title, Vector2{r.x + 80, cy - 18}, infoW, 15, ui::theme.text);
+    ui::TextEllipsis(cur->artist, Vector2{r.x + 80, cy + 2}, infoW, 12, ui::theme.textTertiary);
+
+    // Play/pause + next
+    if (ui::Hover(playR)) DrawCircleV(Vector2{playR.x + 20, cy}, 20, ui::theme.hover);
+    if (player_.IsPlaying()) {
+        ui::IconPause(Vector2{playR.x + 20, cy}, 15, ui::theme.text);
+    } else {
+        ui::IconPlay(Vector2{playR.x + 21, cy}, 16, ui::theme.text);
+    }
+    if (ui::Clicked(playR)) player_.TogglePause();
+
+    if (ui::Hover(nextR)) DrawCircleV(Vector2{nextR.x + 20, cy}, 20, ui::theme.hover);
+    ui::IconNext(Vector2{nextR.x + 20, cy}, 15, ui::theme.textSecondary);
+    if (ui::Clicked(nextR)) {
+        player_.Next();
+        manualSkip_ = true;
+    }
+
+    // Anywhere else on the bar expands into Now Playing
+    if (ui::Clicked(r) && !ui::Hover(playR) && !ui::Hover(nextR) && !ui::Hover(progressHit)) {
+        view_ = View::NowPlaying;
+    }
 }
 
 int App::DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, float* scroll,

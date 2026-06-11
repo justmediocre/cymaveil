@@ -38,6 +38,8 @@ public:
     void SetAutoplay(bool on) { autoplay_ = on; }
     // --shot <path>: capture the window to <path> ~2s after launch
     void SetScreenshotPath(const std::string& path) { screenshotPath_ = path; }
+    // --view <library|albums|now>: start on a specific view (testing)
+    void SetStartView(const std::string& name) { startView_ = name; }
     int Run();
 
 private:
@@ -52,6 +54,8 @@ private:
 
     void DrawSidebar(Rectangle r);
     void DrawPlayerBar(Rectangle r);
+    // Compact bar shown while browsing; click to expand into Now Playing.
+    void DrawMiniPlayer(Rectangle r);
     void DrawLibraryView(Rectangle r);
     void DrawAlbumsView(Rectangle r);
     void DrawAlbumDetailView(Rectangle r);
@@ -105,5 +109,6 @@ private:
     bool showDebug_ = false;
     bool autoplay_ = false;
     std::string screenshotPath_;
+    std::string startView_;
     int frameCount_ = 0;
 };

@@ -44,6 +44,9 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
 
 Library cache, settings, and extracted album art live in `~/.local/share/cymaveil/`.
 
+Dev/testing flags: `--play` (autoplay the library on launch), `--view library|albums|now`
+(start on a view), `--shot <path>` (capture a screenshot ~2s in, with debug overlay).
+
 ## Status
 
 Done in this first slice:
@@ -68,6 +71,9 @@ Done in this first slice:
       foreground on top — so the bars play behind the subject. The ~25 MB model
       downloads to `~/.local/share/cymaveil/models/` on first use (needs `curl`).
       Disable with `depthLayers: false` in config.json.
+- [x] Mini player while browsing (ported from `MiniPlayer.tsx`): compact bar with
+      scrubbable hairline progress, play/pause + next, click to expand into Now
+      Playing; the full transport lives on the Now Playing view
 - [x] Vinyl disc behind the Now Playing art (groove rings, rotating light-catch
       sheen at 1.8s/rev, accent-colored center label): slides out while playing,
       retracts on pause, and album changes sequence retract → art fade/scale
