@@ -678,14 +678,16 @@ void App::DrawNowPlayingView(Rectangle r) {
     const float artY = r.y + (hasFg ? 44 : 56);
     const Rectangle artRect{artX, artY, artSize, artSize};
 
-    // Ambient glow: layered soft halo (the web uses a blurred box-shadow, not
-    // a plate — a hard-edged rect makes the vinyl disc read oversized)
-    const float glowBase = 0.05f + 0.09f * bass;
-    for (int i = 3; i >= 1; i--) {
-        const float inflate = 9.0f * i;
+    // Ambient glow: LED-underglow style — a tight bright line at the art edge
+    // with a steep exponential falloff, not a wide soft wash
+    const float glowBase = 0.16f + 0.20f * bass;
+    constexpr float kGlowInflate[4] = {3, 6, 10, 16};
+    constexpr float kGlowAlpha[4] = {1.0f, 0.45f, 0.18f, 0.06f};
+    for (int i = 3; i >= 0; i--) {
+        const float inflate = kGlowInflate[i];
         DrawRectangleRounded(Rectangle{artX - inflate, artY - inflate, artSize + 2 * inflate,
                                        artSize + 2 * inflate},
-                             0.08f, 8, Fade(glow, glowBase / i));
+                             0.06f, 8, Fade(glow, glowBase * kGlowAlpha[i]));
     }
 
     if (config_.vinylDisc && shownAlbum != nullptr) {

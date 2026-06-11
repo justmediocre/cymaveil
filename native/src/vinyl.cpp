@@ -8,9 +8,11 @@ namespace {
 
 constexpr int kTexSize = 512;
 constexpr float kSpinSecondsPerRev = 1.8f;
-// Web tuning: 65px slide and 108% diameter at a 340px art card
+// 65px slide at a 340px art card (web tuning). The disc sits slightly
+// smaller than the artwork so it reads as a record inside its sleeve —
+// it never pokes above or below the art, only out the side while playing.
 constexpr float kSlideFrac = 65.0f / 340.0f;
-constexpr float kDiscScale = 1.08f;
+constexpr float kDiscScale = 0.96f;
 
 // cubic-bezier(0.22, 1, 0.36, 1) approximation
 float EaseOut(float t) {
