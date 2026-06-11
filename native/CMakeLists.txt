@@ -105,6 +105,22 @@ foreach(ORT_LIB ${ORT_SHARED_LIBS})
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_LIB} $<TARGET_FILE_DIR:${PROJECT_NAME}>)
 endforeach()
 
+# Embed the app icon (shared with the electron build) so SetWindowIcon works
+# without shipping a resource file next to the binary. Written to a staging
+# file first so an unchanged icon doesn't dirty the header every configure.
+set(ICON_PNG ${CMAKE_CURRENT_SOURCE_DIR}/../build/icon.png)
+set(ICON_HEADER ${CMAKE_BINARY_DIR}/generated/icon_png.h)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${ICON_PNG})
+file(READ ${ICON_PNG} ICON_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," ICON_BYTES ${ICON_HEX})
+file(WRITE ${ICON_HEADER}.in
+    "// Generated from build/icon.png by CMake — do not edit.\n"
+    "#pragma once\n\n"
+    "inline constexpr unsigned char kIconPng[] = {${ICON_BYTES}};\n"
+    "inline constexpr int kIconPngSize = sizeof(kIconPng);\n")
+execute_process(COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ICON_HEADER}.in ${ICON_HEADER})
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/generated)
+
 # TagLib's build tree doesn't export usable include dirs, so wire them up here.
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${taglib_SOURCE_DIR}/taglib

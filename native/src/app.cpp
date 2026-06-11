@@ -6,6 +6,7 @@
 
 #include "raymath.h"
 
+#include "icon_png.h"
 #include "ui.h"
 
 namespace {
@@ -84,6 +85,14 @@ int App::Run() {
     SetConfigFlags(screenshotPath_.empty() ? (FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT)
                                            : FLAG_MSAA_4X_HINT);
     InitWindow(1280, 800, "Cymaveil");
+    Image icon = LoadImageFromMemory(".png", kIconPng, kIconPngSize);
+    if (icon.data != nullptr) {
+        // GLFW only accepts R8G8B8A8 icons; no-op on Wayland (icon comes
+        // from the desktop file there).
+        ImageFormat(&icon, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+        SetWindowIcon(icon);
+        UnloadImage(icon);
+    }
     SetWindowMinSize(980, 640);
     SetExitKey(KEY_NULL);  // ESC navigates, doesn't quit
     SetTargetFPS(targetFps_);
