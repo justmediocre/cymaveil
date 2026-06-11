@@ -202,6 +202,13 @@ std::vector<const Track*> Library::AlbumTracks(const std::string& albumId) const
     for (const auto& t : tracks_) {
         if (t.albumId == albumId) out.push_back(&t);
     }
+    // tracks_ is sorted by track artist, which scrambles compilations —
+    // within an album, disc/track number is the order that matters.
+    std::sort(out.begin(), out.end(), [](const Track* a, const Track* b) {
+        if (a->discNum != b->discNum) return a->discNum < b->discNum;
+        if (a->trackNum != b->trackNum) return a->trackNum < b->trackNum;
+        return Lower(a->title) < Lower(b->title);
+    });
     return out;
 }
 
