@@ -9,6 +9,7 @@
 
 #include "config.h"
 #include "library.h"
+#include "mosaic.h"
 #include "player.h"
 #include "visualizer.h"
 
@@ -62,11 +63,14 @@ private:
                        bool showAlbum);
     void PlayFromTrackList(const std::vector<const Track*>& list, int index);
 
+    MosaicSettings MosaicCfg() const;
+
     Config config_;
     Library library_;
     Player player_{library_};
     Visualizer visualizer_;
     ArtCache art_;
+    Mosaic mosaic_;
 
     std::vector<std::string> startupFolders_;
 

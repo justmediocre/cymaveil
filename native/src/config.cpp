@@ -15,6 +15,11 @@ void Config::Load() {
         volume = std::clamp(j.value("volume", volume), 0.0f, 1.0f);
         shuffle = j.value("shuffle", shuffle);
         repeat = std::clamp(j.value("repeat", repeat), 0, 2);
+        mosaicEnabled = j.value("mosaicEnabled", mosaicEnabled);
+        mosaicOpacity = std::clamp(j.value("mosaicOpacity", mosaicOpacity), 0.0f, 1.0f);
+        mosaicDensity = std::clamp(j.value("mosaicDensity", mosaicDensity), 2, 16);
+        mosaicTransition = j.value("mosaicTransition", mosaicTransition);
+        mosaicFlat = j.value("mosaicFlat", mosaicFlat);
     } catch (const std::exception&) {
         // Corrupt config: fall back to defaults.
     }
@@ -25,6 +30,11 @@ void Config::Save() const {
         {"volume", volume},
         {"shuffle", shuffle},
         {"repeat", repeat},
+        {"mosaicEnabled", mosaicEnabled},
+        {"mosaicOpacity", mosaicOpacity},
+        {"mosaicDensity", mosaicDensity},
+        {"mosaicTransition", mosaicTransition},
+        {"mosaicFlat", mosaicFlat},
     };
     std::ofstream out(paths::ConfigFile());
     out << j.dump(2) << '\n';

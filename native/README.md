@@ -39,7 +39,8 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
   as CLI args). Rescans happen on a background thread.
 - Library / Albums / Now Playing views via the sidebar or keys **1 / 2 / 3**.
 - **Space** play/pause · **←/→** seek ±5s · **Ctrl+←/→** prev/next · **↑/↓** volume ·
-  **S** shuffle · **R** repeat cycle · **Esc** back · **F3** debug overlay.
+  **S** shuffle · **R** repeat cycle · **B** animate a mosaic tile · **Esc** back ·
+  **F3** debug overlay.
 
 Library cache, settings, and extracted album art live in `~/.local/share/cymaveil/`.
 
@@ -58,12 +59,18 @@ Done in this first slice:
 - [x] Lazy album-art texture cache with per-frame upload budget
 - [x] Idle-aware frame pacing (the point of the exercise)
 - [x] Dark theme ported from the web app's design tokens
+- [x] Background mosaic: isometric drifting grid of album art with flip /
+      shrink-grow / cross-fade / fade / iris tile transitions and the radial
+      vignette, ported from `AlbumArtBackground.tsx`. Drift and tile swaps only
+      run during playback, so the idle state stays at zero cost. Tunables live
+      in `config.json` (`mosaicEnabled`, `mosaicOpacity`, `mosaicDensity`,
+      `mosaicTransition`, `mosaicFlat`) until there's a settings UI.
 
 Not yet ported from the Electron app:
 
 - [ ] Playlists (+ M3U8 import/export) and Favorites
 - [ ] Search
-- [ ] Mosaic backgrounds, depth-layer masks, additional visualizer styles
+- [ ] Depth-layer masks, additional visualizer styles
 - [ ] Light theme, settings UI
 - [ ] File watching / incremental rescan (currently full rescan per change)
 - [ ] Playback-position restore across sessions

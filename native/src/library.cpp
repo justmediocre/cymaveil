@@ -146,7 +146,11 @@ void Library::AddFolder(const std::string& path) {
     if (std::find(folders_.begin(), folders_.end(), folder) == folders_.end()) {
         folders_.push_back(folder);
     }
-    StartScan();
+    if (ScanActive()) {
+        rescanQueued_ = true;  // current scan has a stale folder list
+    } else {
+        StartScan();
+    }
 }
 
 void Library::StartScan() {
@@ -176,6 +180,10 @@ bool Library::PollScan() {
     }
     SortAndIndex();
     Save();
+    if (rescanQueued_) {
+        rescanQueued_ = false;
+        StartScan();
+    }
     return true;
 }
 

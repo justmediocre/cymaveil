@@ -88,6 +88,7 @@ int App::Run() {
 
     config_.Load();
     library_.Load();
+    mosaic_.Rebuild(library_.Albums(), MosaicCfg());
     player_.SetVolume(config_.volume);
     player_.SetShuffle(config_.shuffle);
     player_.SetRepeat(static_cast<RepeatMode>(config_.repeat));
@@ -107,6 +108,7 @@ int App::Run() {
 
     player_.Shutdown();
     visualizer_.Detach();
+    mosaic_.Unload();
     art_.Clear();
     ui::Shutdown();
     CloseAudioDevice();
@@ -118,7 +120,10 @@ void App::Frame() {
     HandleDroppedFolders();
     HandleInput();
     player_.Update();
-    if (library_.PollScan()) MarkActivity();
+    if (library_.PollScan()) {
+        mosaic_.Rebuild(library_.Albums(), MosaicCfg());
+        MarkActivity();
+    }
     if (autoplay_ && !player_.HasTrack() && !library_.Tracks().empty()) {
         autoplay_ = false;
         std::vector<const Track*> all;
@@ -127,6 +132,7 @@ void App::Frame() {
         view_ = View::NowPlaying;
     }
     visualizer_.Update(GetFrameTime(), player_.IsPlaying());
+    mosaic_.Update(GetFrameTime(), player_.IsPlaying(), MosaicCfg());
     art_.ProcessQueue(2);
 
     const float W = static_cast<float>(GetScreenWidth());
@@ -137,6 +143,7 @@ void App::Frame() {
 
     BeginDrawing();
     ClearBackground(ui::theme.bg);
+    mosaic_.Draw(Rectangle{0, 0, W, H}, art_, library_, MosaicCfg(), ui::theme.bg);
 
     switch (view_) {
         case View::Library: DrawLibraryView(content); break;
@@ -151,6 +158,8 @@ void App::Frame() {
     EndDrawing();
 
     if (!screenshotPath_.empty()) showDebug_ = true;
+    // Catch a mosaic tile mid-transition in the capture
+    if (!screenshotPath_.empty() && frameCount_ == 90) mosaic_.Trigger(MosaicCfg());
     if (!screenshotPath_.empty() && ++frameCount_ == 120) {
         // Not TakeScreenshot(): it forces the path relative to the working dir
         Image shot = LoadImageFromScreen();
@@ -187,6 +196,12 @@ void App::HandleInput() {
     if (IsKeyPressed(KEY_THREE)) view_ = View::NowPlaying;
     if (IsKeyPressed(KEY_ESCAPE) && view_ == View::AlbumDetail) view_ = View::Albums;
     if (IsKeyPressed(KEY_F3)) showDebug_ = !showDebug_;
+    if (IsKeyPressed(KEY_B)) mosaic_.Trigger(MosaicCfg());  // manually animate a tile
+}
+
+MosaicSettings App::MosaicCfg() const {
+    return MosaicSettings{config_.mosaicEnabled, config_.mosaicOpacity, config_.mosaicDensity,
+                          config_.mosaicTransition, config_.mosaicFlat};
 }
 
 void App::HandleDroppedFolders() {
@@ -213,7 +228,7 @@ void App::UpdatePacing() {
     //  - recent input / scan / pending art decodes: 60 fps
     //  - otherwise: block on OS events (near-zero usage until input arrives)
     const bool busy = library_.ScanActive() || art_.HasPendingWork() || seekDragging_ ||
-                      volumeDragging_;
+                      volumeDragging_ || mosaic_.Animating();
     const bool recentInput = GetTime() - lastActivity_ < 2.5;
 
     int fps;

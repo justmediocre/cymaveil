@@ -71,6 +71,7 @@ private:
     std::unordered_map<std::string, size_t> albumIdx_;
 
     std::thread scanThread_;
+    bool rescanQueued_ = false;  // folder added mid-scan; rescan when it lands
     std::atomic<bool> scanActive_{false};
     std::atomic<bool> scanDone_{false};
     std::atomic<int> scanCurrent_{0};
