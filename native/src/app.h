@@ -90,11 +90,6 @@ private:
     void DrawToast(float chromeH);
 
     void DrawAlbumArt(Rectangle r, const Album* album, float iconScale, float alpha = 1.0f);
-    // The album cover mid-flip: a textured quad turned about its vertical axis
-    // with perspective foreshortening (near edge grows, far edge shrinks) and
-    // a shading gradient, so the sleeve reads as a real 3D turn. flip is the
-    // vinyl flip progress 0..1; at the rest values it draws the full square.
-    void DrawFlippedArt(Rectangle r, const Album* album, float flip);
     // Placeholder "cover" for playlists (rounded tile + glyph).
     void DrawPlaylistIcon(Rectangle r, const Playlist& p, float iconScale);
     struct TableResult {

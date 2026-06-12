@@ -9,7 +9,6 @@
 #include <functional>
 
 #include "raymath.h"
-#include "rlgl.h"
 
 #include "appearance.h"
 #include "icon_png.h"
@@ -1605,10 +1604,17 @@ void App::DrawNowPlayingView(Rectangle r) {
         vinyl_.Draw(artRect, shownAlbum->accent, shownAlbum->dominant);
     }
 
-    // Album switch: the sleeve turns over, the new cover riding its back face.
-    // It squishes to edge-on at the flip midpoint, where the shown album swaps
-    // under us, so each half of the turn shows the correct cover in 3D.
-    DrawFlippedArt(artRect, shownAlbum, vinyl_.FlipProgress());
+    // Album switch: the sleeve flips over, the new cover riding its back face.
+    // Width squishes to nothing at edge-on (flip midpoint), where the shown
+    // album swaps under us, so each half of the turn shows the correct cover.
+    // A touch of shadow as it turns sells the third dimension.
+    const float flipW = std::fabs(std::cos(vinyl_.FlipProgress() * PI));
+    const Rectangle shownRect{artRect.x + artRect.width * (1 - flipW) / 2, artRect.y,
+                              artRect.width * flipW, artRect.height};
+    DrawAlbumArt(shownRect, shownAlbum, 1.4f, 1.0f);
+    if (flipW < 0.999f) {
+        DrawRectangleRounded(shownRect, 0.06f, 6, Fade(BLACK, 0.4f * (1.0f - flipW)));
+    }
 
     if (hasFg && vinyl_.ArtEntered()) {
         // The headline feature: bars play between the art and its subject.
@@ -1945,77 +1951,6 @@ void App::DrawAlbumArt(Rectangle r, const Album* album, float iconScale, float a
                      Fade(ui::theme.textTertiary, alpha));
     }
     DrawRectangleLinesEx(r, 1, Fade(ui::theme.borderSubtle, alpha));
-}
-
-void App::DrawFlippedArt(Rectangle r, const Album* album, float flip) {
-    const Texture2D* tex = album != nullptr ? art_.Get(*album) : nullptr;
-    if (tex == nullptr) {
-        // Not decoded yet: fall back to a flat squish so the flip still reads.
-        const float w = std::fabs(std::cos(flip * PI));
-        DrawAlbumArt(Rectangle{r.x + r.width * (1 - w) / 2, r.y, r.width * w, r.height}, album,
-                     1.4f, 1.0f);
-        return;
-    }
-
-    const float theta = flip * PI;  // 0 -> edge-on at PI/2 -> back at PI
-    const float ct = std::cos(theta), st = std::sin(theta);
-    const float cx = r.x + r.width / 2, cy = r.y + r.height / 2;
-    const float halfW = r.width / 2, halfH = r.height / 2;
-    // Smaller focal = stronger perspective. The sleeve turns about its vertical
-    // centre axis; each side's depth z bends its screen x and height.
-    const float focal = r.width * 1.6f;
-    const auto edgeX = [&](float lx) {
-        const float persp = focal / (focal + lx * st);
-        return cx + lx * ct * persp;
-    };
-    const auto edgeH = [&](float lx) { return halfH * focal / (focal + lx * st); };
-    const auto shade = [&](float lx) {
-        // The receding (far) edge dims; the near edge stays lit.
-        return std::clamp(1.0f - 0.5f * (lx * st / halfW), 0.4f, 1.0f);
-    };
-    const float lX = edgeX(-halfW), rX = edgeX(halfW);
-    const float lH = edgeH(-halfW), rH = edgeH(halfW);
-    const auto col = [](float s) {
-        const auto v = static_cast<unsigned char>(std::clamp(s, 0.0f, 1.0f) * 255);
-        return Color{v, v, v, 255};
-    };
-    const Color lC = col(shade(-halfW)), rC = col(shade(halfW));
-
-    // Square-crop the cover (matches DrawAlbumArt), in normalised UVs. Past the
-    // edge-on point the geometry mirrors, so flip the U range to keep the new
-    // cover reading correctly on the sleeve's back face.
-    const float side = static_cast<float>(std::min(tex->width, tex->height));
-    const float u0 = (tex->width - side) / 2 / tex->width;
-    const float u1 = u0 + side / tex->width;
-    const float v0 = (tex->height - side) / 2 / tex->height;
-    const float v1 = v0 + side / tex->height;
-    const float uL = flip <= 0.5f ? u0 : u1;
-    const float uR = flip <= 0.5f ? u1 : u0;
-
-    rlDisableBackfaceCulling();  // the quad turns inside-out past edge-on
-    rlSetTexture(tex->id);
-    rlBegin(RL_QUADS);
-    rlNormal3f(0, 0, 1);
-    rlColor4ub(lC.r, lC.g, lC.b, 255);
-    rlTexCoord2f(uL, v0);
-    rlVertex2f(lX, cy - lH);  // top-left
-    rlTexCoord2f(uL, v1);
-    rlVertex2f(lX, cy + lH);  // bottom-left
-    rlColor4ub(rC.r, rC.g, rC.b, 255);
-    rlTexCoord2f(uR, v1);
-    rlVertex2f(rX, cy + rH);  // bottom-right
-    rlTexCoord2f(uR, v0);
-    rlVertex2f(rX, cy - rH);  // top-right
-    rlEnd();
-    rlSetTexture(0);
-    rlEnableBackfaceCulling();
-
-    // Subtle frame on the cover's leading edges, fading as it turns edge-on.
-    const float frameA = std::fabs(ct);
-    DrawLineEx(Vector2{lX, cy - lH}, Vector2{lX, cy + lH}, 1,
-               Fade(ui::theme.borderSubtle, frameA));
-    DrawLineEx(Vector2{rX, cy - rH}, Vector2{rX, cy + rH}, 1,
-               Fade(ui::theme.borderSubtle, frameA));
 }
 
 void App::DrawPlaylistIcon(Rectangle r, const Playlist& p, float iconScale) {
