@@ -79,13 +79,15 @@ private:
     // Music-folder list + add-by-path field, rendered inside the Settings view.
     void DrawFolderSettings(Rectangle anchor);
     void DrawEmptyState(Rectangle r);
-    void DrawDebugOverlay();
+    // chromeH is the bottom chrome height (mini player bar) the overlay clears.
+    void DrawDebugOverlay(float chromeH);
     // Collapsible queue panel on the right edge; r is the revealed strip.
     void DrawQueuePanel(Rectangle r);
     // Right-click menu on track rows: favorites / Now Playing / playlists.
     void DrawTrackMenu();
     void OpenTrackMenu(const std::string& trackId);
-    void DrawToast();
+    // chromeH is the bottom chrome height the toast floats clear of.
+    void DrawToast(float chromeH);
 
     void DrawAlbumArt(Rectangle r, const Album* album, float iconScale, float alpha = 1.0f);
     // Placeholder "cover" for playlists (rounded tile + glyph).

@@ -18,7 +18,6 @@
 namespace {
 
 constexpr float kSidebarW = 220.0f;
-constexpr float kPlayerH = 88.0f;
 constexpr float kMiniPlayerH = 72.0f;
 constexpr float kRowH = 44.0f;
 constexpr float kQueueW = 320.0f;
@@ -284,8 +283,8 @@ void App::Frame() {
     if (miniBar) DrawMiniPlayer(bar);
     if (brush_.open) DrawBrushEditor(Rectangle{0, 0, W, H});
     DrawTrackMenu();
-    DrawToast();
-    if (showDebug_) DrawDebugOverlay();
+    DrawToast(barH);
+    if (showDebug_) DrawDebugOverlay(barH);
 
     EndDrawing();
     ui::BlockInput(false);
@@ -2242,13 +2241,13 @@ void App::Toast(const std::string& msg) {
     MarkActivity();
 }
 
-void App::DrawToast() {
+void App::DrawToast(float chromeH) {
     if (GetTime() >= toastUntil_) return;
     const float W = static_cast<float>(GetScreenWidth());
     const float H = static_cast<float>(GetScreenHeight());
     const Vector2 m = ui::Measure(toast_, 14);
     const float w = std::min(m.x + 36, W - 40), h = 40;
-    const Rectangle box{(W - w) / 2, H - kPlayerH - h - 24, w, h};
+    const Rectangle box{(W - w) / 2, H - chromeH - h - 24, w, h};
     DrawRectangleRounded(box, 0.5f, 8, Fade(ui::theme.elevated, 0.97f));
     DrawRectangleRoundedLinesEx(box, 0.5f, 8, 1, ui::theme.border);
     ui::TextEllipsis(toast_, Vector2{box.x + 18, box.y + (h - m.y) / 2}, w - 36, 14,
@@ -2292,10 +2291,10 @@ void App::ExportPlaylist(const Playlist& p) {
     }
 }
 
-void App::DrawDebugOverlay() {
+void App::DrawDebugOverlay(float chromeH) {
     const float W = static_cast<float>(GetScreenWidth());
     const float H = static_cast<float>(GetScreenHeight());
-    const Rectangle box{W - 230, H - kPlayerH - 96, 218, 84};
+    const Rectangle box{W - 230, H - chromeH - 96, 218, 84};
     DrawRectangleRounded(box, 0.15f, 6, Fade(ui::theme.bg, 0.85f));
     DrawRectangleLinesEx(box, 1, ui::theme.border);
     const char* mode = eventWaiting_ ? "idle (event-wait)" : TextFormat("target %d fps", targetFps_);
