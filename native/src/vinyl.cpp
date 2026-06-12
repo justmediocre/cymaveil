@@ -139,7 +139,7 @@ void Vinyl::Update(float dt, const std::string& targetAlbumId, bool playing, boo
     }
 
     if (flipping_) {
-        const float flipDur = fast_ ? 0.3f : 0.55f;
+        const float flipDur = fast_ ? 0.42f : 0.72f;
         flip_ = std::min(1.0f, flip_ + dt / flipDur);
         // Edge-on (the turn's halfway point): the new cover now faces us, so
         // swap which album the art draws.

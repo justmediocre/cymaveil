@@ -17,6 +17,10 @@ public:
                 float flip);
     const Texture2D& Texture() const { return rt_.texture; }
     bool Ready() const { return rt_.id != 0; }
+    // Fraction of the target the face-on cover fills; the caller scales the
+    // target up by 1/kCoverFrac so the cover maps to the art rect while the
+    // corners have room to swing out beyond it during the turn.
+    static constexpr float kCoverFrac = 0.74f;
     void Unload();
 
 private:

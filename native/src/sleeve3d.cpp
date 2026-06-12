@@ -10,8 +10,10 @@ namespace {
 
 constexpr int kRtSize = 768;
 constexpr float kHalf = 0.5f;       // half the cover's side, world units
-constexpr float kThick = 0.05f;     // sleeve thickness
-constexpr float kGloss = 0.42f;     // gloss highlight strength
+constexpr float kThick = 0.11f;     // sleeve thickness (edge reads even in a quick turn)
+constexpr float kGloss = 0.95f;     // gloss highlight strength
+constexpr float kFovy = 20.0f;      // camera field of view (mild perspective)
+constexpr float kPop = 0.24f;       // forward lift toward the viewer mid-turn
 
 // Light from the upper-left front; flat per-face diffuse is baked into vertex
 // colour, so only the cover's gloss sweep needs the shader.
@@ -46,9 +48,14 @@ void main() {
     vec4 tex = texture(texture0, fragTexCoord);
     vec3 col = tex.rgb*fragColor.rgb;
     float facing = clamp(uFacing, 0.0, 1.0);
-    float band = fragTexCoord.x*0.62 + (1.0 - fragTexCoord.y)*0.38;
-    float g = smoothstep(0.13, 0.0, abs(band - uTurn))*facing;
-    col += g*uGloss;
+    // A bright diagonal light streak sweeping across the cover as it turns,
+    // plus a faint overall glaze so the facing side reads as a glossy laminate.
+    // A hot squared core inside a wider soft halo sells the reflection.
+    float band = fragTexCoord.x*0.6 + (1.0 - fragTexCoord.y)*0.4;
+    float d = abs(band - uTurn);
+    float streak = smoothstep(0.18, 0.0, d);
+    float g = (streak*streak*uGloss + smoothstep(0.4, 0.0, d)*0.18 + 0.06)*facing;
+    col += g;
     finalColor = vec4(col, tex.a*fragColor.a)*colDiffuse;
 }
 )";
@@ -140,14 +147,21 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
     const Vector3 nTop = {0, 1, 0};
     const Vector3 nBot = {0, -1, 0};
 
-    const Color edge = Lerp(edgeFrom, edgeTo, flip);
+    // Bias the edge toward a worn-cardboard tan so the spine reads as a real
+    // sleeve edge instead of sinking into the (already dark) album dominant.
+    const Color kCardboard{128, 109, 84, 255};
+    const Color edge = Lerp(Lerp(edgeFrom, edgeTo, flip), kCardboard, 0.5f);
     const float h = kThick*0.5f;
 
+    // Pull the camera back so the face-on cover fills only kCoverFrac of the
+    // target — that headroom lets the corners swing out under perspective (and
+    // the forward pop) without the texture clipping them. The caller scales the
+    // target back up so the face-on cover still lands on the art rect.
     Camera3D cam{};
-    cam.position = {0, 0, 2.85f};
+    cam.position = {0, 0, kHalf / (Sleeve3D::kCoverFrac * std::tan(kFovy * 0.5f * DEG2RAD))};
     cam.target = {0, 0, 0};
     cam.up = {0, 1, 0};
-    cam.fovy = 20.0f;
+    cam.fovy = kFovy;
     cam.projection = CAMERA_PERSPECTIVE;
 
     BeginTextureMode(rt_);
@@ -160,6 +174,7 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
     SetShaderValue(shader_, locGloss_, &gloss, SHADER_UNIFORM_FLOAT);
 
     rlPushMatrix();
+    rlTranslatef(0, 0, kPop * st);  // lift toward the viewer, peaking edge-on
     rlRotatef(flip*180.0f, 0, 1, 0);
 
     // Square-crop the covers (matches the flat DrawAlbumArt), in normalised UVs.
@@ -204,10 +219,10 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
         {-kHalf, kHalf, h}, {kHalf, kHalf, h}, {kHalf, kHalf, -h}, {-kHalf, kHalf, -h}};
     const Vector3 bot[4] = {
         {-kHalf, -kHalf, -h}, {kHalf, -kHalf, -h}, {kHalf, -kHalf, h}, {-kHalf, -kHalf, h}};
-    Face(patina_, 0, Shade(edge, nRight, 0.42f), right, euv);
-    Face(patina_, 0, Shade(edge, nLeft, 0.42f), left, euv);
-    Face(patina_, 0, Shade(edge, nTop, 0.42f), top, euv);
-    Face(patina_, 0, Shade(edge, nBot, 0.42f), bot, euv);
+    Face(patina_, 0, Shade(edge, nRight, 0.58f), right, euv);
+    Face(patina_, 0, Shade(edge, nLeft, 0.58f), left, euv);
+    Face(patina_, 0, Shade(edge, nTop, 0.58f), top, euv);
+    Face(patina_, 0, Shade(edge, nBot, 0.58f), bot, euv);
 
     rlPopMatrix();
     EndShaderMode();

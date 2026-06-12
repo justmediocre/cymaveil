@@ -1650,7 +1650,12 @@ void App::DrawNowPlayingView(Rectangle r) {
         const Texture2D& slab = sleeve3d_.Texture();
         const Rectangle src{0, 0, static_cast<float>(slab.width),
                             -static_cast<float>(slab.height)};  // render textures are y-flipped
-        DrawTexturePro(slab, src, artRect, Vector2{0, 0}, 0, Fade(WHITE, slabA));
+        // The cover fills only kCoverFrac of the target; scale up so it maps to
+        // the art rect and the turning corners overshoot the art, not the frame.
+        const float inflate = artSize * (1.0f / Sleeve3D::kCoverFrac - 1.0f) / 2.0f;
+        const Rectangle sdst{artRect.x - inflate, artRect.y - inflate, artSize + 2 * inflate,
+                             artSize + 2 * inflate};
+        DrawTexturePro(slab, src, sdst, Vector2{0, 0}, 0, Fade(WHITE, slabA));
     } else if (vinyl_.Flipping()) {
         // Both covers not yet decoded: flat squish keeps the turn going.
         const float w = std::fabs(std::cos(flip * PI));
