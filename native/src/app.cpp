@@ -137,7 +137,7 @@ int App::Run() {
     for (const auto& f : startupImports_) ImportM3uFile(f);
     MarkActivity();
 
-    while (!WindowShouldClose()) Frame();
+    while (!WindowShouldClose() && !quitRequested_) Frame();
 
     config_.volume = player_.Volume();
     config_.shuffle = player_.Shuffle();
@@ -242,6 +242,7 @@ void App::Frame() {
         Image shot = LoadImageFromScreen();
         ExportImage(shot, screenshotPath_.c_str());
         UnloadImage(shot);
+        quitRequested_ = true;
     }
     UpdatePacing();
 }

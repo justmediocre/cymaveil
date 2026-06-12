@@ -166,4 +166,5 @@ private:
     std::string screenshotPath_;
     std::string startView_;
     int frameCount_ = 0;
+    bool quitRequested_ = false;
 };
