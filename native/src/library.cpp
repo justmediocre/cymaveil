@@ -147,6 +147,7 @@ void Library::AddFolder(const std::string& path) {
     const std::string& folder = ec ? path : canon;
     if (std::find(folders_.begin(), folders_.end(), folder) == folders_.end()) {
         folders_.push_back(folder);
+        scanGeneration_++;  // any in-flight scan now has a stale folder view
     }
     RequestRescan();
 }
@@ -155,6 +156,7 @@ void Library::RemoveFolder(const std::string& path) {
     auto it = std::find(folders_.begin(), folders_.end(), path);
     if (it == folders_.end()) return;
     folders_.erase(it);
+    scanGeneration_++;  // any in-flight scan now has a stale folder view
     if (folders_.empty()) {
         // Nothing left to scan: drop everything and persist the empty library.
         // (A rescan with no folders would early-out and leave stale tracks.)
@@ -187,7 +189,8 @@ void Library::StartScan() {
     scanSkipped_ = 0;
     // Copy the current tracks/albums into the worker so unchanged files can be
     // reused. tracks_/albums_ stay readable on the main thread during the scan.
-    scanThread_ = std::thread(&Library::ScanWorker, this, folders_, tracks_, albums_);
+    scanThread_ = std::thread(&Library::ScanWorker, this, scanGeneration_, folders_, tracks_,
+                              albums_);
 }
 
 ScanStatus Library::Status() const {
@@ -197,12 +200,28 @@ ScanStatus Library::Status() const {
 bool Library::PollScan() {
     if (!scanDone_.load()) return false;
     scanDone_ = false;
+    bool stale;
     {
         std::lock_guard<std::mutex> lock(resultMutex_);
-        tracks_ = std::move(pendingTracks_);
-        albums_ = std::move(pendingAlbums_);
+        // Folders changed after this scan started (e.g. its only folder was
+        // removed). Discarding the results keeps the removed folder's tracks
+        // out of the library instead of resurrecting them.
+        stale = pendingGeneration_ != scanGeneration_;
+        if (!stale) {
+            tracks_ = std::move(pendingTracks_);
+            albums_ = std::move(pendingAlbums_);
+        }
         pendingTracks_.clear();
         pendingAlbums_.clear();
+    }
+    if (stale) {
+        // A queued rescan would early-out if folders_ is now empty, so the
+        // RemoveFolder-empty path already cleared and persisted the library.
+        if (rescanQueued_) {
+            rescanQueued_ = false;
+            StartScan();
+        }
+        return false;
     }
     SortAndIndex();
     Save();
@@ -254,8 +273,8 @@ void Library::SortAndIndex() {
     for (size_t i = 0; i < albums_.size(); i++) albumIdx_[albums_[i].id] = i;
 }
 
-void Library::ScanWorker(std::vector<std::string> folders, std::vector<Track> oldTracks,
-                         std::vector<Album> oldAlbums) {
+void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
+                         std::vector<Track> oldTracks, std::vector<Album> oldAlbums) {
     // Index the prior cache so unchanged files can be reused verbatim instead
     // of paying for another TagLib parse + artwork/color extraction.
     std::unordered_map<std::string, const Track*> oldByPath;
@@ -405,6 +424,7 @@ void Library::ScanWorker(std::vector<std::string> folders, std::vector<Track> ol
 
     {
         std::lock_guard<std::mutex> lock(resultMutex_);
+        pendingGeneration_ = generation;
         pendingTracks_ = std::move(tracks);
         pendingAlbums_.clear();
         pendingAlbums_.reserve(albums.size());

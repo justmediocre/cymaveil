@@ -76,8 +76,10 @@ private:
     void SortAndIndex();
     // Carries snapshots of the prior tracks/albums so unchanged files can be
     // reused instead of re-parsed. Snapshots are copied in on the main thread.
-    void ScanWorker(std::vector<std::string> folders, std::vector<Track> oldTracks,
-                    std::vector<Album> oldAlbums);
+    // generation identifies the folder-set view this scan was started for; its
+    // results are discarded if the folders change before the scan lands.
+    void ScanWorker(unsigned generation, std::vector<std::string> folders,
+                    std::vector<Track> oldTracks, std::vector<Album> oldAlbums);
 
     std::vector<Track> tracks_;
     std::vector<Album> albums_;
@@ -87,6 +89,10 @@ private:
 
     std::thread scanThread_;
     bool rescanQueued_ = false;  // folder added mid-scan; rescan when it lands
+    // Bumped whenever the folder set changes. The worker stamps its results with
+    // the generation it started at; PollScan() drops results from a stale
+    // generation so a removed folder's tracks can't be resurrected.
+    unsigned scanGeneration_ = 0;
     std::atomic<bool> scanActive_{false};
     std::atomic<bool> scanDone_{false};
     std::atomic<int> scanCurrent_{0};
@@ -95,4 +101,5 @@ private:
     std::mutex resultMutex_;
     std::vector<Track> pendingTracks_;
     std::vector<Album> pendingAlbums_;
+    unsigned pendingGeneration_ = 0;  // generation the pending results were scanned for
 };
