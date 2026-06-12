@@ -42,12 +42,12 @@ public:
     void SetAutoplay(bool on) { autoplay_ = on; }
     // --shot <path>: capture the window to <path> ~2s after launch
     void SetScreenshotPath(const std::string& path) { screenshotPath_ = path; }
-    // --view <library|albums|now>: start on a specific view (testing)
+    // --view <search|library|albums|now>: start on a specific view (testing)
     void SetStartView(const std::string& name) { startView_ = name; }
     int Run();
 
 private:
-    enum class View { Library, Albums, AlbumDetail, Playlists, PlaylistDetail, NowPlaying };
+    enum class View { Search, Library, Albums, AlbumDetail, Playlists, PlaylistDetail, NowPlaying };
 
     void Frame();
     void HandleInput();
@@ -64,6 +64,7 @@ private:
     void DrawPlayerBar(Rectangle r);
     // Compact bar shown while browsing; click to expand into Now Playing.
     void DrawMiniPlayer(Rectangle r);
+    void DrawSearchView(Rectangle r);
     void DrawLibraryView(Rectangle r);
     void DrawAlbumsView(Rectangle r);
     void DrawAlbumDetailView(Rectangle r);
@@ -134,6 +135,10 @@ private:
     View view_ = View::Library;
     std::string detailAlbumId_;
     std::string detailPlaylistId_;
+    // Search filters across track titles, artists, and album titles/artists.
+    std::string searchQuery_;
+    float searchAlbumsScroll_ = 0;
+    float searchTracksScroll_ = 0;
     float libScroll_ = 0;
     float albumsScroll_ = 0;
     float detailScroll_ = 0;

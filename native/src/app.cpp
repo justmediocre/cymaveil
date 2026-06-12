@@ -132,6 +132,7 @@ int App::Run() {
         if (DirectoryExists(f.c_str())) library_.AddFolder(f);
     }
     if (startView_ == "library") view_ = View::Library;
+    else if (startView_ == "search") view_ = View::Search;
     else if (startView_ == "albums") view_ = View::Albums;
     else if (startView_ == "playlists") view_ = View::Playlists;
     else if (startView_ == "now") view_ = View::NowPlaying;
@@ -226,6 +227,7 @@ void App::Frame() {
     mosaic_.Draw(Rectangle{0, 0, W, H}, art_, library_, MosaicCfg(), ui::theme.bg);
 
     switch (view_) {
+        case View::Search: DrawSearchView(content); break;
         case View::Library: DrawLibraryView(content); break;
         case View::Albums: DrawAlbumsView(content); break;
         case View::AlbumDetail: DrawAlbumDetailView(content); break;
@@ -360,8 +362,15 @@ void App::HandleInput() {
         return;
     }
 
-    if (IsKeyPressed(KEY_SPACE)) player_.TogglePause();
     const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    if (ctrl && IsKeyPressed(KEY_F)) {
+        view_ = View::Search;
+        return;
+    }
+    // On the Search view the always-focused input owns the keyboard.
+    if (view_ == View::Search) return;
+
+    if (IsKeyPressed(KEY_SPACE)) player_.TogglePause();
     if (IsKeyPressed(KEY_RIGHT)) {
         if (ctrl) {
             player_.Next();
@@ -521,7 +530,8 @@ void App::DrawSidebar(Rectangle r) {
         const char* label;
         View view;
     };
-    const NavItem items[] = {{"Library", View::Library},
+    const NavItem items[] = {{"Search", View::Search},
+                             {"Library", View::Library},
                              {"Albums", View::Albums},
                              {"Playlists", View::Playlists},
                              {"Now Playing", View::NowPlaying}};
@@ -843,6 +853,114 @@ std::vector<const Track*> App::ResolveTracks(const std::vector<std::string>& ids
         if (const Track* t = library_.TrackById(id)) out.push_back(t);
     }
     return out;
+}
+
+void App::DrawSearchView(Rectangle r) {
+    const float pad = 24;
+
+    // ── Search box: leading magnifier + always-focused single-line input ──
+    const Rectangle boxRow{r.x + pad, r.y + 24, r.width - pad * 2, 44};
+    ui::IconSearch(Vector2{boxRow.x + 11, boxRow.y + boxRow.height / 2}, 18, ui::theme.textTertiary);
+    const Rectangle input{boxRow.x + 34, boxRow.y, boxRow.width - 34, boxRow.height};
+    const int res = ui::TextInput(input, &searchQuery_, 16);
+    if (searchQuery_.empty()) {
+        ui::Text("Search tracks, albums, and artists…", Vector2{input.x + 14, input.y + 14}, 15,
+                 ui::theme.textTertiary);
+    }
+    if (res == -1) {  // Esc clears the query, then backs out to the Library.
+        if (searchQuery_.empty()) {
+            view_ = View::Library;
+        } else {
+            searchQuery_.clear();
+        }
+        return;
+    }
+
+    // Trimmed, lower-cased query for case-insensitive substring matching.
+    std::string q;
+    for (char c : searchQuery_) q += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    while (!q.empty() && q.front() == ' ') q.erase(q.begin());
+    while (!q.empty() && q.back() == ' ') q.pop_back();
+
+    if (q.empty()) {
+        ui::TextCentered("Start typing to search", Vector2{r.x + r.width / 2, r.y + r.height / 2}, 15,
+                         ui::theme.textTertiary);
+        return;
+    }
+
+    const auto contains = [&](const std::string& s) {
+        std::string l;
+        for (char c : s) l += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return l.find(q) != std::string::npos;
+    };
+
+    std::vector<const Album*> albums;
+    for (const auto& a : library_.Albums()) {
+        if (contains(a.title) || contains(a.artist)) albums.push_back(&a);
+    }
+    std::vector<const Track*> tracks;
+    for (const auto& t : library_.Tracks()) {
+        const Album* a = library_.AlbumById(t.albumId);
+        if (contains(t.title) || contains(t.artist) || (a != nullptr && contains(a->artist))) {
+            tracks.push_back(&t);
+        }
+    }
+
+    if (albums.empty() && tracks.empty()) {
+        ui::TextCentered(TextFormat("No results for \"%s\"", searchQuery_.c_str()),
+                         Vector2{r.x + r.width / 2, r.y + r.height / 2}, 15, ui::theme.textTertiary);
+        return;
+    }
+
+    float y = boxRow.y + boxRow.height + 24;
+    const float bottom = r.y + r.height;
+
+    // ── Albums: capped at ~40% of the remaining height, own scroll ──
+    if (!albums.empty()) {
+        ui::Text("ALBUMS", Vector2{r.x + pad, y}, 12, ui::theme.textTertiary);
+        y += 24;
+        const float cardW = 150, artH = 150, cardH = artH + 46, gap = 18;
+        const Rectangle grid{r.x, y, r.width, std::min((bottom - y) * 0.4f, cardH + gap + 8)};
+        const int cols = std::max(
+            1, static_cast<int>((grid.width - pad * 2 + gap) / (cardW + gap)));
+        const int rows = (static_cast<int>(albums.size()) + cols - 1) / cols;
+        const float contentH = rows * (cardH + gap) + 8;
+        ui::ScrollArea(grid, contentH, &searchAlbumsScroll_);
+        BeginScissorMode(static_cast<int>(grid.x), static_cast<int>(grid.y),
+                         static_cast<int>(grid.width), static_cast<int>(grid.height));
+        for (size_t i = 0; i < albums.size(); i++) {
+            const int row = static_cast<int>(i) / cols, col = static_cast<int>(i) % cols;
+            const float cx = grid.x + pad + col * (cardW + gap);
+            const float cy = grid.y + 4 + row * (cardH + gap) - searchAlbumsScroll_;
+            if (cy + cardH < grid.y || cy > grid.y + grid.height) continue;
+            const Album& a = *albums[i];
+            const Rectangle card{cx - 8, cy - 8, cardW + 16, cardH + 16};
+            if (ui::Hover(card) && ui::Hover(grid)) {
+                DrawRectangleRounded(card, 0.08f, 6, ui::theme.elevated);
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    detailAlbumId_ = a.id;
+                    detailScroll_ = 0;
+                    view_ = View::AlbumDetail;
+                }
+            }
+            DrawAlbumArt(Rectangle{cx, cy, cardW, artH}, &a, 1.0f);
+            ui::TextEllipsis(a.title, Vector2{cx, cy + artH + 8}, cardW, 14, ui::theme.text);
+            ui::TextEllipsis(a.artist, Vector2{cx, cy + artH + 26}, cardW, 12,
+                             ui::theme.textSecondary);
+        }
+        EndScissorMode();
+        y = grid.y + grid.height + 20;
+    }
+
+    // ── Tracks: fill the rest with the shared track table ──
+    if (!tracks.empty() && y < bottom - 60) {
+        ui::Text("TRACKS", Vector2{r.x + pad, y}, 12, ui::theme.textTertiary);
+        y += 22;
+        const Rectangle table{r.x, y, r.width, bottom - y};
+        const TableResult tr = DrawTrackTable(table, tracks, &searchTracksScroll_, true);
+        if (tr.clicked >= 0) PlayFromTrackList(tracks, tr.clicked);
+        if (tr.rightClicked >= 0) OpenTrackMenu(tracks[tr.rightClicked]->id);
+    }
 }
 
 void App::DrawLibraryView(Rectangle r) {

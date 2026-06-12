@@ -345,6 +345,16 @@ void IconPlus(Vector2 c, float s, Color col) {
     DrawLineEx(Vector2{c.x, c.y - e}, Vector2{c.x, c.y + e}, t, col);
 }
 
+void IconSearch(Vector2 c, float s, Color col) {
+    const float r = s * 0.28f;
+    const float t = std::max(1.5f, s * 0.1f);
+    // Lens sits up-left so the handle can trail to the bottom-right.
+    const Vector2 lens{c.x - s * 0.12f, c.y - s * 0.12f};
+    DrawRing(lens, r - t / 2, r + t / 2, 0.0f, 360.0f, 24, col);
+    const float d = r * 0.7071f;  // 45° offset to the rim
+    DrawLineEx(Vector2{lens.x + d, lens.y + d}, Vector2{c.x + s * 0.42f, c.y + s * 0.42f}, t, col);
+}
+
 std::string FormatTime(float seconds) {
     if (seconds < 0 || !std::isfinite(seconds)) seconds = 0;
     const int total = static_cast<int>(seconds);

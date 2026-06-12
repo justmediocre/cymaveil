@@ -65,6 +65,7 @@ void IconHeart(Vector2 c, float size, Color col, bool filled);
 void IconClose(Vector2 c, float size, Color col);
 void IconQueue(Vector2 c, float size, Color col);  // stacked-list glyph
 void IconPlus(Vector2 c, float size, Color col);
+void IconSearch(Vector2 c, float size, Color col);  // magnifier (ring + handle)
 
 std::string FormatTime(float seconds);
 

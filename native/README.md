@@ -40,6 +40,8 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
   as CLI args). Rescans happen on a background thread. Dropping a `.m3u`/`.m3u8` file
   imports it as a playlist instead (entries are matched against the library by path).
 - Library / Albums / Playlists / Now Playing views via the sidebar or keys **1 / 2 / 3 / 4**.
+- **Ctrl+F** (or the sidebar **Search** entry) filters across tracks, albums, and artists;
+  **Esc** clears the query, then exits back to the Library.
 - **Right-click any track row** for the context menu: play, toggle Favorites, add/remove
   Now Playing, add to a playlist (or start a new one from the track).
 - **Q** (or the list button in either player bar) toggles the queue panel: the active
@@ -125,10 +127,13 @@ Done in this first slice:
       up paused at the saved position; tracks that left the library are
       dropped from the restored queue. `--play` resumes a restored session
       instead of restarting the library from the top.
+- [x] Search: a live filter across track titles, track artists, and album
+      titles/artists. The sidebar **Search** entry (or **Ctrl+F**) opens an
+      always-focused box; matches are split into an album grid (click to open
+      the album) and a track table (click to play, right-click for the menu).
 
 Not yet ported from the Electron app:
 
-- [ ] Search
 - [ ] Manual mask painting (brush editor), mask import/export, batch pre-generation
 - [ ] Alternative visualizer styles (contour bars, radial burst, waveform, mirrored)
       — full-surface (the default) is in
