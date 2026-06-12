@@ -14,7 +14,7 @@ constexpr float kThick = 0.03f;     // sleeve thickness (edge reads even in a qu
 constexpr float kGloss = 0.95f;     // gloss highlight strength
 constexpr float kFovy = 20.0f;      // camera field of view (mild perspective)
 constexpr float kPop = 0.24f;       // forward lift toward the viewer mid-turn
-constexpr float kWear = 0.5f;       // worn-sleeve patina strength on the covers
+constexpr float kWear = 0.32f;      // worn-sleeve patina strength on the covers
 
 // Light from the upper-left front; flat per-face diffuse is baked into vertex
 // colour, so only the cover's gloss sweep needs the shader.
@@ -52,26 +52,47 @@ float hash(vec2 p) {
     p += dot(p, p + 45.32);
     return fract(p.x*p.y);
 }
+// Smooth value noise + fractal Brownian motion: the self-similar, cloudy detail
+// that mimics how real sleeve wear breaks up at every scale.
+float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f*f*(3.0 - 2.0*f);
+    float a = hash(i), b = hash(i + vec2(1, 0));
+    float c = hash(i + vec2(0, 1)), d = hash(i + vec2(1, 1));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm(vec2 p) {
+    float s = 0.0, amp = 0.5;
+    for (int i = 0; i < 5; i++) { s += amp*vnoise(p); p = p*2.0 + 7.3; amp *= 0.5; }
+    return s;
+}
 
 void main() {
     vec4 tex = texture(texture0, fragTexCoord);
     vec3 col = tex.rgb*fragColor.rgb;
     vec2 p = fragTexCoord;
 
-    // Worn-sleeve patina (covers only): the disc's ring impression, abraded
-    // edges/corners, a faint spindle mark, speckle and a few scratches — the
-    // laminate goes lighter where it's scuffed, like a handled record sleeve.
+    // Worn-sleeve patina (covers only): the disc's ring impression plus abraded
+    // edges and blotchy scuffing, all driven by domain-warped fractal noise so
+    // the wear is fine and irregular instead of a clean ring/uniform grain.
     if (uWear > 0.0) {
+        vec2 q = p - 0.5;
+        float r = length(q), ang = atan(q.y, q.x);
+        float grain = fbm(p*20.0 + fbm(p*7.0));   // warped fractal field
+        float micro = fbm(p*64.0);                // fine high-frequency detail
+
+        // Ring wear: radius wobbles with angle and the band is broken into arcs
+        // by noise, so it never reads as a perfect circle.
+        float rad = 0.45 + 0.03*(fbm(vec2(ang*2.0, 4.0)) - 0.5)*2.0;
+        float ring = smoothstep(0.026, 0.0, abs(r - rad))*smoothstep(0.42, 0.78, fbm(vec2(ang*4.0, r*16.0)));
+
         float edge = clamp(1.0 - 2.0*min(min(p.x, 1.0 - p.x), min(p.y, 1.0 - p.y)), 0.0, 1.0);
-        float corner = pow(edge, 3.0);
-        float r = length(p - 0.5);
-        float ring = smoothstep(0.04, 0.0, abs(r - 0.46))*(0.6 + 0.4*hash(p*60.0));
-        float spindle = smoothstep(0.085, 0.05, r)*0.4;
-        float speckle = hash(floor(p*260.0))*edge;
-        float sc = hash(vec2(floor((p.x*0.7 + p.y)*90.0), 3.0));
-        float scratch = smoothstep(0.975, 1.0, sc)*0.8;
-        float wear = (corner*0.75 + ring*0.5 + spindle*0.3 + speckle*0.3 + scratch)*uWear;
-        col = mix(col, vec3(0.66), clamp(wear, 0.0, 0.8));
+        float corner = pow(edge, 2.5)*(0.3 + grain);
+        float blotch = smoothstep(0.6, 0.96, grain*0.7 + micro*0.3);
+
+        float dull = clamp((corner*0.8 + blotch*0.5)*uWear, 0.0, 0.55);
+        float light = (ring*0.5 + smoothstep(0.82, 0.93, micro)*0.22)*uWear;  // lighter scuffs
+        col = mix(col, vec3(0.58), dull) + light;
     }
 
     float facing = clamp(uFacing, 0.0, 1.0);
