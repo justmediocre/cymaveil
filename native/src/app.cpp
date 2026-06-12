@@ -1833,7 +1833,8 @@ void App::DrawFolderSettings(Rectangle anchor) {
         while (!path.empty() && (path.back() == ' ' || path.back() == '\t' || path.back() == '\n'))
             path.pop_back();
         if (path.empty()) return;
-        if (path[0] == '~') {  // expand a leading ~ to $HOME
+        // Expand a leading ~ only for "~" or a "~/" prefix; leave "~user" forms untouched.
+        if (path == "~" || (path.size() >= 2 && path[0] == '~' && path[1] == '/')) {
             if (const char* home = std::getenv("HOME"); home != nullptr) path = home + path.substr(1);
         }
         if (DirectoryExists(path.c_str())) {
