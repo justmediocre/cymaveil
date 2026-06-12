@@ -33,7 +33,7 @@ private:
     void AddWatchRecursive(const std::string& root);
 
     std::thread thread_;
-    int inotifyFd_ = -1;
+    int inotifyFd_ = -1;  // worker-owned: created/closed only on the worker thread
     int wakeFd_ = -1;  // eventfd: main thread -> worker (folders changed / stop)
     std::atomic<bool> stop_{false};
     std::atomic<bool> foldersDirty_{false};

@@ -43,16 +43,12 @@ bool HasAudioExt(const char* name) {
 FolderWatcher::~FolderWatcher() { Stop(); }
 
 void FolderWatcher::Start() {
-    if (inotifyFd_ != -1) return;
-    inotifyFd_ = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-    if (inotifyFd_ == -1) {
-        TraceLog(LOG_WARNING, "WATCHER: inotify_init1 failed; file watching disabled");
-        return;
-    }
+    if (thread_.joinable()) return;
+    // The worker owns inotifyFd_ exclusively; it creates it in Run() so the main
+    // thread never races on it. We only need wakeFd_ here to signal the worker.
     wakeFd_ = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     if (wakeFd_ == -1) {
-        close(inotifyFd_);
-        inotifyFd_ = -1;
+        TraceLog(LOG_WARNING, "WATCHER: eventfd failed; file watching disabled");
         return;
     }
     stop_ = false;
@@ -60,26 +56,32 @@ void FolderWatcher::Start() {
 }
 
 void FolderWatcher::Stop() {
-    if (inotifyFd_ == -1) return;
-    stop_ = true;
-    const uint64_t one = 1;
-    [[maybe_unused]] ssize_t n = write(wakeFd_, &one, sizeof(one));
-    if (thread_.joinable()) thread_.join();
-    close(wakeFd_);
-    close(inotifyFd_);
-    wakeFd_ = -1;
-    inotifyFd_ = -1;
+    // Always join a started worker regardless of whether inotify ever came up,
+    // otherwise destroying a joinable std::thread calls std::terminate.
+    if (thread_.joinable()) {
+        stop_ = true;
+        const uint64_t one = 1;
+        [[maybe_unused]] ssize_t n = write(wakeFd_, &one, sizeof(one));
+        thread_.join();
+    }
+    if (wakeFd_ != -1) {
+        close(wakeFd_);
+        wakeFd_ = -1;
+    }
 }
 
 void FolderWatcher::SetFolders(const std::vector<std::string>& folders) {
-    if (inotifyFd_ == -1) return;
+    // Store the folders even if the worker never started or inotify is down, so
+    // they're picked up if watching later comes up; don't gate on fd state.
     {
         std::lock_guard<std::mutex> lock(foldersMutex_);
         folders_ = folders;
     }
     foldersDirty_ = true;
-    const uint64_t one = 1;
-    [[maybe_unused]] ssize_t n = write(wakeFd_, &one, sizeof(one));
+    if (wakeFd_ != -1) {
+        const uint64_t one = 1;
+        [[maybe_unused]] ssize_t n = write(wakeFd_, &one, sizeof(one));
+    }
 }
 
 void FolderWatcher::AddWatchRecursive(const std::string& root) {
@@ -117,10 +119,17 @@ void FolderWatcher::Run() {
     clock::time_point lastEvent;
     std::vector<char> buf(64 * 1024);
 
+    // inotifyFd_ is created and owned solely by this worker thread.
+    inotifyFd_ = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    if (inotifyFd_ == -1) {
+        TraceLog(LOG_WARNING, "WATCHER: inotify_init1 failed; file watching disabled");
+        return;  // Stop() still joins us; the joinable thread is handled there.
+    }
+
     while (!stop_.load()) {
         if (foldersDirty_.exchange(false)) {
             RebuildWatches();
-            if (inotifyFd_ == -1) return;
+            if (inotifyFd_ == -1) break;
         }
 
         int timeout = -1;  // block until something happens
@@ -181,6 +190,13 @@ void FolderWatcher::Run() {
                 glfwPostEmptyEvent();  // wake the idle main loop
             }
         }
+    }
+
+    // The worker owns inotifyFd_, so it closes it here on exit (-1 if a rebuild
+    // failed and already closed it).
+    if (inotifyFd_ != -1) {
+        close(inotifyFd_);
+        inotifyFd_ = -1;
     }
 }
 
