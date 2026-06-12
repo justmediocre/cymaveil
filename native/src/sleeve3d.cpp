@@ -14,7 +14,7 @@ constexpr float kThick = 0.03f;     // sleeve thickness (edge reads even in a qu
 constexpr float kGloss = 0.95f;     // gloss highlight strength
 constexpr float kFovy = 20.0f;      // camera field of view (mild perspective)
 constexpr float kPop = 0.24f;       // forward lift toward the viewer mid-turn
-constexpr float kWear = 0.6f;       // worn-sleeve patina strength on the covers
+constexpr float kWear = 0.42f;      // worn-sleeve patina strength on the covers
 
 // Light from the upper-left front; flat per-face diffuse is baked into vertex
 // colour, so only the cover's gloss sweep needs the shader.
@@ -82,31 +82,35 @@ void main() {
         float r = length(q), ang = atan(q.y, q.x);
         float edge = clamp(1.0 - 2.0*min(min(p.x, 1.0 - p.x), min(p.y, 1.0 - p.y)), 0.0, 1.0);
 
-        // Where a record wears into its sleeve: the disc presses two concentric
-        // rings — its outer edge (the heaviest wear) and the raised label near
-        // the centre — and the sleeve's own edges abrade. Angular noise wobbles
-        // the radii and breaks the rings into uneven arcs.
+        // Where a record wears into its sleeve: a defined ring at the disc's
+        // outer edge (heaviest), a small worn spot at the centre spindle, and
+        // the sleeve's own edges. Angular noise wobbles the ring radius and
+        // lightly breaks it so it isn't a perfect circle.
         float aN = fbm(vec2(ang*3.0, 5.0));
-        float aBreak = fbm(vec2(ang*6.0 + 20.0, r*8.0));
-        float rOuter = 0.46 + 0.025*(aN - 0.5)*2.0;
-        float rInner = 0.18 + 0.02*(aN - 0.5)*2.0;
-        float outer = smoothstep(0.06, 0.0, abs(r - rOuter))*(0.45 + 0.9*aBreak);
-        float inner = smoothstep(0.035, 0.0, abs(r - rInner))*(0.4 + 0.8*aBreak);
+        float aBreak = fbm(vec2(ang*5.0 + 20.0, 9.0));
+        float rOuter = 0.45 + 0.02*(aN - 0.5)*2.0;
+        float ringCore = smoothstep(0.03, 0.0, abs(r - rOuter));    // tight band
+        float outer = ringCore*(0.7 + 0.5*aBreak);
+        float spindle = smoothstep(0.05, 0.0, r);                   // centre spot only
+        float edgeW = pow(edge, 2.0)*0.55;
 
-        // Rings and edges dominate; only a little loose scatter elsewhere.
-        float field = clamp(outer + inner*0.7 + pow(edge, 1.5)*0.8 + fbm(p*5.0)*0.14, 0.0, 1.0);
-        float gate = smoothstep(0.3, 0.72, field);
+        float field = clamp(outer + spindle*0.8 + edgeW + fbm(p*5.0)*0.08, 0.0, 1.0);
+        float gate = smoothstep(0.4, 0.8, field);
 
-        // Crisp flecks at two scales (paper worn through, catching light).
-        float fleck = smoothstep(0.80, 0.85, vnoise(p*250.0))*0.9 +
-                      smoothstep(0.74, 0.80, vnoise(p*95.0 + 11.0))*0.6;
+        // Crisp flecks at two scales (paper worn through, catching light); the
+        // high thresholds keep them sparse so the ring reads, not a snowfield.
+        float fleck = smoothstep(0.84, 0.89, vnoise(p*250.0))*0.9 +
+                      smoothstep(0.80, 0.86, vnoise(p*95.0 + 11.0))*0.5;
         // Thin cracks: a narrow band straddling a noise level set.
         float cn = fbm(p*70.0);
         float crack = (smoothstep(0.47, 0.50, cn) - smoothstep(0.50, 0.53, cn));
 
-        float light = (fleck + clamp(crack, 0.0, 1.0)*0.7)*gate*uWear;
-        float dull = field*0.16*uWear;                // faint grime in the patches
-        col = mix(col, vec3(0.5), clamp(dull, 0.0, 0.2)) + light;
+        // A faint continuous line along the disc edge so the ring reads as a
+        // defined outline, with the flecks scattered on top of it.
+        float ringLine = ringCore*(0.35 + 0.55*aBreak);
+        float light = (fleck + clamp(crack, 0.0, 1.0)*0.6)*gate*uWear + ringLine*0.22*uWear;
+        float dull = field*0.12*uWear;                // faint grime in the worn zones
+        col = mix(col, vec3(0.5), clamp(dull, 0.0, 0.15)) + light;
     }
 
     float facing = clamp(uFacing, 0.0, 1.0);
