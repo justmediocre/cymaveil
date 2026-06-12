@@ -39,6 +39,12 @@ Vector2 Measure(const std::string& s, float size);
 void TextEllipsis(const std::string& s, Vector2 pos, float maxWidth, float size, Color c);
 void TextRight(const std::string& s, Vector2 posRight, float size, Color c);
 void TextCentered(const std::string& s, Vector2 center, float size, Color c);
+// Like TextCentered, but when the text is wider than maxWidth it is clipped to
+// a maxWidth-wide window centred on `center` and slowly scrolls back and forth
+// (pausing at each end) so the whole string can be read, like the web app's
+// marquee for long track titles. Stateless: the phase is driven by GetTime().
+void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth,
+                         float size, Color c);
 
 // ── Interaction ──
 // While blocked (an overlay like a context menu is open), Hover/Clicked

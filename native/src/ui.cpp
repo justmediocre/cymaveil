@@ -170,6 +170,88 @@ void TextCentered(const std::string& s, Vector2 center, float size, Color c) {
     Text(s, Vector2{center.x - m.x / 2, center.y - m.y / 2}, size, c);
 }
 
+void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth,
+                         float size, Color c) {
+    const Vector2 m = Measure(s, size);
+    if (m.x <= maxWidth) {
+        Text(s, Vector2{center.x - m.x / 2, center.y - m.y / 2}, size, c);
+        return;
+    }
+
+    // Ping-pong scroll: pause at the start, glide left to reveal the end, pause,
+    // glide back. Timing is a pure function of GetTime() so no per-track state
+    // is needed; speed is in pixels/second so long titles take proportionally
+    // longer to traverse.
+    const float overflow = m.x - maxWidth;
+    const float speed = 36.0f;
+    const float pause = 1.6f;
+    const float travel = overflow / speed;
+    const float period = 2.0f * (pause + travel);
+    const float t = static_cast<float>(std::fmod(GetTime(), period));
+
+    float off;
+    if (t < pause)
+        off = 0.0f;
+    else if (t < pause + travel)
+        off = (t - pause) * speed;
+    else if (t < 2.0f * pause + travel)
+        off = overflow;
+    else
+        off = overflow - (t - (2.0f * pause + travel)) * speed;
+    off = std::clamp(off, 0.0f, overflow);
+
+    const float left = center.x - maxWidth / 2;
+    const float top = center.y - m.y / 2;
+    const float textX = left - off;
+
+    // Draws the (fixed-position) string clipped to the horizontal band
+    // [x0, x1) in screen pixels, tinted to `a` of its alpha.
+    auto band = [&](int x0, int x1, float a) {
+        if (x1 <= x0) return;
+        Color col = c;
+        col.a = static_cast<unsigned char>(std::clamp(c.a * a, 0.0f, 255.0f));
+        BeginScissorMode(x0, static_cast<int>(std::floor(top)), x1 - x0,
+                         static_cast<int>(std::ceil(m.y)));
+        Text(s, Vector2{textX, top}, size, col);
+        EndScissorMode();
+    };
+
+    // Fade the text into the background on whichever side still hides text,
+    // hinting there's more that way. The fade *depth* ramps with how much is
+    // hidden — reaching a full fade once `fade` px have scrolled off — so it
+    // eases in and out as the scroll nears each end rather than snapping on/off.
+    // It's a handful of contiguous strips with stepped alpha: smooth enough to
+    // read as a gradient without a shader or render texture.
+    const float fade = std::min(size, maxWidth * 0.35f);
+    auto smooth = [](float t) {
+        t = std::clamp(t, 0.0f, 1.0f);
+        return t * t * (3.0f - 2.0f * t);
+    };
+    const float strL = smooth(off / fade);              // 0 at the left end → 1
+    const float strR = smooth((overflow - off) / fade);  // 0 at the right end → 1
+
+    const int lpx = static_cast<int>(std::floor(left));
+    const int rpx = static_cast<int>(std::ceil(left + maxWidth));
+    const int lEnd = static_cast<int>(std::round(left + fade));
+    const int rBeg = static_cast<int>(std::round(left + maxWidth - fade));
+
+    band(lEnd, rBeg, 1.0f);  // solid middle
+
+    const int kSteps = 10;
+    for (int i = 0; i < kSteps; i++) {
+        const int x0 = lpx + (lEnd - lpx) * i / kSteps;
+        const int x1 = lpx + (lEnd - lpx) * (i + 1) / kSteps;
+        const float edge = (i + 0.5f) / kSteps;  // 0 at outer edge → 1 inner
+        band(x0, x1, 1.0f - strL * (1.0f - edge));
+    }
+    for (int i = 0; i < kSteps; i++) {
+        const int x0 = rBeg + (rpx - rBeg) * i / kSteps;
+        const int x1 = rBeg + (rpx - rBeg) * (i + 1) / kSteps;
+        const float edge = 1.0f - (i + 0.5f) / kSteps;  // 1 inner → 0 outer edge
+        band(x0, x1, 1.0f - strR * (1.0f - edge));
+    }
+}
+
 namespace {
 bool g_inputBlocked = false;
 }

@@ -1591,10 +1591,15 @@ void App::DrawNowPlayingView(Rectangle r) {
     const float colX = cx - colW / 2;
 
     const float textY = artY + artSize + 28;
-    ui::TextCentered(cur->title, Vector2{cx, textY}, 26, ui::theme.text);
+    // The title shares its row with the action buttons hugging the column's
+    // right edge (~92px), so keep the marquee window clear of them — mirrored on
+    // the left to stay centred. Long titles scroll instead of overflowing.
+    ui::TextMarqueeCentered(cur->title, Vector2{cx, textY}, colW - 200, 26,
+                            ui::theme.text);
     std::string sub = cur->artist;
     if (album != nullptr) sub += "  \xc2\xb7  " + album->title;
-    ui::TextCentered(sub, Vector2{cx, textY + 30}, 15, ui::theme.textSecondary);
+    ui::TextMarqueeCentered(sub, Vector2{cx, textY + 30}, colW, 15,
+                            ui::theme.textSecondary);
 
     // Paint-mask button: opens the brush editor for the album on screen, so the
     // user can hand-correct (or hand-draw) the depth mask behind the visualizer.
