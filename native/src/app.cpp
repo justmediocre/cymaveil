@@ -173,6 +173,7 @@ int App::Run() {
 }
 
 void App::Frame() {
+    ui::NewFrame();
     HandleDroppedFolders();
     HandleInput();
     HandleMprisRequests();
@@ -443,6 +444,7 @@ void App::HandleInput() {
     // X opens the mask brush editor for the album on screen (same as the
     // brush button in Now Playing). Inside the editor X toggles paint/erase.
     if (IsKeyPressed(KEY_X)) {
+        ui::ConsumeKey(KEY_X);  // don't let DrawBrushEditor re-read this press
         const Track* cur = player_.Current();
         const Album* shown = library_.AlbumById(vinyl_.DisplayedAlbumId());
         if (shown == nullptr && cur != nullptr) shown = library_.AlbumById(cur->albumId);
@@ -713,7 +715,7 @@ void App::DrawBrushEditor(Rectangle r) {
     // ── Keyboard: mode, size, undo/redo, save, close ──
     const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-    if (IsKeyPressed(KEY_X)) brush_.canvas.ToggleMode();
+    if (ui::KeyPressed(KEY_X)) brush_.canvas.ToggleMode();
     if (IsKeyPressed(KEY_LEFT_BRACKET)) brush_.canvas.SetRadius(brush_.canvas.Radius() - 1);
     if (IsKeyPressed(KEY_RIGHT_BRACKET)) brush_.canvas.SetRadius(brush_.canvas.Radius() + 1);
     if (ctrl && GetMouseWheelMove() != 0) {

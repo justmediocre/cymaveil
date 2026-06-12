@@ -47,6 +47,17 @@ void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth,
                          float size, Color c);
 
 // ── Interaction ──
+// Per-frame keyboard consumption. HandleInput acts on a key first, then later
+// draw functions re-read the same per-frame input state; without this they
+// would re-trigger off the very key press that already opened/closed them
+// (e.g. KEY_X both opens the brush editor and, the same frame, toggled its
+// erase mode). Call NewFrame() once at the top of each frame to reset the set,
+// ConsumeKey() right after acting on a key, and use KeyPressed() instead of
+// raw IsKeyPressed() anywhere that must ignore an already-consumed press.
+void NewFrame();
+void ConsumeKey(int key);
+bool KeyPressed(int key);
+
 // While blocked (an overlay like a context menu is open), Hover/Clicked
 // return false so widgets underneath ignore the mouse. The overlay itself
 // reads input through HoverRaw/ClickedRaw.

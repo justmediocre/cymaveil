@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "raymath.h"
@@ -254,6 +255,15 @@ void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth,
 
 namespace {
 bool g_inputBlocked = false;
+std::unordered_set<int> g_consumedKeys;
+}
+
+void NewFrame() { g_consumedKeys.clear(); }
+
+void ConsumeKey(int key) { g_consumedKeys.insert(key); }
+
+bool KeyPressed(int key) {
+    return g_consumedKeys.find(key) == g_consumedKeys.end() && IsKeyPressed(key);
 }
 
 void BlockInput(bool blocked) { g_inputBlocked = blocked; }
