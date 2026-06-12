@@ -184,7 +184,8 @@ void App::Frame() {
     player_.Update();
     if (library_.PollScan()) {
         mosaic_.Rebuild(library_.Albums(), MosaicCfg());
-        libGeneration_++;  // invalidate cached search results
+        backdrop_.MarkDirty();  // tiles now show different albums
+        libGeneration_++;       // invalidate cached search results
         MarkActivity();
     }
     if (autoplay_ && !library_.Tracks().empty()) {
@@ -206,6 +207,9 @@ void App::Frame() {
     }
     visualizer_.Update(GetFrameTime(), player_.IsPlaying());
     mosaic_.Update(GetFrameTime(), player_.IsPlaying(), MosaicCfg());
+    // Mark before the queue drains so textures decoded this frame (including
+    // the final batch, after which HasPendingWork() is false) reach the backdrop.
+    if (art_.HasPendingWork()) backdrop_.MarkDirty();
     art_.ProcessQueue(2);
     {
         const Track* cur = player_.Current();
@@ -265,7 +269,7 @@ void App::Frame() {
     // in ApplyTheme), or a resize (handled in EnsureSize). Otherwise the cached
     // scene_/blur_ textures are still valid and we reuse them untouched.
     backdrop_.EnsureSize(static_cast<int>(W), static_cast<int>(H));
-    if (mosaic_.Animating() || art_.HasPendingWork()) backdrop_.MarkDirty();
+    if (mosaic_.Animating()) backdrop_.MarkDirty();
     if (backdrop_.NeedsRender()) {
         backdrop_.BeginScene();
         ClearBackground(ui::theme.bg);
@@ -1887,6 +1891,11 @@ void App::DrawFolderSettings(Rectangle anchor) {
 
     if (!removeFolder.empty()) {
         library_.RemoveFolder(removeFolder);
+        // Removing the last folder clears the track/album vectors directly
+        // (no PollScan), so the cached search results would dangle.
+        libGeneration_++;
+        mosaic_.Rebuild(library_.Albums(), MosaicCfg());
+        backdrop_.MarkDirty();
         SyncWatcher();
         Toast("Removed folder");
         folderInputActive_ = false;
