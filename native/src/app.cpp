@@ -165,6 +165,7 @@ int App::Run() {
     mosaic_.Unload();
     backdrop_.Unload();
     vinyl_.Unload();
+    sleeve3d_.Unload();
     if (fg_.tex.id != 0) UnloadTexture(fg_.tex);
     if (brush_.artTex.id != 0) UnloadTexture(brush_.artTex);
     if (brush_.overlayTex.id != 0) UnloadTexture(brush_.overlayTex);
@@ -295,6 +296,21 @@ void App::Frame() {
         ClearBackground(ui::theme.bg);
         mosaic_.Draw(Rectangle{0, 0, W, H}, art_, library_, MosaicCfg(), ui::theme.bg);
         backdrop_.EndScene();
+    }
+
+    // Render the turning sleeve into its offscreen 3D target before the 2D pass
+    // (like the backdrop). Needs both covers resident; otherwise Now Playing
+    // falls back to the flat squish for the frame.
+    flip3dReady_ = false;
+    if (view_ == View::NowPlaying && vinyl_.Flipping()) {
+        const Album* fromA = library_.AlbumById(vinyl_.FlipFrom());
+        const Album* toA = library_.AlbumById(vinyl_.FlipTo());
+        const Texture2D* fromT = fromA != nullptr ? art_.Get(*fromA) : nullptr;
+        const Texture2D* toT = toA != nullptr ? art_.Get(*toA) : nullptr;
+        if (fromT != nullptr && toT != nullptr) {
+            sleeve3d_.Render(fromT, toT, fromA->dominant, toA->dominant, vinyl_.FlipProgress());
+            flip3dReady_ = true;
+        }
     }
 
     BeginDrawing();
@@ -1604,16 +1620,30 @@ void App::DrawNowPlayingView(Rectangle r) {
         vinyl_.Draw(artRect, shownAlbum->accent, shownAlbum->dominant);
     }
 
-    // Album switch: the sleeve flips over, the new cover riding its back face.
-    // Width squishes to nothing at edge-on (flip midpoint), where the shown
-    // album swaps under us, so each half of the turn shows the correct cover.
-    // A touch of shadow as it turns sells the third dimension.
-    const float flipW = std::fabs(std::cos(vinyl_.FlipProgress() * PI));
-    const Rectangle shownRect{artRect.x + artRect.width * (1 - flipW) / 2, artRect.y,
-                              artRect.width * flipW, artRect.height};
-    DrawAlbumArt(shownRect, shownAlbum, 1.4f, 1.0f);
-    if (flipW < 0.999f) {
-        DrawRectangleRounded(shownRect, 0.06f, 6, Fade(BLACK, 0.4f * (1.0f - flipW)));
+    // Album switch: the sleeve turns over as a real 3D slab (front cover ->
+    // patina edges -> incoming cover on the back). The slab is rendered offscreen
+    // in Frame(); here it cross-fades over the flat cover at the turn's ends so
+    // the 2D->3D mode change doesn't pop, and owns the middle of the turn.
+    const float flip = vinyl_.FlipProgress();
+    if (vinyl_.Flipping() && flip3dReady_) {
+        const auto smooth = [](float x) {
+            x = std::clamp(x, 0.0f, 1.0f);
+            return x * x * (3.0f - 2.0f * x);
+        };
+        const float slabA = std::min(smooth(flip / 0.12f), smooth((1.0f - flip) / 0.12f));
+        if (slabA < 1.0f) DrawAlbumArt(artRect, shownAlbum, 1.4f, 1.0f - slabA);
+        const Texture2D& slab = sleeve3d_.Texture();
+        const Rectangle src{0, 0, static_cast<float>(slab.width),
+                            -static_cast<float>(slab.height)};  // render textures are y-flipped
+        DrawTexturePro(slab, src, artRect, Vector2{0, 0}, 0, Fade(WHITE, slabA));
+    } else if (vinyl_.Flipping()) {
+        // Both covers not yet decoded: flat squish keeps the turn going.
+        const float w = std::fabs(std::cos(flip * PI));
+        DrawAlbumArt(Rectangle{artRect.x + artRect.width * (1 - w) / 2, artRect.y,
+                               artRect.width * w, artRect.height},
+                     shownAlbum, 1.4f, 1.0f);
+    } else {
+        DrawAlbumArt(artRect, shownAlbum, 1.4f, 1.0f);
     }
 
     if (hasFg && vinyl_.ArtEntered()) {

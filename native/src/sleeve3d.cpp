@@ -1,0 +1,226 @@
+#include "sleeve3d.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
+#include "rlgl.h"
+
+namespace {
+
+constexpr int kRtSize = 768;
+constexpr float kHalf = 0.5f;       // half the cover's side, world units
+constexpr float kThick = 0.05f;     // sleeve thickness
+constexpr float kGloss = 0.42f;     // gloss highlight strength
+
+// Light from the upper-left front; flat per-face diffuse is baked into vertex
+// colour, so only the cover's gloss sweep needs the shader.
+const Vector3 kLight = {-0.35f, 0.42f, 0.84f};
+
+// Desktop GL. The cover gloss band slides with uTurn; uFacing gates it to the
+// face actually pointing at the viewer (cosθ front, -cosθ back, 0 on edges).
+const char* kVs = R"(#version 330
+in vec3 vertexPosition;
+in vec2 vertexTexCoord;
+in vec4 vertexColor;
+uniform mat4 mvp;
+out vec2 fragTexCoord;
+out vec4 fragColor;
+void main() {
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    gl_Position = mvp*vec4(vertexPosition, 1.0);
+}
+)";
+
+const char* kFs = R"(#version 330
+in vec2 fragTexCoord;
+in vec4 fragColor;
+uniform sampler2D texture0;
+uniform vec4 colDiffuse;
+uniform float uTurn;
+uniform float uFacing;
+uniform float uGloss;
+out vec4 finalColor;
+void main() {
+    vec4 tex = texture(texture0, fragTexCoord);
+    vec3 col = tex.rgb*fragColor.rgb;
+    float facing = clamp(uFacing, 0.0, 1.0);
+    float band = fragTexCoord.x*0.62 + (1.0 - fragTexCoord.y)*0.38;
+    float g = smoothstep(0.13, 0.0, abs(band - uTurn))*facing;
+    col += g*uGloss;
+    finalColor = vec4(col, tex.a*fragColor.a)*colDiffuse;
+}
+)";
+
+float Dot(Vector3 a, Vector3 b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+
+Vector3 Normalize(Vector3 v) {
+    const float m = std::sqrt(Dot(v, v));
+    return m > 0 ? Vector3{v.x/m, v.y/m, v.z/m} : v;
+}
+
+// Worn cardboard grain: value noise + faint horizontal layer lines, baked once.
+Texture2D GenPatina() {
+    constexpr int N = 128;
+    const auto hash = [](int x, int y) {
+        uint32_t h = static_cast<uint32_t>(x)*374761393u + static_cast<uint32_t>(y)*668265263u;
+        h = (h ^ (h >> 13))*1274126177u;
+        return ((h ^ (h >> 16)) & 0xffff)/65535.0f;
+    };
+    Image img = GenImageColor(N, N, BLANK);
+    auto* px = static_cast<Color*>(img.data);
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            const float grain = (hash(x, y) - 0.5f)*0.30f + (hash(x/3, y/3) - 0.5f)*0.18f;
+            const float layer = 0.07f*std::sin(y*2.7f);
+            const float v = std::clamp(0.80f + grain + layer, 0.0f, 1.0f);
+            const auto g = static_cast<unsigned char>(v*255);
+            px[y*N + x] = Color{g, g, g, 255};
+        }
+    }
+    Texture2D tex = LoadTextureFromImage(img);
+    UnloadImage(img);
+    GenTextureMipmaps(&tex);
+    SetTextureFilter(tex, TEXTURE_FILTER_TRILINEAR);
+    return tex;
+}
+
+Color Shade(Color base, Vector3 normal, float ambient) {
+    const float diff = std::max(0.0f, Dot(normal, kLight));
+    const float s = ambient + (1.0f - ambient)*diff;
+    return Color{static_cast<unsigned char>(base.r*s), static_cast<unsigned char>(base.g*s),
+                 static_cast<unsigned char>(base.b*s), 255};
+}
+
+Color Lerp(Color a, Color b, float t) {
+    return Color{static_cast<unsigned char>(a.r + (b.r - a.r)*t),
+                 static_cast<unsigned char>(a.g + (b.g - a.g)*t),
+                 static_cast<unsigned char>(a.b + (b.b - a.b)*t), 255};
+}
+
+// One flat face: 4 corners (local, pre-rotation), its UVs, a baked diffuse
+// colour, and the gloss-facing term. Culling is off, so winding doesn't matter.
+void Face(Texture2D tex, float facing, Color col, const Vector3 c[4], const Vector2 uv[4]) {
+    rlSetTexture(tex.id);
+    rlColor4ub(col.r, col.g, col.b, 255);
+    rlBegin(RL_QUADS);
+    for (int i = 0; i < 4; i++) {
+        rlTexCoord2f(uv[i].x, uv[i].y);
+        rlVertex3f(c[i].x, c[i].y, c[i].z);
+    }
+    rlEnd();
+    (void)facing;
+}
+
+}  // namespace
+
+void Sleeve3D::Ensure() {
+    if (rt_.id == 0) rt_ = LoadRenderTexture(kRtSize, kRtSize);
+    if (shader_.id == 0) {
+        shader_ = LoadShaderFromMemory(kVs, kFs);
+        locTurn_ = GetShaderLocation(shader_, "uTurn");
+        locFacing_ = GetShaderLocation(shader_, "uFacing");
+        locGloss_ = GetShaderLocation(shader_, "uGloss");
+    }
+    if (patina_.id == 0) patina_ = GenPatina();
+}
+
+void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeFrom, Color edgeTo,
+                      float flip) {
+    Ensure();
+
+    const float theta = flip*PI;
+    const float ct = std::cos(theta), st = std::sin(theta);
+    // Face normals after the Y rotation, for baked diffuse + gloss facing.
+    const Vector3 nFront = {st, 0, ct};
+    const Vector3 nBack = {-st, 0, -ct};
+    const Vector3 nRight = {ct, 0, -st};
+    const Vector3 nLeft = {-ct, 0, st};
+    const Vector3 nTop = {0, 1, 0};
+    const Vector3 nBot = {0, -1, 0};
+
+    const Color edge = Lerp(edgeFrom, edgeTo, flip);
+    const float h = kThick*0.5f;
+
+    Camera3D cam{};
+    cam.position = {0, 0, 2.85f};
+    cam.target = {0, 0, 0};
+    cam.up = {0, 1, 0};
+    cam.fovy = 20.0f;
+    cam.projection = CAMERA_PERSPECTIVE;
+
+    BeginTextureMode(rt_);
+    ClearBackground(BLANK);
+    BeginMode3D(cam);
+    rlDisableBackfaceCulling();
+    BeginShaderMode(shader_);
+    const float gloss = kGloss;
+    SetShaderValue(shader_, locTurn_, &flip, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader_, locGloss_, &gloss, SHADER_UNIFORM_FLOAT);
+
+    rlPushMatrix();
+    rlRotatef(flip*180.0f, 0, 1, 0);
+
+    // Square-crop the covers (matches the flat DrawAlbumArt), in normalised UVs.
+    const auto crop = [](const Texture2D* t, float* u0, float* u1, float* v0, float* v1) {
+        const float side = static_cast<float>(std::min(t->width, t->height));
+        *u0 = (t->width - side)/2/t->width;
+        *u1 = *u0 + side/t->width;
+        *v0 = (t->height - side)/2/t->height;
+        *v1 = *v0 + side/t->height;
+    };
+
+    if (front != nullptr) {
+        float u0, u1, v0, v1;
+        crop(front, &u0, &u1, &v0, &v1);
+        const Vector3 c[4] = {
+            {-kHalf, -kHalf, h}, {kHalf, -kHalf, h}, {kHalf, kHalf, h}, {-kHalf, kHalf, h}};
+        const Vector2 uv[4] = {{u0, v1}, {u1, v1}, {u1, v0}, {u0, v0}};
+        SetShaderValue(shader_, locFacing_, &ct, SHADER_UNIFORM_FLOAT);
+        Face(*front, ct, Shade(WHITE, nFront, 0.62f), c, uv);
+    }
+    if (back != nullptr) {
+        float u0, u1, v0, v1;
+        crop(back, &u0, &u1, &v0, &v1);
+        // Mirror U so the incoming cover reads upright once we turn past edge-on.
+        const Vector3 c[4] = {
+            {kHalf, -kHalf, -h}, {-kHalf, -kHalf, -h}, {-kHalf, kHalf, -h}, {kHalf, kHalf, -h}};
+        const Vector2 uv[4] = {{u0, v1}, {u1, v1}, {u1, v0}, {u0, v0}};
+        const float facing = -ct;
+        SetShaderValue(shader_, locFacing_, &facing, SHADER_UNIFORM_FLOAT);
+        Face(*back, facing, Shade(WHITE, nBack, 0.62f), c, uv);
+    }
+
+    // Patina edges: no gloss, darker ambient, album-tinted cardboard grain.
+    const float zero = 0.0f;
+    SetShaderValue(shader_, locFacing_, &zero, SHADER_UNIFORM_FLOAT);
+    const Vector2 euv[4] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
+    const Vector3 right[4] = {
+        {kHalf, -kHalf, h}, {kHalf, -kHalf, -h}, {kHalf, kHalf, -h}, {kHalf, kHalf, h}};
+    const Vector3 left[4] = {
+        {-kHalf, -kHalf, -h}, {-kHalf, -kHalf, h}, {-kHalf, kHalf, h}, {-kHalf, kHalf, -h}};
+    const Vector3 top[4] = {
+        {-kHalf, kHalf, h}, {kHalf, kHalf, h}, {kHalf, kHalf, -h}, {-kHalf, kHalf, -h}};
+    const Vector3 bot[4] = {
+        {-kHalf, -kHalf, -h}, {kHalf, -kHalf, -h}, {kHalf, -kHalf, h}, {-kHalf, -kHalf, h}};
+    Face(patina_, 0, Shade(edge, nRight, 0.42f), right, euv);
+    Face(patina_, 0, Shade(edge, nLeft, 0.42f), left, euv);
+    Face(patina_, 0, Shade(edge, nTop, 0.42f), top, euv);
+    Face(patina_, 0, Shade(edge, nBot, 0.42f), bot, euv);
+
+    rlPopMatrix();
+    EndShaderMode();
+    rlEnableBackfaceCulling();
+    EndMode3D();
+    EndTextureMode();
+}
+
+void Sleeve3D::Unload() {
+    if (rt_.id != 0) UnloadRenderTexture(rt_);
+    if (shader_.id != 0) UnloadShader(shader_);
+    if (patina_.id != 0) UnloadTexture(patina_);
+    rt_ = RenderTexture2D{};
+    shader_ = Shader{};
+    patina_ = Texture2D{};
+}

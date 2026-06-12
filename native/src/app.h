@@ -16,6 +16,7 @@
 #include "mpris.h"
 #include "player.h"
 #include "playlist.h"
+#include "sleeve3d.h"
 #include "vinyl.h"
 #include "visualizer.h"
 #include "watcher.h"
@@ -150,9 +151,11 @@ private:
     Backdrop backdrop_;
     DepthEngine depth_;
     Vinyl vinyl_;
+    Sleeve3D sleeve3d_;
     Mpris mpris_;
     FolderWatcher watcher_;
-    bool manualSkip_ = false;  // user-initiated track change this frame
+    bool manualSkip_ = false;   // user-initiated track change this frame
+    bool flip3dReady_ = false;  // the 3D sleeve target is rendered for this frame
 
     // Album art with the segmentation mask baked into its alpha channel
     struct Foreground {

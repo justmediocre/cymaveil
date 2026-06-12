@@ -117,6 +117,8 @@ void Vinyl::Update(float dt, const std::string& targetAlbumId, bool playing, boo
         if (slide_ <= 0.001f && !flipping_) {
             flipping_ = true;
             flip_ = 0;
+            flipFrom_ = displayed_;
+            flipTo_ = pending_;
         }
     } else if (!flipping_ && !pending_.empty() && targetAlbumId == displayed_) {
         // A pre-fired target backed out before the flip began (paused at the
@@ -132,6 +134,8 @@ void Vinyl::Update(float dt, const std::string& targetAlbumId, bool playing, boo
     if (slide_ <= 0.0f && !pending_.empty() && !flipping_) {
         flipping_ = true;
         flip_ = 0;
+        flipFrom_ = displayed_;
+        flipTo_ = pending_;
     }
 
     if (flipping_) {

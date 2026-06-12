@@ -28,6 +28,13 @@ public:
     // Flip progress 0..1 (1 == settled). The art's horizontal scale is
     // |cos(progress * PI)|: full -> edge-on at 0.5 -> full again.
     float FlipProgress() const { return flip_; }
+    // True while the sleeve is mid-turn. During it, FlipFrom/FlipTo name the
+    // outgoing and incoming albums — stable across the whole turn, so a 3D
+    // renderer can pin them to the slab's front/back faces (unlike the swap of
+    // DisplayedAlbumId, which flips at the midpoint for glow/title/foreground).
+    bool Flipping() const { return flipping_; }
+    const std::string& FlipFrom() const { return flipFrom_; }
+    const std::string& FlipTo() const { return flipTo_; }
     // True until the flip fully settles; layers on the art (visualizer, depth
     // foreground) hold off until then.
     bool ArtEntered() const { return !flipping_; }
@@ -41,6 +48,8 @@ private:
 
     std::string displayed_;
     std::string pending_;
+    std::string flipFrom_;  // outgoing album, pinned for the turn's duration
+    std::string flipTo_;    // incoming album, pinned for the turn's duration
     bool out_ = false;       // slide target
     float slide_ = 0;        // raw progress 0..1 toward "out"
     bool flipping_ = false;  // the sleeve is mid-turn
