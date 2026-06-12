@@ -9,10 +9,22 @@
 // tint it translucently so the mosaic shows through like frosted glass.
 class Backdrop {
 public:
-    // (Re)allocates the render targets when the framebuffer size changes.
+    // (Re)allocates the render targets when the framebuffer size changes. A
+    // reallocation throws away the cached scene/blur, so it marks the backdrop
+    // dirty (see NeedsRender) to force a refresh on the next captured frame.
     void EnsureSize(int w, int h);
+    // True when the cached scene/blur can't be reused and the mosaic must be
+    // re-captured this frame: after a resize-driven reallocation, or whenever the
+    // caller flags the source as changed via MarkDirty(). When false, the cached
+    // scene_/blur_ textures still hold a valid image and the (expensive) offscreen
+    // render + Gaussian blur can be skipped entirely.
+    bool NeedsRender() const { return ready_ && dirty_; }
+    // Flags the cached scene as stale (mosaic animating, art decoding, theme
+    // changed, …) so the next captured frame re-renders and re-blurs.
+    void MarkDirty() { dirty_ = true; }
     // Render the scene (mosaic) between these; everything drawn lands in the
-    // offscreen scene texture instead of the screen.
+    // offscreen scene texture instead of the screen. EndScene clears the dirty
+    // flag, so only call this pair when NeedsRender() reports the scene is stale.
     void BeginScene();
     void EndScene();  // ends capture and refreshes the blurred copy
 
@@ -35,4 +47,5 @@ private:
     int resLoc_ = -1;
     int dirLoc_ = -1;
     bool ready_ = false;
+    bool dirty_ = true;  // cached scene/blur stale; re-render on next capture
 };

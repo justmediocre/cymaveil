@@ -48,6 +48,7 @@ Rectangle FlipSrc(Rectangle r, float texW, float texH, float screenW, float scre
 void Backdrop::EnsureSize(int w, int h) {
     if (w == w_ && h == h_ && ready_) return;
     Unload();
+    dirty_ = true;  // fresh targets hold no image yet; force a capture
     w_ = w;
     h_ = h;
     if (w <= 0 || h <= 0) return;
@@ -76,6 +77,7 @@ void Backdrop::EndScene() {
     if (!ready_) return;
     EndTextureMode();
     Blur();
+    dirty_ = false;  // scene_/blur_ now match the latest mosaic
 }
 
 void Backdrop::Blur() {

@@ -258,12 +258,20 @@ void App::Frame() {
     ui::BlockInput(menu_.open || brush_.open);
 
     // Render the mosaic offscreen so the chrome panels can sample a blurred copy
-    // of it (frosted glass). The sharp copy is the screen's base layer.
+    // of it (frosted glass). The sharp copy is the screen's base layer. The
+    // offscreen render and two-pass blur are the frame's heaviest GPU work, so we
+    // only redo them when the mosaic actually changed: tiles animating, art still
+    // decoding (tiles swap in fresh textures as it lands), a theme switch (handled
+    // in ApplyTheme), or a resize (handled in EnsureSize). Otherwise the cached
+    // scene_/blur_ textures are still valid and we reuse them untouched.
     backdrop_.EnsureSize(static_cast<int>(W), static_cast<int>(H));
-    backdrop_.BeginScene();
-    ClearBackground(ui::theme.bg);
-    mosaic_.Draw(Rectangle{0, 0, W, H}, art_, library_, MosaicCfg(), ui::theme.bg);
-    backdrop_.EndScene();
+    if (mosaic_.Animating() || art_.HasPendingWork()) backdrop_.MarkDirty();
+    if (backdrop_.NeedsRender()) {
+        backdrop_.BeginScene();
+        ClearBackground(ui::theme.bg);
+        mosaic_.Draw(Rectangle{0, 0, W, H}, art_, library_, MosaicCfg(), ui::theme.bg);
+        backdrop_.EndScene();
+    }
 
     BeginDrawing();
     ClearBackground(ui::theme.bg);
@@ -482,6 +490,9 @@ void App::ApplyTheme() {
         light = appearance::SystemScheme() == appearance::Scheme::Light;
     }
     ui::ApplyTheme(light);
+    // The mosaic and clear color are tinted by the palette, so the cached
+    // backdrop scene/blur no longer match — force a re-render next frame.
+    backdrop_.MarkDirty();
     MarkActivity();
 }
 
