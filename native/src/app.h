@@ -61,7 +61,6 @@ private:
     void MarkActivity() { lastActivity_ = GetTime(); }
 
     void DrawSidebar(Rectangle r);
-    void DrawPlayerBar(Rectangle r);
     // Compact bar shown while browsing; click to expand into Now Playing.
     void DrawMiniPlayer(Rectangle r);
     void DrawSearchView(Rectangle r);

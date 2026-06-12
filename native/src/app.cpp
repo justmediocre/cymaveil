@@ -200,10 +200,10 @@ void App::Frame() {
 
     const float W = static_cast<float>(GetScreenWidth());
     const float H = static_cast<float>(GetScreenHeight());
-    // Full transport on Now Playing; compact mini player while browsing
-    // (none at all when nothing is loaded), like the web app's AppLayout.
-    const bool fullBar = view_ == View::NowPlaying;
-    const float barH = fullBar ? kPlayerH : (player_.Current() != nullptr ? kMiniPlayerH : 0.0f);
+    // Now Playing carries its own transport inline (like the web app); other
+    // views get the compact mini player, or nothing when nothing is loaded.
+    const bool miniBar = view_ != View::NowPlaying && player_.Current() != nullptr;
+    const float barH = miniBar ? kMiniPlayerH : 0.0f;
 
     // Queue panel slide: content gives up the eased width on the right.
     const float queueTarget = config_.queuePanel ? 1.0f : 0.0f;
@@ -237,11 +237,7 @@ void App::Frame() {
     }
     DrawSidebar(sidebar);
     if (qw > 0.5f) DrawQueuePanel(queuePanel);
-    if (fullBar) {
-        DrawPlayerBar(bar);
-    } else if (barH > 0) {
-        DrawMiniPlayer(bar);
-    }
+    if (miniBar) DrawMiniPlayer(bar);
     DrawTrackMenu();
     DrawToast();
     if (showDebug_) DrawDebugOverlay();
@@ -573,104 +569,6 @@ void App::DrawSidebar(Rectangle r) {
                  Vector2{20, fy}, 13, ui::theme.textSecondary);
         ui::Text("Drop folders to add music", Vector2{20, fy + 22}, 12, ui::theme.textTertiary);
     }
-}
-
-void App::DrawPlayerBar(Rectangle r) {
-    DrawRectangleRec(r, ui::theme.surface);
-    DrawLineEx(Vector2{r.x, r.y}, Vector2{r.x + r.width, r.y}, 1, ui::theme.borderSubtle);
-
-    const Track* cur = player_.Current();
-    const Album* album = cur ? library_.AlbumById(cur->albumId) : nullptr;
-    const float cx = r.width / 2;
-
-    // Left: current track info
-    DrawAlbumArt(Rectangle{16, r.y + 16, 56, 56}, album, 0.5f);
-    if (cur != nullptr) {
-        const float infoW = cx - 300 - 84;
-        ui::TextEllipsis(cur->title, Vector2{84, r.y + 22}, infoW, 16, ui::theme.text);
-        ui::TextEllipsis(cur->artist, Vector2{84, r.y + 44}, infoW, 13, ui::theme.textSecondary);
-    }
-
-    // Center: transport controls
-    const float by = r.y + 32;
-    const auto iconButton = [&](float x, float halfSize) {
-        return Rectangle{cx + x - halfSize, by - halfSize, halfSize * 2, halfSize * 2};
-    };
-
-    const Rectangle shuffleR = iconButton(-110, 14);
-    const Color shuffleCol = player_.Shuffle() ? ui::theme.accent
-                             : ui::Hover(shuffleR) ? ui::theme.text
-                                                   : ui::theme.textSecondary;
-    ui::IconShuffle(Vector2{cx - 110, by}, 16, shuffleCol);
-    if (ui::Clicked(shuffleR)) player_.ToggleShuffle();
-
-    const Rectangle prevR = iconButton(-60, 14);
-    ui::IconPrev(Vector2{cx - 60, by}, 18,
-                 ui::Hover(prevR) ? ui::theme.text : ui::theme.textSecondary);
-    if (ui::Clicked(prevR)) {
-        player_.Prev();
-        manualSkip_ = true;
-    }
-
-    const Rectangle playR = iconButton(0, 21);
-    const bool playHover = ui::Hover(playR);
-    DrawCircleV(Vector2{cx, by}, 21, playHover ? Brighten(ui::theme.accent, 0.15f) : ui::theme.accent);
-    if (player_.IsPlaying()) {
-        ui::IconPause(Vector2{cx, by}, 16, ui::theme.bg);
-    } else {
-        ui::IconPlay(Vector2{cx + 1, by}, 17, ui::theme.bg);
-    }
-    if (ui::Clicked(playR)) player_.TogglePause();
-
-    const Rectangle nextR = iconButton(60, 14);
-    ui::IconNext(Vector2{cx + 60, by}, 18,
-                 ui::Hover(nextR) ? ui::theme.text : ui::theme.textSecondary);
-    if (ui::Clicked(nextR)) {
-        player_.Next();
-        manualSkip_ = true;
-    }
-
-    const Rectangle repeatR = iconButton(110, 14);
-    const bool repeatOn = player_.Repeat() != RepeatMode::Off;
-    const Color repeatCol = repeatOn ? ui::theme.accent
-                            : ui::Hover(repeatR) ? ui::theme.text
-                                                 : ui::theme.textSecondary;
-    ui::IconRepeat(Vector2{cx + 110, by}, 15, repeatCol, player_.Repeat() == RepeatMode::One);
-    if (ui::Clicked(repeatR)) player_.CycleRepeat();
-
-    // Seek bar with time labels
-    const float length = player_.TimeLength();
-    const float played = player_.TimePlayed();
-    if (!seekDragging_) seekValue_ = length > 0 ? played / length : 0;
-    const float barHalf = std::min(280.0f, r.width / 2 - 320);
-    const Rectangle seekR{cx - barHalf, r.y + 64, barHalf * 2, 4};
-    const bool wasDragging = seekDragging_;
-    BarSlider(seekR, &seekValue_, &seekDragging_, ui::theme.accent);
-    if (wasDragging && !seekDragging_) player_.SeekTo(seekValue_ * length);
-    const float shownTime = seekDragging_ ? seekValue_ * length : played;
-    ui::TextRight(ui::FormatTime(shownTime), Vector2{seekR.x - 10, r.y + 58}, 12,
-                  ui::theme.textSecondary);
-    ui::Text(ui::FormatTime(length), Vector2{seekR.x + seekR.width + 10, r.y + 58}, 12,
-             ui::theme.textSecondary);
-
-    // Right: queue panel toggle + volume
-    const Vector2 queueIcon{r.width - 196, by};
-    const Rectangle queueR{queueIcon.x - 12, queueIcon.y - 12, 24, 24};
-    const Color queueCol = config_.queuePanel ? ui::theme.accent
-                           : ui::Hover(queueR) ? ui::theme.text
-                                               : ui::theme.textSecondary;
-    ui::IconQueue(queueIcon, 16, queueCol);
-    if (ui::Clicked(queueR)) ToggleQueuePanel();
-
-    float vol = player_.Volume();
-    const Vector2 volIcon{r.width - 158, by};
-    ui::IconVolume(volIcon, 17, ui::theme.textSecondary, vol);
-    const Rectangle volR{r.width - 134, by - 2, 100, 4};
-    if (BarSlider(volR, &vol, &volumeDragging_, ui::theme.text)) {
-        player_.SetVolume(vol);
-    }
-    const Rectangle volIconR{volIcon.x - 12, volIcon.y - 12, 24, 24};
-    if (ui::Clicked(volIconR)) player_.SetVolume(vol > 0.01f ? 0.0f : 0.8f);
 }
 
 void App::DrawMiniPlayer(Rectangle r) {
@@ -1251,13 +1149,12 @@ void App::DrawNowPlayingView(Rectangle r) {
                            static_cast<int>(r.width), static_cast<int>(r.height * 0.75f),
                            Fade(glow, 0.10f + 0.10f * bass), Fade(glow, 0.0f));
 
-    // With depth layers the visualizer lives inside the art, so give the
-    // artwork the space the bottom bar strip used to take.
-    const float visH = hasFg ? 0.0f : 170.0f;
-    const float artSize = hasFg ? std::min({480.0f, r.height - 220, r.width - 200})
-                                : std::min({380.0f, r.height - visH - 200, r.width - 160});
+    // Art sits above the track text and the inline transport; reserve room at
+    // the bottom for that control cluster so everything stacks like the web app.
+    const float artSize = hasFg ? std::min({440.0f, r.height - 290, r.width - 200})
+                                : std::min({360.0f, r.height - 290, r.width - 160});
     const float artX = r.x + (r.width - artSize) / 2;
-    const float artY = r.y + (hasFg ? 44 : 56);
+    const float artY = r.y + (hasFg ? 40 : 48);
     const Rectangle artRect{artX, artY, artSize, artSize};
 
     // Ambient glow: LED-underglow style — a tight bright line at the art edge
@@ -1298,24 +1195,125 @@ void App::DrawNowPlayingView(Rectangle r) {
         DrawTexturePro(fg_.tex, src, artRect, Vector2{0, 0}, 0, WHITE);
     }
 
-    const float textY = artY + artSize + 30;
-    ui::TextCentered(cur->title, Vector2{r.x + r.width / 2, textY}, 28, ui::theme.text);
-    ui::TextCentered(cur->artist, Vector2{r.x + r.width / 2, textY + 34}, 17,
-                     ui::theme.textSecondary);
-    if (album != nullptr) {
-        ui::TextCentered(album->title, Vector2{r.x + r.width / 2, textY + 60}, 14,
-                         ui::theme.textTertiary);
-    }
+    // Everything below the art lives in a centered column, narrow enough that
+    // the header buttons and transport read as one panel rather than spanning
+    // the whole window.
+    const float cx = r.x + r.width / 2;
+    const float colW = std::min(560.0f, r.width - 96);
+    const float colX = cx - colW / 2;
 
+    const float textY = artY + artSize + 28;
+    ui::TextCentered(cur->title, Vector2{cx, textY}, 26, ui::theme.text);
+    std::string sub = cur->artist;
+    if (album != nullptr) sub += "  \xc2\xb7  " + album->title;
+    ui::TextCentered(sub, Vector2{cx, textY + 30}, 15, ui::theme.textSecondary);
+
+    // Favorite + add-to-playlist, level with the title at the column's right.
+    const Rectangle heartR{colX + colW - 58, textY - 12, 24, 24};
+    const bool fav = playlists_.IsFavorite(cur->id);
+    ui::IconHeart(Vector2{heartR.x + 12, heartR.y + 12}, 18,
+                  fav            ? ui::theme.accent
+                  : ui::Hover(heartR) ? ui::theme.text
+                                      : ui::theme.textSecondary,
+                  fav);
+    if (ui::Clicked(heartR)) playlists_.ToggleFavorite(cur->id);
+
+    const Rectangle plusR{colX + colW - 24, textY - 12, 24, 24};
+    ui::IconPlus(Vector2{plusR.x + 12, plusR.y + 12}, 18,
+                 ui::Hover(plusR) ? ui::theme.text : ui::theme.textSecondary);
+    if (ui::Clicked(plusR)) OpenTrackMenu(cur->id);
+
+    // Transport anchored to the bottom of the view; seek bar sits above it.
+    const float ctrlY = r.y + r.height - 44;
+    const float seekTop = ctrlY - 54;
+
+    // The visualizer fills whatever gap remains between the text and seek bar.
     if (!hasFg) {
-        visualizer_.DrawBars(Rectangle{r.x + 32, r.y + r.height - visH - 8, r.width - 64, visH},
-                             album != nullptr ? album->accent : Brighten(glow, 0.25f));
+        const float vTop = textY + 56;
+        const float vBot = seekTop - 18;
+        if (vBot - vTop > 24) {
+            visualizer_.DrawBars(Rectangle{colX, vTop, colW, vBot - vTop},
+                                 album != nullptr ? album->accent : Brighten(glow, 0.25f));
+        }
         if (config_.depthLayers && depth_.Busy()) {
             ui::TextCentered(TextFormat("preparing depth layers (%s)...", depth_.StatusText()),
-                             Vector2{r.x + r.width / 2, r.y + r.height - visH - 28}, 13,
-                             ui::theme.textTertiary);
+                             Vector2{cx, seekTop - 14}, 13, ui::theme.textTertiary);
         }
     }
+
+    const float length = player_.TimeLength();
+    const float played = player_.TimePlayed();
+    if (!seekDragging_) seekValue_ = length > 0 ? played / length : 0;
+    const Rectangle seekR{colX, seekTop, colW, 4};
+    const bool wasDragging = seekDragging_;
+    BarSlider(seekR, &seekValue_, &seekDragging_, ui::theme.accent);
+    if (wasDragging && !seekDragging_) player_.SeekTo(seekValue_ * length);
+    const float shownTime = seekDragging_ ? seekValue_ * length : played;
+    ui::Text(ui::FormatTime(shownTime), Vector2{seekR.x, seekTop + 12}, 12, ui::theme.textSecondary);
+    ui::TextRight(ui::FormatTime(length), Vector2{seekR.x + seekR.width, seekTop + 12}, 12,
+                  ui::theme.textSecondary);
+
+    const auto iconButton = [&](float x, float halfSize) {
+        return Rectangle{x - halfSize, ctrlY - halfSize, halfSize * 2, halfSize * 2};
+    };
+
+    const Rectangle shuffleR = iconButton(cx - 110, 14);
+    const Color shuffleCol = player_.Shuffle() ? ui::theme.accent
+                             : ui::Hover(shuffleR) ? ui::theme.text
+                                                   : ui::theme.textSecondary;
+    ui::IconShuffle(Vector2{cx - 110, ctrlY}, 16, shuffleCol);
+    if (ui::Clicked(shuffleR)) player_.ToggleShuffle();
+
+    const Rectangle prevR = iconButton(cx - 60, 14);
+    ui::IconPrev(Vector2{cx - 60, ctrlY}, 18,
+                 ui::Hover(prevR) ? ui::theme.text : ui::theme.textSecondary);
+    if (ui::Clicked(prevR)) {
+        player_.Prev();
+        manualSkip_ = true;
+    }
+
+    const Rectangle playR = iconButton(cx, 22);
+    DrawCircleV(Vector2{cx, ctrlY}, 22,
+                ui::Hover(playR) ? Brighten(ui::theme.accent, 0.15f) : ui::theme.accent);
+    if (player_.IsPlaying()) {
+        ui::IconPause(Vector2{cx, ctrlY}, 16, ui::theme.bg);
+    } else {
+        ui::IconPlay(Vector2{cx + 1, ctrlY}, 18, ui::theme.bg);
+    }
+    if (ui::Clicked(playR)) player_.TogglePause();
+
+    const Rectangle nextR = iconButton(cx + 60, 14);
+    ui::IconNext(Vector2{cx + 60, ctrlY}, 18,
+                 ui::Hover(nextR) ? ui::theme.text : ui::theme.textSecondary);
+    if (ui::Clicked(nextR)) {
+        player_.Next();
+        manualSkip_ = true;
+    }
+
+    const Rectangle repeatR = iconButton(cx + 110, 14);
+    const bool repeatOn = player_.Repeat() != RepeatMode::Off;
+    const Color repeatCol = repeatOn ? ui::theme.accent
+                            : ui::Hover(repeatR) ? ui::theme.text
+                                                 : ui::theme.textSecondary;
+    ui::IconRepeat(Vector2{cx + 110, ctrlY}, 15, repeatCol, player_.Repeat() == RepeatMode::One);
+    if (ui::Clicked(repeatR)) player_.CycleRepeat();
+
+    // Volume on the column's left edge, queue toggle on its right.
+    float vol = player_.Volume();
+    const Vector2 volIcon{colX + 9, ctrlY};
+    ui::IconVolume(volIcon, 17, ui::theme.textSecondary, vol);
+    const Rectangle volR{colX + 32, ctrlY - 2, 72, 4};
+    if (BarSlider(volR, &vol, &volumeDragging_, ui::theme.text)) player_.SetVolume(vol);
+    const Rectangle volIconR{volIcon.x - 12, volIcon.y - 12, 24, 24};
+    if (ui::Clicked(volIconR)) player_.SetVolume(vol > 0.01f ? 0.0f : 0.8f);
+
+    const Vector2 queueIcon{colX + colW - 12, ctrlY};
+    const Rectangle queueR{queueIcon.x - 12, queueIcon.y - 12, 24, 24};
+    const Color queueCol = config_.queuePanel ? ui::theme.accent
+                           : ui::Hover(queueR) ? ui::theme.text
+                                               : ui::theme.textSecondary;
+    ui::IconQueue(queueIcon, 16, queueCol);
+    if (ui::Clicked(queueR)) ToggleQueuePanel();
 }
 
 void App::DrawEmptyState(Rectangle r) {
