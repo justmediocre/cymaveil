@@ -1223,21 +1223,24 @@ void App::DrawNowPlayingView(Rectangle r) {
                  ui::Hover(plusR) ? ui::theme.text : ui::theme.textSecondary);
     if (ui::Clicked(plusR)) OpenTrackMenu(cur->id);
 
-    // Transport anchored to the bottom of the view; seek bar sits above it.
-    const float ctrlY = r.y + r.height - 44;
-    const float seekTop = ctrlY - 54;
+    // Seek bar and transport sit directly beneath the track text so the art,
+    // title, buttons and controls all read as one panel under the album, like
+    // the web app — rather than the transport floating at the window's edge.
+    const float seekTop = textY + 64;
+    const float ctrlY = seekTop + 50;
 
-    // The visualizer fills whatever gap remains between the text and seek bar.
+    // Visualizer bars rise from the bottom of the view, underneath the controls;
+    // they fill the leftover space without dictating where the panel sits.
     if (!hasFg) {
-        const float vTop = textY + 56;
-        const float vBot = seekTop - 18;
-        if (vBot - vTop > 24) {
-            visualizer_.DrawBars(Rectangle{colX, vTop, colW, vBot - vTop},
+        const float barBottom = r.y + r.height - 10;
+        const float barH = std::min(220.0f, barBottom - (ctrlY + 30));
+        if (barH > 8) {
+            visualizer_.DrawBars(Rectangle{colX, barBottom - barH, colW, barH},
                                  album != nullptr ? album->accent : Brighten(glow, 0.25f));
         }
         if (config_.depthLayers && depth_.Busy()) {
             ui::TextCentered(TextFormat("preparing depth layers (%s)...", depth_.StatusText()),
-                             Vector2{cx, seekTop - 14}, 13, ui::theme.textTertiary);
+                             Vector2{cx, r.y + r.height - 22}, 13, ui::theme.textTertiary);
         }
     }
 
