@@ -184,6 +184,17 @@ private:
     std::string searchQuery_;
     float searchAlbumsScroll_ = 0;
     float searchTracksScroll_ = 0;
+    // Bumped whenever the library contents change (scan lands / watcher rescan),
+    // so DrawSearchView can invalidate its cached results without re-filtering
+    // every string every frame.
+    unsigned libGeneration_ = 0;
+    // Cached search results, recomputed only when the query (trimmed/lowercased)
+    // or libGeneration_ changes. searchCacheValid_ guards the empty-query case.
+    std::string searchCacheKey_;
+    unsigned searchCacheGen_ = 0;
+    bool searchCacheValid_ = false;
+    std::vector<const Album*> searchAlbums_;
+    std::vector<const Track*> searchTracks_;
     float libScroll_ = 0;
     float albumsScroll_ = 0;
     float detailScroll_ = 0;

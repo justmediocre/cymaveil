@@ -184,6 +184,7 @@ void App::Frame() {
     player_.Update();
     if (library_.PollScan()) {
         mosaic_.Rebuild(library_.Albums(), MosaicCfg());
+        libGeneration_++;  // invalidate cached search results
         MarkActivity();
     }
     if (autoplay_ && !library_.Tracks().empty()) {
@@ -1200,8 +1201,7 @@ void App::DrawSearchView(Rectangle r) {
     }
 
     // Trimmed, lower-cased query for case-insensitive substring matching.
-    std::string q;
-    for (char c : searchQuery_) q += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::string q = Lower(searchQuery_);
     while (!q.empty() && q.front() == ' ') q.erase(q.begin());
     while (!q.empty() && q.back() == ' ') q.pop_back();
 
@@ -1211,23 +1211,30 @@ void App::DrawSearchView(Rectangle r) {
         return;
     }
 
-    const auto contains = [&](const std::string& s) {
-        std::string l;
-        for (char c : s) l += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        return l.find(q) != std::string::npos;
-    };
-
-    std::vector<const Album*> albums;
-    for (const auto& a : library_.Albums()) {
-        if (contains(a.title) || contains(a.artist)) albums.push_back(&a);
-    }
-    std::vector<const Track*> tracks;
-    for (const auto& t : library_.Tracks()) {
-        const Album* a = library_.AlbumById(t.albumId);
-        if (contains(t.title) || contains(t.artist) || (a != nullptr && contains(a->artist))) {
-            tracks.push_back(&t);
+    // Re-filter only when the trimmed query or the library contents change.
+    // Otherwise reuse the cached result vectors instead of lower-casing and
+    // substring-scanning every track/album string every frame.
+    if (!searchCacheValid_ || searchCacheKey_ != q || searchCacheGen_ != libGeneration_) {
+        const auto contains = [&](const std::string& s) {
+            return Lower(s).find(q) != std::string::npos;
+        };
+        searchAlbums_.clear();
+        for (const auto& a : library_.Albums()) {
+            if (contains(a.title) || contains(a.artist)) searchAlbums_.push_back(&a);
         }
+        searchTracks_.clear();
+        for (const auto& t : library_.Tracks()) {
+            const Album* a = library_.AlbumById(t.albumId);
+            if (contains(t.title) || contains(t.artist) || (a != nullptr && contains(a->artist))) {
+                searchTracks_.push_back(&t);
+            }
+        }
+        searchCacheKey_ = q;
+        searchCacheGen_ = libGeneration_;
+        searchCacheValid_ = true;
     }
+    const std::vector<const Album*>& albums = searchAlbums_;
+    const std::vector<const Track*>& tracks = searchTracks_;
 
     if (albums.empty() && tracks.empty()) {
         ui::TextCentered(TextFormat("No results for \"%s\"", searchQuery_.c_str()),
