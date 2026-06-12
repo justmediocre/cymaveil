@@ -52,6 +52,15 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
 Library cache, settings, playlists, and extracted album art live in
 `~/.local/share/cymaveil/`. Playlist exports are written to `~/Music/<name>.m3u8`.
 
+**Desktop integration:** copy `native/cymaveil.desktop` to
+`~/.local/share/applications/` and point `Exec`/`Icon` at the built binary and
+`build/icon.png`. The window sets app id / WM_CLASS `cymaveil` (via a raylib
+patch, see `cmake/patch-raylib-appid.cmake`), and the desktop file is what lets
+the desktop attach an icon to the window on Wayland and bind the MPRIS player
+to the taskbar entry — without it, e.g. KDE's task manager won't show hover
+media controls, because the matcher bails on tasks with no launcher URL before
+it ever compares PIDs.
+
 Dev/testing flags: `--play` (autoplay the library on launch),
 `--view library|albums|playlists|now` (start on a view), `--import <file.m3u8>` (import a
 playlist on launch), `--shot <path>` (capture a screenshot ~2s in, with debug overlay).

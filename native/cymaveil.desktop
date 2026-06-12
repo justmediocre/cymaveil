@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Cymaveil
+Comment=Music player with depth-layered visualizer
+Exec=cymaveil
+Icon=cymaveil
+Terminal=false
+StartupWMClass=cymaveil
+Categories=AudioVideo;Audio;Player;

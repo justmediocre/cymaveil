@@ -23,13 +23,15 @@ set(RAYLIB_VERSION 6.0)
 set(GLFW_BUILD_WAYLAND ON CACHE BOOL "" FORCE)
 set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
 
-# PATCH_COMMAND: fixes a double free in raylib 6.0's FLAC unload path
-# (see cmake/patch-raylib-flac.cmake).
+# PATCH_COMMANDs: fix a double free in raylib 6.0's FLAC unload path, and set
+# the Wayland app_id / X11 WM_CLASS so desktops can match the window to
+# cymaveil.desktop (icon + taskbar media controls); see cmake/patch-raylib-*.
 FetchContent_Declare(
     raylib
     DOWNLOAD_EXTRACT_TIMESTAMP OFF
     URL https://github.com/raysan5/raylib/archive/refs/tags/${RAYLIB_VERSION}.tar.gz
     PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch-raylib-flac.cmake
+    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch-raylib-appid.cmake
 )
 
 # ── TagLib (metadata + embedded artwork) ──
