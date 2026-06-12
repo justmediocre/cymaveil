@@ -484,7 +484,7 @@ void App::HandleDroppedFolders() {
 void App::UpdatePacing() {
     // The whole point of the rewrite: only burn CPU/GPU when something moves.
     //  - playing + focused: 60 fps for the visualizer
-    //  - playing + unfocused: 24 fps (stream still needs feeding)
+    //  - playing + unfocused: 30 fps (stream still needs feeding)
     //  - recent input / scan / pending art decodes: 60 fps
     //  - otherwise: block on OS events (near-zero usage until input arrives)
     const bool busy = library_.ScanActive() || art_.HasPendingWork() || seekDragging_ ||
@@ -498,7 +498,7 @@ void App::UpdatePacing() {
     int fps;
     bool wait = false;
     if (player_.IsPlaying()) {
-        fps = IsWindowFocused() ? 60 : 24;
+        fps = IsWindowFocused() ? 60 : 30;
     } else if (busy || recentInput) {
         fps = 60;
     } else {
