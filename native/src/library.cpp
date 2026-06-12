@@ -316,17 +316,27 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
         const fs::path& path = found.path;
         scanCurrent_++;
 
-        // Unchanged since the last scan? Reuse the cached track and its album.
+        // Unchanged since the last scan? Reuse the cached track and its album —
+        // but only if the album's cached art still exists on disk. If the art
+        // cache was deleted, fall through to a full parse so it gets
+        // re-extracted from the file's embedded artwork.
         if (const auto cached = oldByPath.find(path.string());
             cached != oldByPath.end() && found.mtime != 0 && cached->second->mtime == found.mtime) {
             const Track& old = *cached->second;
-            if (!albums.count(old.albumId)) {
-                if (const auto oa = oldAlbumById.find(old.albumId); oa != oldAlbumById.end()) {
-                    albums[old.albumId] = *oa->second;
-                }
+            const Album* oldAlbum = nullptr;
+            if (const auto oa = oldAlbumById.find(old.albumId); oa != oldAlbumById.end()) {
+                oldAlbum = oa->second;
             }
-            tracks.push_back(old);
-            continue;
+            std::error_code artEc;
+            const bool artMissing =
+                oldAlbum && !oldAlbum->artPath.empty() && !fs::exists(oldAlbum->artPath, artEc);
+            if (!artMissing) {
+                if (oldAlbum && !albums.count(old.albumId)) {
+                    albums[old.albumId] = *oldAlbum;
+                }
+                tracks.push_back(old);
+                continue;
+            }
         }
 
         TagLib::FileRef f(path.string().c_str(), true, TagLib::AudioProperties::Average);
@@ -414,6 +424,9 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
         if (!album.artPath.empty()) continue;
         const auto oa = oldAlbumById.find(id);
         if (oa == oldAlbumById.end() || oa->second->artPath.empty()) continue;
+        // Don't resurrect a deleted art cache — its file must still exist.
+        std::error_code artEc;
+        if (!fs::exists(oa->second->artPath, artEc)) continue;
         album.artPath = oa->second->artPath;
         album.dominant = oa->second->dominant;
         album.accent = oa->second->accent;
