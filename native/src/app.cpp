@@ -1505,8 +1505,14 @@ void App::DrawQueuePanel(Rectangle r) {
                 else jump = i;
             }
         }
-        const float textX = row.x + (isCurrent ? 34.0f : 14.0f);
-        if (isCurrent) ui::IconNote(Vector2{row.x + 18, y + kQueueRowH / 2}, 15, ui::theme.accent);
+        constexpr float kArt = 40.0f;
+        const Rectangle art{row.x + 8, y + (kQueueRowH - kArt) / 2, kArt, kArt};
+        DrawAlbumArt(art, t != nullptr ? library_.AlbumById(t->albumId) : nullptr, 1.0f, 1.0f);
+        if (isCurrent) {
+            DrawRectangleRounded(art, 0.06f, 6, Fade(BLACK, 0.45f));
+            ui::IconNote(Vector2{art.x + kArt / 2, art.y + kArt / 2}, 15, ui::theme.accent);
+        }
+        const float textX = art.x + kArt + 12;
         const float textW = row.width - (textX - row.x) - 76;
         if (t != nullptr) {
             ui::TextEllipsis(t->title, Vector2{textX, y + 9}, textW, 14,
