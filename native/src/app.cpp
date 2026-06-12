@@ -806,7 +806,7 @@ void App::DrawAlbumDetailView(Rectangle r) {
                        ui::FormatTime(dur).c_str());
     ui::TextEllipsis(meta, Vector2{tx, hy + 70}, r.width - tx - 24, 14, ui::theme.textSecondary);
 
-    const Rectangle playR{tx, hy + 108, 112, 38};
+    const Rectangle playR{tx, hy + 108, 44 + ui::Measure("Play", 16).x + 24, 38};
     DrawRectangleRounded(playR, 0.6f, 8,
                          ui::Hover(playR) ? Brighten(ui::theme.accent, 0.15f) : ui::theme.accent);
     ui::IconPlay(Vector2{playR.x + 28, playR.y + 19}, 13, ui::theme.bg);
@@ -911,13 +911,13 @@ void App::DrawPlaylistDetailView(Rectangle r) {
     }
 
     float bx = tx;
-    const Rectangle playR{bx, hy + 108, 112, 38};
+    const Rectangle playR{bx, hy + 108, 44 + ui::Measure("Play", 16).x + 24, 38};
     DrawRectangleRounded(playR, 0.6f, 8,
                          ui::Hover(playR) ? Brighten(ui::theme.accent, 0.15f) : ui::theme.accent);
     ui::IconPlay(Vector2{playR.x + 28, playR.y + 19}, 13, ui::theme.bg);
     ui::Text("Play", Vector2{playR.x + 44, playR.y + 10}, 16, ui::theme.bg);
     if (ui::Clicked(playR) && !tracks.empty()) PlayFromTrackList(tracks, 0, src, p->id);
-    bx += 124;
+    bx += playR.width + 12;
 
     const auto button = [&](const std::string& label, float w) {
         const Rectangle b{bx, hy + 112, w, 30};
