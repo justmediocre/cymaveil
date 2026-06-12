@@ -377,6 +377,15 @@ void IconSearch(Vector2 c, float s, Color col) {
     const float d = r * 0.7071f;  // 45° offset to the rim
     DrawLineEx(Vector2{lens.x + d, lens.y + d}, Vector2{c.x + s * 0.42f, c.y + s * 0.42f}, t, col);
 }
+void IconBrush(Vector2 c, float s, Color col) {
+    const float t = std::max(1.5f, s * 0.1f);
+    const Vector2 handle{c.x + s * 0.36f, c.y - s * 0.36f};  // upper-right
+    const Vector2 ferrule{c.x - s * 0.02f, c.y + s * 0.02f};
+    const Vector2 tip{c.x - s * 0.34f, c.y + s * 0.34f};  // lower-left bristle tip
+    DrawLineEx(handle, ferrule, t, col);      // slim handle
+    DrawLineEx(ferrule, tip, t * 2.0f, col);  // fatter bristles
+    DrawCircleV(tip, t * 0.9f, col);          // rounded tip
+}
 
 std::string FormatTime(float seconds) {
     if (seconds < 0 || !std::isfinite(seconds)) seconds = 0;

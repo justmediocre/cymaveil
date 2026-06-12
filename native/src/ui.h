@@ -73,6 +73,7 @@ void IconClose(Vector2 c, float size, Color col);
 void IconQueue(Vector2 c, float size, Color col);  // stacked-list glyph
 void IconPlus(Vector2 c, float size, Color col);
 void IconSearch(Vector2 c, float size, Color col);  // magnifier (ring + handle)
+void IconBrush(Vector2 c, float size, Color col);   // paintbrush (handle + bristles)
 
 std::string FormatTime(float seconds);
 

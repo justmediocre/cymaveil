@@ -8,6 +8,7 @@
 #include "raylib.h"
 
 #include "backdrop.h"
+#include "brush.h"
 #include "config.h"
 #include "depth.h"
 #include "library.h"
@@ -118,6 +119,17 @@ private:
     void UpdateForeground();
     void BuildForeground(const Album& album);
 
+    // ── Manual mask painting (brush editor) ──
+    // Fullscreen overlay to paint/erase the foreground mask for an album.
+    void OpenBrushEditor(const Album& album);
+    void CloseBrushEditor();
+    void DrawBrushEditor(Rectangle r);
+    // Recomposites the alpha map + art into the preview texture (fg opaque,
+    // bg dim + translucent so the visualizer shows through).
+    void RebuildBrushOverlay();
+    // Writes the painted mask to disk and rebuilds the live foreground.
+    void SaveBrushMask();
+
     Config config_;
     Library library_;
     Playlists playlists_;
@@ -138,6 +150,19 @@ private:
         std::string checkedAlbum;  // album we last looked for a mask for
         Texture2D tex{};
     } fg_;
+
+    // Manual mask painting overlay; opened from Now Playing.
+    struct Brush {
+        bool open = false;
+        BrushCanvas canvas;
+        std::string albumId;
+        Texture2D artTex{};      // album art base layer
+        Texture2D overlayTex{};  // mask preview composite
+        std::vector<unsigned char> overlayBuf;  // scratch for texture updates
+        bool overlayDirty = true;
+        bool painting = false;
+        Vector2 lastMask{};
+    } brush_;
 
     std::vector<std::string> startupFolders_;
     std::vector<std::string> startupImports_;

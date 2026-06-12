@@ -142,6 +142,7 @@ int App::Run() {
     else if (startView_ == "playlists") view_ = View::Playlists;
     else if (startView_ == "now") view_ = View::NowPlaying;
     else if (startView_ == "settings") view_ = View::Settings;
+    else if (startView_ == "brush") view_ = View::NowPlaying;  // editor opens once art loads
     // After the view flag: a successful import lands on the playlist detail
     for (const auto& f : startupImports_) ImportM3uFile(f);
     MarkActivity();
@@ -162,6 +163,8 @@ int App::Run() {
     backdrop_.Unload();
     vinyl_.Unload();
     if (fg_.tex.id != 0) UnloadTexture(fg_.tex);
+    if (brush_.artTex.id != 0) UnloadTexture(brush_.artTex);
+    if (brush_.overlayTex.id != 0) UnloadTexture(brush_.overlayTex);
     art_.Clear();
     ui::Shutdown();
     CloseAudioDevice();
@@ -211,6 +214,23 @@ void App::Frame() {
     }
     UpdateForeground();
 
+    // Testing affordance: --view brush opens the editor on the shown album once
+    // its art is available, so the overlay can be captured with --shot.
+    if (startView_ == "brush" && !brush_.open) {
+        const Album* a = library_.AlbumById(vinyl_.DisplayedAlbumId());
+        if (a == nullptr || a->artPath.empty()) {
+            for (const auto& al : library_.Albums())
+                if (!al.artPath.empty()) {
+                    a = &al;
+                    break;
+                }
+        }
+        if (a != nullptr && !a->artPath.empty()) {
+            OpenBrushEditor(*a);
+            startView_.clear();
+        }
+    }
+
     const float W = static_cast<float>(GetScreenWidth());
     const float H = static_cast<float>(GetScreenHeight());
     // Now Playing carries its own transport inline (like the web app); other
@@ -232,8 +252,9 @@ void App::Frame() {
     const Rectangle queuePanel{W - qw, 0, qw, H - barH};
     const Rectangle bar{0, H - barH, W, barH};
 
-    // The context menu overlays everything; swallow the mouse underneath it.
-    ui::BlockInput(menu_.open);
+    // The context menu and brush editor overlay everything; swallow the mouse
+    // underneath them so widgets in the views don't react through the overlay.
+    ui::BlockInput(menu_.open || brush_.open);
 
     // Render the mosaic offscreen so the chrome panels can sample a blurred copy
     // of it (frosted glass). The sharp copy is the screen's base layer.
@@ -260,6 +281,7 @@ void App::Frame() {
     DrawSidebar(sidebar);
     if (qw > 0.5f) DrawQueuePanel(queuePanel);
     if (miniBar) DrawMiniPlayer(bar);
+    if (brush_.open) DrawBrushEditor(Rectangle{0, 0, W, H});
     DrawTrackMenu();
     DrawToast();
     if (showDebug_) DrawDebugOverlay();
@@ -373,6 +395,9 @@ void App::HandleInput() {
     }
     while (GetKeyPressed() != 0) MarkActivity();  // drain queue: any key wakes the UI
 
+    // The brush editor consumes all input while open (handled in its draw pass).
+    if (brush_.open) return;
+
     // While renaming a playlist every key belongs to the text box.
     if (!editPlaylistId_.empty()) return;
     // Likewise while typing a path into the Settings folder field.
@@ -415,6 +440,14 @@ void App::HandleInput() {
     if (IsKeyPressed(KEY_S)) player_.ToggleShuffle();
     if (IsKeyPressed(KEY_R)) player_.CycleRepeat();
     if (IsKeyPressed(KEY_Q)) ToggleQueuePanel();
+    // X opens the mask brush editor for the album on screen (same as the
+    // brush button in Now Playing). Inside the editor X toggles paint/erase.
+    if (IsKeyPressed(KEY_X)) {
+        const Track* cur = player_.Current();
+        const Album* shown = library_.AlbumById(vinyl_.DisplayedAlbumId());
+        if (shown == nullptr && cur != nullptr) shown = library_.AlbumById(cur->albumId);
+        if (shown != nullptr && !shown->artPath.empty()) OpenBrushEditor(*shown);
+    }
     if (IsKeyPressed(KEY_ONE)) view_ = View::Library;
     if (IsKeyPressed(KEY_TWO)) view_ = View::Albums;
     if (IsKeyPressed(KEY_THREE)) view_ = View::Playlists;
@@ -497,6 +530,301 @@ void App::BuildForeground(const Album& album) {
     MarkActivity();
 }
 
+// ── Manual mask painting (brush editor) ──
+
+void App::OpenBrushEditor(const Album& album) {
+    if (album.artPath.empty()) return;
+    const std::string maskPath = DepthEngine::MaskPath(album.id);
+    // Seed from the existing mask when there is one, else start from a blank
+    // (all-background) canvas the user paints the in-front subject onto.
+    if (!brush_.canvas.Init(album.artPath, DepthEngine::MaskExists(album.id) ? maskPath : "", 256)) {
+        Toast("Couldn't load artwork");
+        return;
+    }
+    brush_.albumId = album.id;
+
+    if (brush_.artTex.id != 0) UnloadTexture(brush_.artTex);
+    brush_.artTex = LoadTexture(album.artPath.c_str());
+    SetTextureFilter(brush_.artTex, TEXTURE_FILTER_BILINEAR);
+
+    brush_.overlayDirty = true;
+    RebuildBrushOverlay();  // creates overlayTex
+    brush_.painting = false;
+    brush_.open = true;
+    MarkActivity();
+}
+
+void App::CloseBrushEditor() {
+    brush_.open = false;
+    brush_.painting = false;
+    if (brush_.artTex.id != 0) {
+        UnloadTexture(brush_.artTex);
+        brush_.artTex = Texture2D{};
+    }
+    if (brush_.overlayTex.id != 0) {
+        UnloadTexture(brush_.overlayTex);
+        brush_.overlayTex = Texture2D{};
+    }
+    ShowCursor();
+    MarkActivity();
+}
+
+void App::RebuildBrushOverlay() {
+    const auto& alpha = brush_.canvas.Alpha();
+    const auto& art = brush_.canvas.ArtRGBA();
+    const int w = brush_.canvas.Width();
+    const int h = brush_.canvas.Height();
+    if (w == 0) return;
+    brush_.overlayBuf.resize(static_cast<size_t>(w) * h * 4);
+    for (int i = 0; i < w * h; i++) {
+        const unsigned char r = art[i * 4];
+        const unsigned char g = art[i * 4 + 1];
+        const unsigned char b = art[i * 4 + 2];
+        unsigned char* o = &brush_.overlayBuf[i * 4];
+        if (alpha[i] > 128) {  // foreground: opaque art, sits in front of the bars
+            o[0] = r;
+            o[1] = g;
+            o[2] = b;
+            o[3] = 255;
+        } else {  // background: dim + translucent so the visualizer shows through
+            o[0] = static_cast<unsigned char>(r * 0.30f);
+            o[1] = static_cast<unsigned char>(g * 0.25f);
+            o[2] = static_cast<unsigned char>(b * 0.40f);
+            o[3] = 90;
+        }
+    }
+    if (brush_.overlayTex.id == 0) {
+        Image img{brush_.overlayBuf.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
+        brush_.overlayTex = LoadTextureFromImage(img);
+        SetTextureFilter(brush_.overlayTex, TEXTURE_FILTER_BILINEAR);
+    } else {
+        UpdateTexture(brush_.overlayTex, brush_.overlayBuf.data());
+    }
+    brush_.overlayDirty = false;
+}
+
+void App::SaveBrushMask() {
+    const Album* album = library_.AlbumById(brush_.albumId);
+    if (album == nullptr) {
+        CloseBrushEditor();
+        return;
+    }
+    if (!brush_.canvas.Save(DepthEngine::MaskPath(album->id))) {
+        Toast("Couldn't save mask");
+        return;
+    }
+    // A hand-painted mask is only visible with depth layers on; turn them on so
+    // the work shows immediately rather than silently doing nothing.
+    if (!config_.depthLayers) {
+        config_.depthLayers = true;
+        config_.Save();
+    }
+    // Force the live foreground to pick up the new mask on the next frame, and
+    // build it now for instant feedback if this album is the one on screen.
+    fg_.albumId.clear();
+    fg_.checkedAlbum.clear();
+    BuildForeground(*album);
+    Toast("Mask saved");
+    CloseBrushEditor();
+}
+
+void App::DrawBrushEditor(Rectangle r) {
+    if (brush_.overlayDirty) RebuildBrushOverlay();
+
+    // Opaque backdrop covering the chrome underneath.
+    DrawRectangleRec(r, ui::theme.bg);
+
+    const Album* album = library_.AlbumById(brush_.albumId);
+    const Color accent = album != nullptr ? album->accent : ui::theme.accent;
+
+    // ── Geometry: a centred square canvas with the toolbar below it ──
+    const float toolbarH = 46, gap = 18;
+    const float canvasSize = std::min({720.0f, r.width - 120, r.height - 200});
+    const float cx = r.x + r.width / 2;
+    const float blockH = canvasSize + gap + toolbarH;
+    const float top = r.y + std::max(48.0f, (r.height - blockH) / 2);
+    const Rectangle artRect{cx - canvasSize / 2, top, canvasSize, canvasSize};
+
+    // Title above the canvas.
+    if (album != nullptr) {
+        ui::TextCentered("Editing mask · " + album->title,
+                         Vector2{cx, std::max(r.y + 22, top - 24)}, 14, ui::theme.textSecondary);
+    }
+
+    // ── Layer 0: album art ──
+    if (brush_.artTex.id != 0) {
+        const float side = static_cast<float>(std::min(brush_.artTex.width, brush_.artTex.height));
+        const Rectangle src{(brush_.artTex.width - side) / 2, (brush_.artTex.height - side) / 2, side,
+                            side};
+        DrawTexturePro(brush_.artTex, src, artRect, Vector2{0, 0}, 0, WHITE);
+    }
+    // ── Layer 1: visualizer, between the art and the mask (same inset as NP) ──
+    BeginScissorMode(static_cast<int>(artRect.x), static_cast<int>(artRect.y),
+                     static_cast<int>(artRect.width), static_cast<int>(artRect.height));
+    visualizer_.DrawFullSurface(
+        Rectangle{artRect.x + canvasSize * 0.06f, artRect.y, canvasSize * 0.88f, canvasSize * 0.96f},
+        accent, album != nullptr && album->hasSecondary ? &album->accentSecondary : nullptr, 0.65f);
+    EndScissorMode();
+    // ── Layer 2: mask preview composite ──
+    if (brush_.overlayTex.id != 0) {
+        DrawTexturePro(brush_.overlayTex,
+                       Rectangle{0, 0, static_cast<float>(brush_.overlayTex.width),
+                                 static_cast<float>(brush_.overlayTex.height)},
+                       artRect, Vector2{0, 0}, 0, WHITE);
+    }
+    DrawRectangleLinesEx(artRect, 1, Fade(ui::theme.text, 0.08f));
+
+    // ── Painting: mouse → mask-space, with brush stroke interpolation ──
+    const Vector2 m = GetMousePosition();
+    const bool overCanvas = CheckCollisionPointRec(m, artRect);
+    const float toMask = brush_.canvas.Width() / artRect.width;  // px → mask units
+    const float mx = (m.x - artRect.x) * toMask;
+    const float my = (m.y - artRect.y) * toMask;
+    if (overCanvas && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        brush_.canvas.BeginStroke();
+        brush_.canvas.PaintPoint(mx, my);
+        brush_.lastMask = Vector2{mx, my};
+        brush_.painting = true;
+        brush_.overlayDirty = true;
+        MarkActivity();
+    } else if (brush_.painting && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        brush_.canvas.PaintLine(brush_.lastMask.x, brush_.lastMask.y, mx, my);
+        brush_.lastMask = Vector2{mx, my};
+        brush_.overlayDirty = true;
+    } else if (brush_.painting && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        brush_.canvas.CommitStroke();
+        brush_.painting = false;
+    }
+
+    // Hide the OS cursor over the canvas and draw our own brush ring instead.
+    if (overCanvas) {
+        HideCursor();
+        const float rad = brush_.canvas.Radius() / toMask;
+        const Color ring = brush_.canvas.mode() == BrushCanvas::Mode::Paint
+                               ? Color{255, 255, 255, 200}
+                               : Color{255, 90, 90, 220};
+        DrawRing(m, std::max(0.5f, rad - 0.75f), rad + 0.75f, 0, 360, 64, ring);
+        DrawLineEx(Vector2{m.x - 4, m.y}, Vector2{m.x + 4, m.y}, 1, Fade(ring, 0.7f));
+        DrawLineEx(Vector2{m.x, m.y - 4}, Vector2{m.x, m.y + 4}, 1, Fade(ring, 0.7f));
+    } else {
+        ShowCursor();
+    }
+
+    // ── Keyboard: mode, size, undo/redo, save, close ──
+    const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    if (IsKeyPressed(KEY_X)) brush_.canvas.ToggleMode();
+    if (IsKeyPressed(KEY_LEFT_BRACKET)) brush_.canvas.SetRadius(brush_.canvas.Radius() - 1);
+    if (IsKeyPressed(KEY_RIGHT_BRACKET)) brush_.canvas.SetRadius(brush_.canvas.Radius() + 1);
+    if (ctrl && GetMouseWheelMove() != 0) {
+        brush_.canvas.SetRadius(brush_.canvas.Radius() + (GetMouseWheelMove() > 0 ? 1 : -1));
+    }
+    if (ctrl && !shift && IsKeyPressed(KEY_Z)) {
+        brush_.canvas.Undo();
+        brush_.overlayDirty = true;
+    }
+    if (ctrl && (IsKeyPressed(KEY_Y) || (shift && IsKeyPressed(KEY_Z)))) {
+        brush_.canvas.Redo();
+        brush_.overlayDirty = true;
+    }
+    if (ctrl && IsKeyPressed(KEY_S)) {
+        SaveBrushMask();
+        return;
+    }
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        CloseBrushEditor();
+        return;
+    }
+
+    // ── Toolbar: glass pill below the canvas ──
+    const float bh = 30, padIn = 14, g = 8;
+    const float wPaint = 58, wErase = 58, wMinus = 26, wSize = 66, wPlus = 26;
+    const float wUndo = 54, wRedo = 54, wReset = 58, wSave = 68, wClose = 30;
+    const float widths[] = {wPaint, wErase, wMinus, wSize, wPlus,
+                            wUndo,  wRedo,  wReset, wSave, wClose};
+    constexpr int kNumItems = 10;
+    float total = 2 * padIn + g * (kNumItems - 1);
+    for (float w : widths) total += w;
+    const float ty = artRect.y + canvasSize + gap;
+    const Rectangle panel{cx - total / 2, ty, total, toolbarH};
+    DrawRectangleRounded(panel, 0.5f, 10, ui::theme.surface);
+    DrawRectangleRoundedLinesEx(panel, 0.5f, 10, 1, ui::theme.borderSubtle);
+
+    float bx = panel.x + padIn;
+    const float by = ty + (toolbarH - bh) / 2;
+    const auto place = [&](float w) {
+        const Rectangle b{bx, by, w, bh};
+        bx += w + g;
+        return b;
+    };
+    // A labelled button; `active` paints the accent state, `enabled=false` dims.
+    const auto button = [&](Rectangle b, const char* label, bool active, bool enabled) {
+        const bool hov = enabled && ui::HoverRaw(b);
+        if (active) {
+            DrawRectangleRounded(b, 0.35f, 6, Fade(accent, 0.18f));
+            DrawRectangleRoundedLinesEx(b, 0.35f, 6, 1, accent);
+        } else if (hov) {
+            DrawRectangleRounded(b, 0.35f, 6, ui::theme.elevated);
+        }
+        const Color col = !enabled    ? ui::theme.textTertiary
+                          : active    ? accent
+                          : hov       ? ui::theme.text
+                                      : ui::theme.textSecondary;
+        ui::TextCentered(label, Vector2{b.x + b.width / 2, b.y + b.height / 2}, 13, col);
+        return enabled && ui::ClickedRaw(b);
+    };
+
+    const bool isPaint = brush_.canvas.mode() == BrushCanvas::Mode::Paint;
+    if (button(place(wPaint), "Paint", isPaint, true)) brush_.canvas.SetMode(BrushCanvas::Mode::Paint);
+    if (button(place(wErase), "Erase", !isPaint, true)) brush_.canvas.SetMode(BrushCanvas::Mode::Erase);
+    if (button(place(wMinus), "\xE2\x88\x92", false, true))  // minus sign
+        brush_.canvas.SetRadius(brush_.canvas.Radius() - 1);
+    {
+        const Rectangle b = place(wSize);
+        ui::TextCentered(TextFormat("Size %d", brush_.canvas.Radius()),
+                         Vector2{b.x + b.width / 2, b.y + b.height / 2}, 13, ui::theme.text);
+    }
+    if (button(place(wPlus), "+", false, true)) brush_.canvas.SetRadius(brush_.canvas.Radius() + 1);
+    if (button(place(wUndo), "Undo", false, brush_.canvas.CanUndo())) {
+        brush_.canvas.Undo();
+        brush_.overlayDirty = true;
+    }
+    if (button(place(wRedo), "Redo", false, brush_.canvas.CanRedo())) {
+        brush_.canvas.Redo();
+        brush_.overlayDirty = true;
+    }
+    if (button(place(wReset), "Reset", false, true)) {
+        brush_.canvas.Reset();
+        brush_.overlayDirty = true;
+    }
+    {
+        const Rectangle b = place(wSave);
+        const bool hov = ui::HoverRaw(b);
+        DrawRectangleRounded(b, 0.35f, 6, hov ? Brighten(accent, 0.12f) : accent);
+        ui::TextCentered("Save", Vector2{b.x + b.width / 2, b.y + b.height / 2}, 13, ui::theme.bg);
+        if (ui::ClickedRaw(b)) {
+            SaveBrushMask();
+            return;
+        }
+    }
+    {
+        const Rectangle b = place(wClose);
+        const bool hov = ui::HoverRaw(b);
+        if (hov) DrawRectangleRounded(b, 0.4f, 6, ui::theme.elevated);
+        ui::IconClose(Vector2{b.x + b.width / 2, b.y + b.height / 2}, 14,
+                      hov ? ui::theme.text : ui::theme.textSecondary);
+        if (ui::ClickedRaw(b)) {
+            CloseBrushEditor();
+            return;
+        }
+    }
+
+    // Keyboard hint line.
+    ui::TextCentered("X paint/erase    [ ] size    Ctrl+Scroll size    Ctrl+Z/Y undo    "
+                     "Ctrl+S save    Esc close",
+                     Vector2{cx, ty + toolbarH + 18}, 11, ui::theme.textTertiary);
+}
+
 void App::HandleDroppedFolders() {
     if (!IsFileDropped()) return;
     FilePathList files = LoadDroppedFiles();
@@ -528,7 +856,7 @@ void App::UpdatePacing() {
     //  - otherwise: block on OS events (near-zero usage until input arrives)
     const bool busy = library_.ScanActive() || art_.HasPendingWork() || seekDragging_ ||
                       volumeDragging_ || mosaic_.Animating() || depth_.Busy() ||
-                      vinyl_.Animating() ||
+                      vinyl_.Animating() || brush_.open ||
                       queueAnim_ != (config_.queuePanel ? 1.0f : 0.0f) ||
                       !editPlaylistId_.empty() ||  // caret blink
                       GetTime() < toastUntil_;
@@ -1267,6 +1595,15 @@ void App::DrawNowPlayingView(Rectangle r) {
     std::string sub = cur->artist;
     if (album != nullptr) sub += "  \xc2\xb7  " + album->title;
     ui::TextCentered(sub, Vector2{cx, textY + 30}, 15, ui::theme.textSecondary);
+
+    // Paint-mask button: opens the brush editor for the album on screen, so the
+    // user can hand-correct (or hand-draw) the depth mask behind the visualizer.
+    if (shownAlbum != nullptr && !shownAlbum->artPath.empty()) {
+        const Rectangle brushR{colX + colW - 92, textY - 12, 24, 24};
+        ui::IconBrush(Vector2{brushR.x + 12, brushR.y + 12}, 17,
+                      ui::Hover(brushR) ? ui::theme.text : ui::theme.textSecondary);
+        if (ui::Clicked(brushR)) OpenBrushEditor(*shownAlbum);
+    }
 
     // Favorite + add-to-playlist, level with the title at the column's right.
     const Rectangle heartR{colX + colW - 58, textY - 12, 24, 24};
