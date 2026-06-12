@@ -33,7 +33,9 @@ const char* kFontCandidates[] = {
 
 std::vector<int> Codepoints() {
     std::vector<int> cps;
-    for (int c = 32; c <= 0x17F; c++) cps.push_back(c);   // ASCII + Latin-1 + Latin Extended-A
+    for (int c = 32; c <= 0x24F; c++) cps.push_back(c);   // ASCII + Latin-1 + Latin Extended-A/B
+    for (int c = 0x370; c <= 0x3FF; c++) cps.push_back(c);   // Greek and Coptic (e.g. µ)
+    for (int c = 0x400; c <= 0x4FF; c++) cps.push_back(c);   // Cyrillic
     for (int c = 0x2010; c <= 0x2027; c++) cps.push_back(c);  // dashes, quotes
     cps.push_back(0x2030);
     cps.push_back(0x2122);  // ™
