@@ -171,6 +171,10 @@ void TextCentered(const std::string& s, Vector2 center, float size, Color c) {
     Text(s, Vector2{center.x - m.x / 2, center.y - m.y / 2}, size, c);
 }
 
+namespace {
+void MarkMarqueeActive();  // sets the file-scope marquee flag (defined below)
+}
+
 void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth,
                          float size, Color c) {
     const Vector2 m = Measure(s, size);
@@ -178,6 +182,11 @@ void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth,
         Text(s, Vector2{center.x - m.x / 2, center.y - m.y / 2}, size, c);
         return;
     }
+
+    // The marquee's phase is a function of GetTime(), so frames must keep
+    // flowing for it to advance — even during its end-of-travel pauses. Flag it
+    // so App::UpdatePacing() stays awake instead of blocking on OS events.
+    MarkMarqueeActive();
 
     // Ping-pong scroll: pause at the start, glide left to reveal the end, pause,
     // glide back. Timing is a pure function of GetTime() so no per-track state
@@ -256,9 +265,16 @@ void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth,
 namespace {
 bool g_inputBlocked = false;
 std::unordered_set<int> g_consumedKeys;
+bool g_marqueeActive = false;
+void MarkMarqueeActive() { g_marqueeActive = true; }
 }
 
-void NewFrame() { g_consumedKeys.clear(); }
+void NewFrame() {
+    g_consumedKeys.clear();
+    g_marqueeActive = false;
+}
+
+bool MarqueeActive() { return g_marqueeActive; }
 
 void ConsumeKey(int key) { g_consumedKeys.insert(key); }
 

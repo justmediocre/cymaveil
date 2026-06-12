@@ -45,6 +45,10 @@ void TextCentered(const std::string& s, Vector2 center, float size, Color c);
 // marquee for long track titles. Stateless: the phase is driven by GetTime().
 void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth,
                          float size, Color c);
+// True if a TextMarqueeCentered call actually scrolled (text overflowed) since
+// the last NewFrame(). UpdatePacing reads this to keep frames flowing while a
+// marquee is mid-scroll, since its phase advances off GetTime() each frame.
+bool MarqueeActive();
 
 // ── Interaction ──
 // Per-frame keyboard consumption. HandleInput acts on a key first, then later

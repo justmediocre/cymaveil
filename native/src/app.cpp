@@ -873,7 +873,7 @@ void App::UpdatePacing() {
     //  - otherwise: block on OS events (near-zero usage until input arrives)
     const bool busy = library_.ScanActive() || art_.HasPendingWork() || seekDragging_ ||
                       volumeDragging_ || mosaic_.Animating() || depth_.Busy() ||
-                      vinyl_.Animating() || brush_.open ||
+                      vinyl_.Animating() || brush_.open || ui::MarqueeActive() ||
                       queueAnim_ != (config_.queuePanel ? 1.0f : 0.0f) ||
                       !editPlaylistId_.empty() ||  // caret blink
                       GetTime() < toastUntil_;
