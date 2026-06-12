@@ -7,6 +7,7 @@
 
 #include "raylib.h"
 
+#include "albumglow.h"
 #include "backdrop.h"
 #include "brush.h"
 #include "config.h"
@@ -152,6 +153,7 @@ private:
     DepthEngine depth_;
     Vinyl vinyl_;
     Sleeve3D sleeve3d_;
+    AlbumGlow albumGlow_;
     Mpris mpris_;
     FolderWatcher watcher_;
     bool manualSkip_ = false;   // user-initiated track change this frame

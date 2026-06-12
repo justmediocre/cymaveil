@@ -166,6 +166,7 @@ int App::Run() {
     backdrop_.Unload();
     vinyl_.Unload();
     sleeve3d_.Unload();
+    albumGlow_.Unload();
     if (fg_.tex.id != 0) UnloadTexture(fg_.tex);
     if (brush_.artTex.id != 0) UnloadTexture(brush_.artTex);
     if (brush_.overlayTex.id != 0) UnloadTexture(brush_.overlayTex);
@@ -301,6 +302,11 @@ void App::Frame() {
     // Render the turning sleeve into its offscreen 3D target before the 2D pass
     // (like the backdrop). Needs both covers resident; otherwise Now Playing
     // falls back to the flat squish for the frame.
+    if (view_ == View::NowPlaying) {
+        const Album* shown = library_.AlbumById(vinyl_.DisplayedAlbumId());
+        const Texture2D* cover = shown != nullptr ? art_.Get(*shown) : nullptr;
+        if (cover != nullptr) albumGlow_.Update(*cover, shown->id);
+    }
     flip3dReady_ = false;
     if (view_ == View::NowPlaying && vinyl_.Flipping()) {
         const Album* fromA = library_.AlbumById(vinyl_.FlipFrom());
@@ -1604,16 +1610,25 @@ void App::DrawNowPlayingView(Rectangle r) {
     const float artY = hasFg ? r.y + std::max(40.0f, (r.height - blockH) / 2) : r.y + 48;
     const Rectangle artRect{artX, artY, artSize, artSize};
 
-    // Ambient glow: LED-underglow style — a tight bright line at the art edge
-    // with a steep exponential falloff, not a wide soft wash
+    // Ambient glow: an Ambilight-style bloom whose color is the cover's own
+    // edges (blurred in AlbumGlow), drawn enlarged + additive so light appears
+    // to spill from the art. Breathes a little wider with the bass.
     const float glowBase = 0.16f + 0.20f * bass;
-    constexpr float kGlowInflate[4] = {3, 6, 10, 16};
-    constexpr float kGlowAlpha[4] = {1.0f, 0.45f, 0.18f, 0.06f};
-    for (int i = 3; i >= 0; i--) {
-        const float inflate = kGlowInflate[i];
-        DrawRectangleRounded(Rectangle{artX - inflate, artY - inflate, artSize + 2 * inflate,
-                                       artSize + 2 * inflate},
-                             0.06f, 8, Fade(glow, glowBase * kGlowAlpha[i]));
+    if (albumGlow_.Ready()) {
+        const float full = artSize / AlbumGlow::kContentFrac;  // content maps to the art
+        const float margin = (full - artSize) / 2 + 6.0f * bass;
+        const Rectangle gdst{artX - margin, artY - margin, artSize + 2 * margin,
+                             artSize + 2 * margin};
+        const Texture2D& gt = albumGlow_.Texture();
+        BeginBlendMode(BLEND_ADDITIVE);
+        DrawTexturePro(gt, Rectangle{0, 0, static_cast<float>(gt.width),
+                                     -static_cast<float>(gt.height)},
+                       gdst, Vector2{0, 0}, 0, Fade(WHITE, 0.55f + 1.4f * glowBase));
+        EndBlendMode();
+    } else {
+        // Bloom not built yet (cover still decoding): keep a flat dominant halo.
+        DrawRectangleRounded(Rectangle{artX - 10, artY - 10, artSize + 20, artSize + 20}, 0.06f, 8,
+                             Fade(glow, glowBase * 0.5f));
     }
 
     if (config_.vinylDisc && shownAlbum != nullptr) {
