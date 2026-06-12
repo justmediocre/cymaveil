@@ -81,10 +81,21 @@ void main() {
         vec2 q = p - 0.5;
         float r = length(q), ang = atan(q.y, q.x);
         float edge = clamp(1.0 - 2.0*min(min(p.x, 1.0 - p.x), min(p.y, 1.0 - p.y)), 0.0, 1.0);
-        float rad = 0.45 + 0.03*(fbm(vec2(ang*2.0, 4.0)) - 0.5)*2.0;
-        float ringBand = smoothstep(0.06, 0.0, abs(r - rad));
-        float field = clamp(fbm(p*5.0)*0.8 + edge*0.7 + ringBand*0.7, 0.0, 1.0);
-        float gate = smoothstep(0.32, 0.7, field);
+
+        // Where a record wears into its sleeve: the disc presses two concentric
+        // rings — its outer edge (the heaviest wear) and the raised label near
+        // the centre — and the sleeve's own edges abrade. Angular noise wobbles
+        // the radii and breaks the rings into uneven arcs.
+        float aN = fbm(vec2(ang*3.0, 5.0));
+        float aBreak = fbm(vec2(ang*6.0 + 20.0, r*8.0));
+        float rOuter = 0.46 + 0.025*(aN - 0.5)*2.0;
+        float rInner = 0.18 + 0.02*(aN - 0.5)*2.0;
+        float outer = smoothstep(0.06, 0.0, abs(r - rOuter))*(0.45 + 0.9*aBreak);
+        float inner = smoothstep(0.035, 0.0, abs(r - rInner))*(0.4 + 0.8*aBreak);
+
+        // Rings and edges dominate; only a little loose scatter elsewhere.
+        float field = clamp(outer + inner*0.7 + pow(edge, 1.5)*0.8 + fbm(p*5.0)*0.14, 0.0, 1.0);
+        float gate = smoothstep(0.3, 0.72, field);
 
         // Crisp flecks at two scales (paper worn through, catching light).
         float fleck = smoothstep(0.80, 0.85, vnoise(p*250.0))*0.9 +
