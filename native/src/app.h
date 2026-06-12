@@ -86,6 +86,13 @@ private:
                                bool showAlbum, bool removable = false);
     void PlayFromTrackList(const std::vector<const Track*>& list, int index,
                            QueueSource source = QueueSource::Library, std::string sourceId = "");
+    // Enables shuffle and plays the list starting from a random track.
+    void ShufflePlay(const std::vector<const Track*>& list,
+                     QueueSource source = QueueSource::Library, std::string sourceId = "");
+    // Outlined "Shuffle" pill (30 tall) at (*x, y); advances *x past it.
+    bool ShuffleButton(float* x, float y);
+    // Accent "Shuffle All" pill at a view header's top-right corner.
+    bool ShuffleAllButton(Rectangle r);
     std::vector<const Track*> ResolveTracks(const std::vector<std::string>& ids) const;
     void ImportM3uFile(const std::string& path);
     void ExportPlaylist(const Playlist& p);

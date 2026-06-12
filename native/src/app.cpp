@@ -709,6 +709,34 @@ void App::PlayFromTrackList(const std::vector<const Track*>& list, int index, Qu
     MarkActivity();
 }
 
+void App::ShufflePlay(const std::vector<const Track*>& list, QueueSource source,
+                      std::string sourceId) {
+    if (list.empty()) return;
+    player_.SetShuffle(true);
+    PlayFromTrackList(list, GetRandomValue(0, static_cast<int>(list.size()) - 1), source,
+                      std::move(sourceId));
+}
+
+bool App::ShuffleButton(float* x, float y) {
+    const Rectangle b{*x, y, 36 + ui::Measure("Shuffle", 13).x + 16, 30};
+    *x += b.width + 10;
+    if (ui::Hover(b)) DrawRectangleRounded(b, 0.6f, 8, Fade(ui::theme.hover, 0.7f));
+    DrawRectangleRoundedLinesEx(b, 0.6f, 8, 1, ui::theme.border);
+    const Color col = ui::Hover(b) ? ui::theme.text : ui::theme.textSecondary;
+    ui::IconShuffle(Vector2{b.x + 22, b.y + 15}, 12, col);
+    ui::Text("Shuffle", Vector2{b.x + 36, b.y + 8}, 13, col);
+    return ui::Clicked(b);
+}
+
+bool App::ShuffleAllButton(Rectangle r) {
+    const float w = 38 + ui::Measure("Shuffle All", 13).x + 18;
+    const Rectangle b{r.x + r.width - 24 - w, r.y + 28, w, 36};
+    DrawRectangleRounded(b, 0.5f, 8, Fade(ui::theme.accent, ui::Hover(b) ? 0.3f : 0.18f));
+    ui::IconShuffle(Vector2{b.x + 24, b.y + 18}, 13, ui::theme.accent);
+    ui::Text("Shuffle All", Vector2{b.x + 38, b.y + 11}, 13, ui::theme.accent);
+    return ui::Clicked(b);
+}
+
 std::vector<const Track*> App::ResolveTracks(const std::vector<std::string>& ids) const {
     std::vector<const Track*> out;
     out.reserve(ids.size());
@@ -729,6 +757,8 @@ void App::DrawLibraryView(Rectangle r) {
     tracks.reserve(library_.Tracks().size());
     for (const auto& t : library_.Tracks()) tracks.push_back(&t);
 
+    if (ShuffleAllButton(r)) ShufflePlay(tracks);
+
     const Rectangle table{r.x, r.y + 72, r.width, r.height - 72};
     const TableResult res = DrawTrackTable(table, tracks, &libScroll_, true);
     if (res.clicked >= 0) PlayFromTrackList(tracks, res.clicked);
@@ -741,6 +771,13 @@ void App::DrawAlbumsView(Rectangle r) {
         return;
     }
     ui::Text("Albums", Vector2{r.x + 24, r.y + 24}, 28, ui::theme.text);
+
+    if (ShuffleAllButton(r)) {
+        std::vector<const Track*> all;
+        all.reserve(library_.Tracks().size());
+        for (const auto& t : library_.Tracks()) all.push_back(&t);
+        ShufflePlay(all);
+    }
 
     const float pad = 24;
     const float cardW = 172, artH = 172, cardH = artH + 50, gap = 20;
@@ -814,6 +851,8 @@ void App::DrawAlbumDetailView(Rectangle r) {
     if (ui::Clicked(playR) && !tracks.empty()) {
         PlayFromTrackList(tracks, 0, QueueSource::Album, album->id);
     }
+    float sx = playR.x + playR.width + 12;
+    if (ShuffleButton(&sx, hy + 112)) ShufflePlay(tracks, QueueSource::Album, album->id);
 
     const Rectangle table{r.x, hy + 176, r.width, r.height - (hy + 176 - r.y)};
     const TableResult res = DrawTrackTable(table, tracks, &detailScroll_, false);
@@ -918,6 +957,7 @@ void App::DrawPlaylistDetailView(Rectangle r) {
     ui::Text("Play", Vector2{playR.x + 44, playR.y + 10}, 16, ui::theme.bg);
     if (ui::Clicked(playR) && !tracks.empty()) PlayFromTrackList(tracks, 0, src, p->id);
     bx += playR.width + 12;
+    if (ShuffleButton(&bx, hy + 112)) ShufflePlay(tracks, src, p->id);
 
     const auto button = [&](const std::string& label, float w) {
         const Rectangle b{bx, hy + 112, w, 30};
