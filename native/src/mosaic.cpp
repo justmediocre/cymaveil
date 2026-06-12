@@ -225,7 +225,7 @@ void Mosaic::Draw(Rectangle screen, ArtCache& art, const Library& lib, const Mos
     if (!s.enabled || tiles_.empty() || artIds_.empty()) return;
 
     const float W = screen.width, H = screen.height;
-    const float gridW = W * (s.flat ? 1.4f : 2.2f);
+    const float gridW = W * (s.flat ? 1.7f : 2.6f);
     const float tileSz = (gridW - (columns_ - 1) * kGap) / columns_;
     const float step = tileSz + kGap;
     const float gridH = rows_ * step - kGap;
@@ -261,10 +261,11 @@ void Mosaic::Draw(Rectangle screen, ArtCache& art, const Library& lib, const Mos
     }
     rlPopMatrix();
 
-    // Vignette matching the CSS radial-gradient(ellipse at 50% 60%,
-    // transparent 10%, bg 70%): transparent center, fully opaque background by
-    // 70% of the way to the farthest corner. Cached as a texture, stretched
-    // into the farthest-corner ellipse.
+    // Gentle vignette: the mosaic stays visible across most of the screen and
+    // only dims toward the farthest corners, so it still reads through the
+    // frosted chrome at the edges. Transparent center out to 50% of the way to
+    // the farthest corner, reaching opaque bg only past the corner (1.25).
+    // Cached as a texture, stretched into the farthest-corner ellipse.
     const int vw = 256, vh = 256;
     // Rebake when the theme changes: bg is baked into the texture, so a stale
     // dark vignette would keep fading to black under the light palette.
@@ -283,7 +284,7 @@ void Mosaic::Draw(Rectangle screen, ArtCache& art, const Library& lib, const Mos
                 const float dx = (x - vw / 2.0f) / (vw / 2.0f);
                 const float dy = (y - vh / 2.0f) / (vh / 2.0f);
                 const float r = std::sqrt(dx * dx + dy * dy);
-                const float t = Clamp((r - 0.1f) / 0.6f, 0.0f, 1.0f);
+                const float t = Clamp((r - 0.5f) / 0.75f, 0.0f, 1.0f);
                 px[y * vw + x] = Fade(bg, t);
             }
         }

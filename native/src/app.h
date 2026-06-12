@@ -7,6 +7,7 @@
 
 #include "raylib.h"
 
+#include "backdrop.h"
 #include "config.h"
 #include "depth.h"
 #include "library.h"
@@ -119,6 +120,7 @@ private:
     Visualizer visualizer_;
     ArtCache art_;
     Mosaic mosaic_;
+    Backdrop backdrop_;
     DepthEngine depth_;
     Vinyl vinyl_;
     Mpris mpris_;

@@ -155,6 +155,7 @@ int App::Run() {
     player_.Shutdown();
     visualizer_.Detach();
     mosaic_.Unload();
+    backdrop_.Unload();
     vinyl_.Unload();
     if (fg_.tex.id != 0) UnloadTexture(fg_.tex);
     art_.Clear();
@@ -225,9 +226,17 @@ void App::Frame() {
     // The context menu overlays everything; swallow the mouse underneath it.
     ui::BlockInput(menu_.open);
 
-    BeginDrawing();
+    // Render the mosaic offscreen so the chrome panels can sample a blurred copy
+    // of it (frosted glass). The sharp copy is the screen's base layer.
+    backdrop_.EnsureSize(static_cast<int>(W), static_cast<int>(H));
+    backdrop_.BeginScene();
     ClearBackground(ui::theme.bg);
     mosaic_.Draw(Rectangle{0, 0, W, H}, art_, library_, MosaicCfg(), ui::theme.bg);
+    backdrop_.EndScene();
+
+    BeginDrawing();
+    ClearBackground(ui::theme.bg);
+    backdrop_.DrawScene();
 
     switch (view_) {
         case View::Search: DrawSearchView(content); break;
@@ -532,7 +541,7 @@ void App::UpdatePacing() {
 }
 
 void App::DrawSidebar(Rectangle r) {
-    DrawRectangleRec(r, ui::theme.surface);
+    backdrop_.DrawGlass(r, Fade(ui::theme.surface, 0.72f));
     DrawLineEx(Vector2{r.width, 0}, Vector2{r.width, r.height}, 1, ui::theme.borderSubtle);
 
     ui::Text("Cymaveil", Vector2{20, 22}, 26, ui::theme.accent);
@@ -592,7 +601,7 @@ void App::DrawMiniPlayer(Rectangle r) {
     if (cur == nullptr) return;
     const Album* album = library_.AlbumById(cur->albumId);
 
-    DrawRectangleRec(r, ui::theme.surface);
+    backdrop_.DrawGlass(r, Fade(ui::theme.surface, 0.78f));
     DrawLineEx(Vector2{r.x, r.y}, Vector2{r.x + r.width, r.y}, 1, ui::theme.borderSubtle);
 
     const float cy = r.y + r.height / 2;
@@ -1448,7 +1457,7 @@ void App::ToggleQueuePanel() {
 }
 
 void App::DrawQueuePanel(Rectangle r) {
-    DrawRectangleRec(r, ui::theme.surface);
+    backdrop_.DrawGlass(r, Fade(ui::theme.surface, 0.72f));
     DrawLineEx(Vector2{r.x, r.y}, Vector2{r.x, r.y + r.height}, 1, ui::theme.borderSubtle);
     // Content is laid out at full panel width anchored to the sliding left
     // edge; whatever exceeds the window is clipped by the screen itself.
