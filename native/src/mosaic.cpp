@@ -133,6 +133,9 @@ void Mosaic::Rebuild(const std::vector<Album>& albums, const MosaicSettings& s) 
 }
 
 bool Mosaic::Animating() const {
+    // The whole grid drifts continuously while playing, so the backdrop must
+    // re-capture every frame to track it — not just while a tile is mid-swap.
+    if (drifting_) return true;
     return std::any_of(tiles_.begin(), tiles_.end(), [](const Tile& t) { return t.active; });
 }
 
@@ -158,6 +161,7 @@ void Mosaic::Trigger(const MosaicSettings& s) {
 }
 
 void Mosaic::Update(float dt, bool playing, const MosaicSettings& s) {
+    drifting_ = false;
     if (!s.enabled || tiles_.empty()) return;
 
     // In-flight animations always finish; drift and new swaps pause with playback.
@@ -171,6 +175,7 @@ void Mosaic::Update(float dt, bool playing, const MosaicSettings& s) {
         }
     }
     if (!playing) return;
+    drifting_ = true;
     driftT_ += dt;
     nextAnim_ -= dt;
     if (nextAnim_ <= 0) {

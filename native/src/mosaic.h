@@ -54,6 +54,7 @@ private:
     int rows_ = 0;
     float driftT_ = 0;
     float nextAnim_ = 3.0f;
+    bool drifting_ = false;  // grid drifted this frame (playing + enabled)
 
     Texture2D vignette_{};
     Color vignetteBg_{0, 0, 0, 0};  // bg the cached vignette was baked with
