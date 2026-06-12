@@ -1479,11 +1479,31 @@ void App::DrawQueuePanel(Rectangle r) {
     }
 
     const Rectangle list{x0, top, kQueueW, r.y + r.height - top};
-    ui::ScrollArea(list, static_cast<float>(rows.size()) * kQueueRowH, &queueScroll_);
     const int n = static_cast<int>(rows.size());
+    const Track* current = player_.Current();
+
+    // Follow the currently playing track: when it advances, scroll to keep it
+    // centered. We only react when the playing row index changes, so manual
+    // scrolling between advances is left untouched.
+    int curRow = -1;
+    if (mode == Mode::Queue) {
+        curRow = player_.OrderPos();
+    } else if (current != nullptr) {
+        for (int i = 0; i < n; i++) {
+            if (rows[i] != nullptr && rows[i]->id == current->id) {
+                curRow = i;
+                break;
+            }
+        }
+    }
+    if (curRow >= 0 && curRow != queueFollowPos_) {
+        queueScroll_ = curRow * kQueueRowH - (list.height - kQueueRowH) / 2.0f;
+    }
+    queueFollowPos_ = curRow;
+
+    ui::ScrollArea(list, static_cast<float>(rows.size()) * kQueueRowH, &queueScroll_);
     const int first = std::max(0, static_cast<int>(queueScroll_ / kQueueRowH));
     const int last = std::min(n, static_cast<int>((queueScroll_ + list.height) / kQueueRowH) + 1);
-    const Track* current = player_.Current();
 
     int jump = -1, removeIdx = -1;
     BeginScissorMode(static_cast<int>(list.x), static_cast<int>(list.y),
