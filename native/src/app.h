@@ -17,6 +17,7 @@
 #include "playlist.h"
 #include "vinyl.h"
 #include "visualizer.h"
+#include "watcher.h"
 
 // Lazy GPU cache for album artwork. Views request textures while drawing;
 // at most a couple of images are decoded+uploaded per frame to avoid hitches.
@@ -53,6 +54,8 @@ private:
     void Frame();
     void HandleInput();
     void HandleDroppedFolders();
+    // Hands the watcher the current folder set after any add/remove.
+    void SyncWatcher() { watcher_.SetFolders(library_.Folders()); }
     // Drains commands from the MPRIS worker (media keys, desktop applets).
     void HandleMprisRequests();
     // Pushes the current player state to the MPRIS worker (cheap when idle).
@@ -72,6 +75,8 @@ private:
     void DrawPlaylistDetailView(Rectangle r);
     void DrawNowPlayingView(Rectangle r);
     void DrawSettingsView(Rectangle r);
+    // Music-folder list + add-by-path field, rendered inside the Settings view.
+    void DrawFolderSettings(Rectangle anchor);
     void DrawEmptyState(Rectangle r);
     void DrawDebugOverlay();
     // Collapsible queue panel on the right edge; r is the revealed strip.
@@ -124,6 +129,7 @@ private:
     DepthEngine depth_;
     Vinyl vinyl_;
     Mpris mpris_;
+    FolderWatcher watcher_;
     bool manualSkip_ = false;  // user-initiated track change this frame
 
     // Album art with the segmentation mask baked into its alpha channel
@@ -161,6 +167,10 @@ private:
     std::string editText_;
     // Two-step delete: first click arms, second click deletes.
     std::string deleteArmId_;
+
+    // Settings → Music Folders: typed-path add field and its focus state.
+    std::string folderInput_;
+    bool folderInputActive_ = false;
 
     struct TrackMenu {
         bool open = false;

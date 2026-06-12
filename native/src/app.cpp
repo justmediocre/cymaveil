@@ -129,10 +129,13 @@ int App::Run() {
     player_.RestoreSession();
     visualizer_.Attach();
     if (config_.mpris) mpris_.Start();
+    watcher_.Start();
 
     for (const auto& f : startupFolders_) {
         if (DirectoryExists(f.c_str())) library_.AddFolder(f);
     }
+    // Watch the loaded + freshly-added folders so the library self-updates.
+    SyncWatcher();
     if (startView_ == "library") view_ = View::Library;
     else if (startView_ == "search") view_ = View::Search;
     else if (startView_ == "albums") view_ = View::Albums;
@@ -151,7 +154,8 @@ int App::Run() {
     config_.Save();
     player_.SaveSession();  // before Shutdown: needs the live play position
 
-    mpris_.Stop();  // before CloseWindow: the worker pokes the GLFW event loop
+    mpris_.Stop();    // before CloseWindow: the worker pokes the GLFW event loop
+    watcher_.Stop();  // ditto — it wakes the event loop on filesystem changes
     player_.Shutdown();
     visualizer_.Detach();
     mosaic_.Unload();
@@ -169,6 +173,11 @@ void App::Frame() {
     HandleDroppedFolders();
     HandleInput();
     HandleMprisRequests();
+    // The watcher fired: files moved on disk, so kick an (incremental) rescan.
+    if (watcher_.Poll()) {
+        library_.RequestRescan();
+        MarkActivity();
+    }
     player_.Update();
     if (library_.PollScan()) {
         mosaic_.Rebuild(library_.Albums(), MosaicCfg());
@@ -366,6 +375,11 @@ void App::HandleInput() {
 
     // While renaming a playlist every key belongs to the text box.
     if (!editPlaylistId_.empty()) return;
+    // Likewise while typing a path into the Settings folder field.
+    if (view_ == View::Settings && folderInputActive_) {
+        if (IsKeyPressed(KEY_ESCAPE)) folderInputActive_ = false;
+        return;
+    }
     if (menu_.open && IsKeyPressed(KEY_ESCAPE)) {
         menu_.open = false;
         return;
@@ -502,6 +516,7 @@ void App::HandleDroppedFolders() {
         }
     }
     UnloadDroppedFiles(files);
+    SyncWatcher();  // a dropped folder may have changed the watched set
     MarkActivity();
 }
 
@@ -1408,6 +1423,111 @@ void App::DrawSettingsView(Rectangle r) {
                            ? "Follows your desktop's color scheme."
                            : "Forcing a fixed palette, ignoring the desktop setting.";
     ui::Text(hint, Vector2{card.x + pad, sy + segH + 12}, 13, ui::theme.textTertiary);
+
+    DrawFolderSettings(Rectangle{card.x, card.y + card.height + 20, card.width, 0});
+}
+
+void App::DrawFolderSettings(Rectangle anchor) {
+    const float pad = 20;
+    const auto& folders = library_.Folders();
+    const int nf = static_cast<int>(folders.size());
+
+    const float listTop = 74;
+    const float rowH = 32;
+    const float inputY = listTop + (nf > 0 ? nf * rowH : rowH) + 6;
+    const float inputH = 38;
+    const float hintY = inputY + inputH + 14;
+    const Rectangle card{anchor.x, anchor.y, anchor.width, hintY + 18 + pad};
+    DrawRectangleRounded(card, 0.08f, 8, ui::theme.surface);
+    DrawRectangleRoundedLinesEx(card, 0.08f, 8, 1, ui::theme.borderSubtle);
+
+    ui::Text("Library", Vector2{card.x + pad, card.y + 18}, 13, ui::theme.textSecondary);
+    ui::Text("Music Folders", Vector2{card.x + pad, card.y + 42}, 17, ui::theme.text);
+
+    // ── Existing folders, each with a remove button ──
+    std::string removeFolder;
+    if (nf == 0) {
+        ui::Text("No folders yet — add a path or drop music onto the window.",
+                 Vector2{card.x + pad, card.y + listTop + 4}, 13, ui::theme.textTertiary);
+    }
+    for (int i = 0; i < nf; i++) {
+        const Rectangle row{card.x + pad, card.y + listTop + i * rowH, card.width - 2 * pad,
+                            rowH - 6};
+        if (ui::Hover(row)) DrawRectangleRounded(row, 0.35f, 6, Fade(ui::theme.elevated, 0.6f));
+        const float cy = row.y + row.height / 2;
+        ui::TextEllipsis(folders[i], Vector2{row.x + 8, cy - 7}, row.width - 44, 14, ui::theme.text);
+        const Rectangle rm{row.x + row.width - 28, cy - 11, 22, 22};
+        const bool rmHover = ui::Hover(rm);
+        if (rmHover) DrawCircleV(Vector2{rm.x + 11, rm.y + 11}, 11, ui::theme.hover);
+        ui::IconClose(Vector2{rm.x + 11, rm.y + 11}, 10,
+                      rmHover ? ui::theme.text : ui::theme.textSecondary);
+        if (ui::Clicked(rm)) removeFolder = folders[i];
+    }
+
+    // ── Add-by-path field + button ──
+    const Rectangle inputRow{card.x + pad, card.y + inputY, card.width - 2 * pad - 86, inputH};
+    const Rectangle addBtn{inputRow.x + inputRow.width + 10, card.y + inputY, 76, inputH};
+
+    const auto commitAdd = [&]() {
+        std::string path = folderInput_;
+        while (!path.empty() && (path.front() == ' ' || path.front() == '\t')) path.erase(path.begin());
+        while (!path.empty() && (path.back() == ' ' || path.back() == '\t' || path.back() == '\n'))
+            path.pop_back();
+        if (path.empty()) return;
+        if (path[0] == '~') {  // expand a leading ~ to $HOME
+            if (const char* home = std::getenv("HOME"); home != nullptr) path = home + path.substr(1);
+        }
+        if (DirectoryExists(path.c_str())) {
+            library_.AddFolder(path);
+            SyncWatcher();
+            Toast("Added folder");
+            folderInput_.clear();
+            folderInputActive_ = false;
+        } else {
+            Toast("Folder not found");
+        }
+    };
+
+    if (folderInputActive_) {
+        if (const int res = ui::TextInput(inputRow, &folderInput_, 15); res == 1) {
+            commitAdd();
+        } else if (res == -1) {
+            folderInputActive_ = false;
+        }
+    } else {
+        DrawRectangleRounded(inputRow, 0.25f, 6, ui::theme.elevated);
+        DrawRectangleRoundedLinesEx(inputRow, 0.25f, 6, 1, ui::theme.border);
+        ui::TextEllipsis(folderInput_.empty() ? "/path/to/folder…" : folderInput_,
+                         Vector2{inputRow.x + 12, inputRow.y + inputRow.height / 2 - 8},
+                         inputRow.width - 24, 15,
+                         folderInput_.empty() ? ui::theme.textTertiary : ui::theme.text);
+        if (ui::Clicked(inputRow)) {
+            folderInputActive_ = true;
+            MarkActivity();
+        }
+    }
+
+    const bool addHover = ui::Hover(addBtn);
+    DrawRectangleRounded(addBtn, 0.3f, 6, addHover ? Brighten(ui::theme.accent, 0.12f) : ui::theme.accent);
+    ui::TextCentered("Add", Vector2{addBtn.x + addBtn.width / 2, addBtn.y + addBtn.height / 2}, 15,
+                     ui::theme.bg);
+    if (ui::Clicked(addBtn)) commitAdd();
+
+    // Click anywhere outside the field (and not on Add) drops focus.
+    if (folderInputActive_ && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !ui::Hover(inputRow) &&
+        !ui::Hover(addBtn)) {
+        folderInputActive_ = false;
+    }
+
+    ui::Text("Or drop a folder anywhere in the window.",
+             Vector2{card.x + pad, card.y + hintY}, 13, ui::theme.textTertiary);
+
+    if (!removeFolder.empty()) {
+        library_.RemoveFolder(removeFolder);
+        SyncWatcher();
+        Toast("Removed folder");
+        folderInputActive_ = false;
+    }
 }
 
 void App::DrawEmptyState(Rectangle r) {

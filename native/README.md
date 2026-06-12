@@ -37,10 +37,14 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
 ## Usage
 
 - **Drag & drop** a music folder onto the window to add it to the library (or pass folders
-  as CLI args). Rescans happen on a background thread. Dropping a `.m3u`/`.m3u8` file
-  imports it as a playlist instead (entries are matched against the library by path).
+  as CLI args, or add a path under **Settings → Music Folders**). Scans happen on a
+  background thread and are incremental — unchanged files are reused from the cache, so
+  only new/edited files are re-read. Watched folders are also tracked live (inotify), so
+  the library updates on its own when files are added, changed, or removed on disk.
+  Dropping a `.m3u`/`.m3u8` file imports it as a playlist instead (entries are matched
+  against the library by path).
 - Library / Albums / Playlists / Now Playing views via the sidebar or keys **1 / 2 / 3 / 4**;
-  the sidebar **Settings** entry (or **,**) opens the theme picker.
+  the sidebar **Settings** entry (or **,**) opens the theme picker and the music-folder manager.
 - **Ctrl+F** (or the sidebar **Search** entry) filters across tracks, albums, and artists;
   **Esc** clears the query, then exits back to the Library.
 - **Right-click any track row** for the context menu: play, toggle Favorites, add/remove
@@ -73,7 +77,15 @@ playlist on launch), `--shot <path>` (capture a screenshot ~2s in, with debug ov
 Done in this first slice:
 
 - [x] Library scanning on a worker thread (TagLib): tags, album grouping via album artist,
-      durations, embedded artwork extraction, dominant-color computation
+      durations, embedded artwork extraction, dominant-color computation. Scans are
+      **incremental** — each track caches its file mtime, so a rescan reuses unchanged
+      files and only re-parses what actually changed (artwork/palette are carried over)
+- [x] **File watching** (inotify, Linux): a worker thread watches the library folders and
+      subtrees and debounces filesystem events into an incremental rescan, so adds, edits,
+      and deletions on disk show up without a manual refresh. Pokes the GLFW event loop so
+      the idle main loop wakes only when something actually moves; a no-op stub elsewhere
+- [x] **Folder management** in Settings: list the watched folders, remove any, or add one
+      by typing/pasting a path (alongside drag & drop)
 - [x] JSON persistence of library, folders, and settings
 - [x] Playback: queue, play/pause/next/prev, seek, volume, shuffle, repeat off/all/one,
       auto-advance (raylib music streaming; FLAC enabled in the raylib build)
@@ -145,10 +157,9 @@ Not yet ported from the Electron app:
 - [ ] Manual mask painting (brush editor), mask import/export, batch pre-generation
 - [ ] Alternative visualizer styles (contour bars, radial burst, waveform, mirrored)
       — full-surface (the default) is in
-- [ ] Fuller settings UI: the Settings view so far holds only the theme picker;
-      the remaining `config.json` tunables (mosaic, depth layers, library
-      folders) still need surfacing
-- [ ] File watching / incremental rescan (currently full rescan per change)
+- [ ] Fuller settings UI: the Settings view now holds the theme picker and the
+      music-folder manager; the remaining `config.json` tunables (mosaic, depth
+      layers) still need surfacing
 - [ ] Gapless playback / crossfade
 
 Known limitations:

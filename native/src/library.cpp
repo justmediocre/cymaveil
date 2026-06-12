@@ -79,6 +79,7 @@ void Library::Load() {
             t.trackNum = jt.value("trackNum", 0);
             t.discNum = jt.value("discNum", 0);
             t.duration = jt.value("duration", 0.0f);
+            t.mtime = jt.value("mtime", 0LL);
             tracks_.push_back(std::move(t));
         }
         for (const auto& ja : j.value("albums", json::array())) {
@@ -118,7 +119,8 @@ void Library::Save() const {
                       {"filePath", t.filePath},
                       {"trackNum", t.trackNum},
                       {"discNum", t.discNum},
-                      {"duration", t.duration}});
+                      {"duration", t.duration},
+                      {"mtime", t.mtime}});
     }
     json ja = json::array();
     for (const auto& a : albums_) {
@@ -146,8 +148,30 @@ void Library::AddFolder(const std::string& path) {
     if (std::find(folders_.begin(), folders_.end(), folder) == folders_.end()) {
         folders_.push_back(folder);
     }
+    RequestRescan();
+}
+
+void Library::RemoveFolder(const std::string& path) {
+    auto it = std::find(folders_.begin(), folders_.end(), path);
+    if (it == folders_.end()) return;
+    folders_.erase(it);
+    if (folders_.empty()) {
+        // Nothing left to scan: drop everything and persist the empty library.
+        // (A rescan with no folders would early-out and leave stale tracks.)
+        tracks_.clear();
+        albums_.clear();
+        SortAndIndex();
+        Save();
+        return;
+    }
+    // An incremental rescan drops tracks under the removed folder for free:
+    // they're no longer walked, so they're neither reused nor re-parsed.
+    RequestRescan();
+}
+
+void Library::RequestRescan() {
     if (ScanActive()) {
-        rescanQueued_ = true;  // current scan has a stale folder list
+        rescanQueued_ = true;  // current scan has a stale view of the folders
     } else {
         StartScan();
     }
@@ -161,7 +185,9 @@ void Library::StartScan() {
     scanCurrent_ = 0;
     scanTotal_ = 0;
     scanSkipped_ = 0;
-    scanThread_ = std::thread(&Library::ScanWorker, this, folders_);
+    // Copy the current tracks/albums into the worker so unchanged files can be
+    // reused. tracks_/albums_ stay readable on the main thread during the scan.
+    scanThread_ = std::thread(&Library::ScanWorker, this, folders_, tracks_, albums_);
 }
 
 ScanStatus Library::Status() const {
@@ -228,8 +254,22 @@ void Library::SortAndIndex() {
     for (size_t i = 0; i < albums_.size(); i++) albumIdx_[albums_[i].id] = i;
 }
 
-void Library::ScanWorker(std::vector<std::string> folders) {
-    std::vector<fs::path> files;
+void Library::ScanWorker(std::vector<std::string> folders, std::vector<Track> oldTracks,
+                         std::vector<Album> oldAlbums) {
+    // Index the prior cache so unchanged files can be reused verbatim instead
+    // of paying for another TagLib parse + artwork/color extraction.
+    std::unordered_map<std::string, const Track*> oldByPath;
+    oldByPath.reserve(oldTracks.size());
+    for (const auto& t : oldTracks) oldByPath[t.filePath] = &t;
+    std::unordered_map<std::string, const Album*> oldAlbumById;
+    oldAlbumById.reserve(oldAlbums.size());
+    for (const auto& a : oldAlbums) oldAlbumById[a.id] = &a;
+
+    struct FoundFile {
+        fs::path path;
+        long long mtime;
+    };
+    std::vector<FoundFile> files;
     for (const auto& folder : folders) {
         std::error_code ec;
         fs::recursive_directory_iterator it(folder, fs::directory_options::skip_permission_denied, ec);
@@ -238,7 +278,10 @@ void Library::ScanWorker(std::vector<std::string> folders) {
             if (!entry.is_regular_file(ec)) continue;
             const std::string ext = Lower(entry.path().extension().string());
             if (IsSupportedAudio(ext)) {
-                files.push_back(entry.path());
+                const auto wt = fs::last_write_time(entry.path(), ec);
+                const long long mtime =
+                    ec ? 0 : static_cast<long long>(wt.time_since_epoch().count());
+                files.push_back({entry.path(), mtime});
             } else if (IsKnownUnsupported(ext)) {
                 scanSkipped_++;
             }
@@ -250,14 +293,30 @@ void Library::ScanWorker(std::vector<std::string> folders) {
     std::unordered_map<std::string, Album> albums;
     const std::string artDir = paths::ArtDir();
 
-    for (const auto& path : files) {
+    for (const auto& found : files) {
+        const fs::path& path = found.path;
         scanCurrent_++;
+
+        // Unchanged since the last scan? Reuse the cached track and its album.
+        if (const auto cached = oldByPath.find(path.string());
+            cached != oldByPath.end() && found.mtime != 0 && cached->second->mtime == found.mtime) {
+            const Track& old = *cached->second;
+            if (!albums.count(old.albumId)) {
+                if (const auto oa = oldAlbumById.find(old.albumId); oa != oldAlbumById.end()) {
+                    albums[old.albumId] = *oa->second;
+                }
+            }
+            tracks.push_back(old);
+            continue;
+        }
+
         TagLib::FileRef f(path.string().c_str(), true, TagLib::AudioProperties::Average);
         if (f.isNull() || f.file() == nullptr) continue;
 
         Track t;
         t.filePath = path.string();
         t.id = HashId(t.filePath);
+        t.mtime = found.mtime;
 
         std::string albumTitle = "Unknown Album";
         std::string albumArtist;
@@ -327,6 +386,21 @@ void Library::ScanWorker(std::vector<std::string> folders) {
             t.duration = static_cast<float>(ap->lengthInMilliseconds()) / 1000.0f;
         }
         tracks.push_back(std::move(t));
+    }
+
+    // Backfill artwork/palette from the prior cache for any album that ended up
+    // without art — e.g. its only art-bearing track was reused (so never
+    // re-extracted) but the album entry was first created by a different track.
+    for (auto& [id, album] : albums) {
+        if (!album.artPath.empty()) continue;
+        const auto oa = oldAlbumById.find(id);
+        if (oa == oldAlbumById.end() || oa->second->artPath.empty()) continue;
+        album.artPath = oa->second->artPath;
+        album.dominant = oa->second->dominant;
+        album.accent = oa->second->accent;
+        album.accentSecondary = oa->second->accentSecondary;
+        album.hasSecondary = oa->second->hasSecondary;
+        if (album.year == 0) album.year = oa->second->year;
     }
 
     {

@@ -18,6 +18,9 @@ struct Track {
     int trackNum = 0;
     int discNum = 0;
     float duration = 0.0f;  // seconds
+    // Filesystem mtime when last parsed (filesystem-clock ticks). Lets a rescan
+    // skip files that haven't changed since the cache was written.
+    long long mtime = 0;
 };
 
 struct Album {
@@ -48,8 +51,13 @@ public:
     void Load();
     void Save() const;
 
-    // Adds folder (deduped) and kicks off a full rescan.
+    // Adds folder (deduped) and kicks off a rescan.
     void AddFolder(const std::string& path);
+    // Drops a folder and its tracks; rescans (or clears, if it was the last).
+    void RemoveFolder(const std::string& path);
+    // Re-scan the current folders. Safe to call mid-scan (queues a follow-up).
+    // The scan is incremental: unchanged files are reused from the cache.
+    void RequestRescan();
     void StartScan();
     bool ScanActive() const { return scanActive_.load(); }
     ScanStatus Status() const;
@@ -66,7 +74,10 @@ public:
 
 private:
     void SortAndIndex();
-    void ScanWorker(std::vector<std::string> folders);
+    // Carries snapshots of the prior tracks/albums so unchanged files can be
+    // reused instead of re-parsed. Snapshots are copied in on the main thread.
+    void ScanWorker(std::vector<std::string> folders, std::vector<Track> oldTracks,
+                    std::vector<Album> oldAlbums);
 
     std::vector<Track> tracks_;
     std::vector<Album> albums_;
