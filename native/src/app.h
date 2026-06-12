@@ -165,6 +165,7 @@ private:
     bool volumeDragging_ = false;
 
     double lastActivity_ = 0;
+    double sessionSaveAt_ = 0;  // last playback-session checkpoint
     int targetFps_ = 60;
     bool eventWaiting_ = false;
     bool showDebug_ = false;

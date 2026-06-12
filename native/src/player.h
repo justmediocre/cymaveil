@@ -64,6 +64,12 @@ public:
     void Append(const std::string& trackId);
     void ClearQueue();
 
+    // Session persistence: queue, play order, and position survive restarts.
+    // Save writes session.json (removed when nothing is queued); Restore cues
+    // the saved track back up paused at the saved position.
+    void SaveSession() const;
+    void RestoreSession();
+
 private:
     enum class State { Stopped, Playing, Paused };
 

@@ -124,6 +124,7 @@ int App::Run() {
     player_.SetVolume(config_.volume);
     player_.SetShuffle(config_.shuffle);
     player_.SetRepeat(static_cast<RepeatMode>(config_.repeat));
+    player_.RestoreSession();
     visualizer_.Attach();
     if (config_.mpris) mpris_.Start();
 
@@ -144,6 +145,7 @@ int App::Run() {
     config_.shuffle = player_.Shuffle();
     config_.repeat = static_cast<int>(player_.Repeat());
     config_.Save();
+    player_.SaveSession();  // before Shutdown: needs the live play position
 
     mpris_.Stop();  // before CloseWindow: the worker pokes the GLFW event loop
     player_.Shutdown();
@@ -167,12 +169,22 @@ void App::Frame() {
         mosaic_.Rebuild(library_.Albums(), MosaicCfg());
         MarkActivity();
     }
-    if (autoplay_ && !player_.HasTrack() && !library_.Tracks().empty()) {
+    if (autoplay_ && !library_.Tracks().empty()) {
         autoplay_ = false;
-        std::vector<const Track*> all;
-        for (const auto& t : library_.Tracks()) all.push_back(&t);
-        PlayFromTrackList(all, 0);
+        if (player_.HasTrack()) {
+            // A restored session is already cued up; resume it instead.
+            if (!player_.IsPlaying()) player_.TogglePause();
+        } else {
+            std::vector<const Track*> all;
+            for (const auto& t : library_.Tracks()) all.push_back(&t);
+            PlayFromTrackList(all, 0);
+        }
         if (startView_.empty()) view_ = View::NowPlaying;
+    }
+    // Checkpoint the session while playing so a crash loses at most ~10s.
+    if (player_.IsPlaying() && GetTime() - sessionSaveAt_ > 10.0) {
+        sessionSaveAt_ = GetTime();
+        player_.SaveSession();
     }
     visualizer_.Update(GetFrameTime(), player_.IsPlaying());
     mosaic_.Update(GetFrameTime(), player_.IsPlaying(), MosaicCfg());

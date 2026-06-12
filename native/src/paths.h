@@ -11,6 +11,8 @@ std::string ArtDir();
 std::string LibraryFile();
 std::string ConfigFile();
 std::string PlaylistsFile();
+// Last playback session (queue + position) for restore-on-launch.
+std::string SessionFile();
 // Where playlist exports land: $HOME/Music when it exists, else $HOME.
 std::string MusicDir();
 

@@ -1,10 +1,37 @@
 #include "player.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <numeric>
 #include <random>
 
+#include <nlohmann/json.hpp>
+
 #include "library.h"
+#include "paths.h"
+
+namespace {
+
+const char* SourceName(QueueSource s) {
+    switch (s) {
+        case QueueSource::Library: return "library";
+        case QueueSource::Album: return "album";
+        case QueueSource::Playlist: return "playlist";
+        case QueueSource::NowPlaying: return "now-playing";
+        default: return "none";
+    }
+}
+
+QueueSource SourceFromName(const std::string& s) {
+    if (s == "library") return QueueSource::Library;
+    if (s == "album") return QueueSource::Album;
+    if (s == "playlist") return QueueSource::Playlist;
+    if (s == "now-playing") return QueueSource::NowPlaying;
+    return QueueSource::None;
+}
+
+}  // namespace
 
 void Player::Shutdown() {
     UnloadCurrent();
@@ -118,6 +145,84 @@ void Player::RemoveTrackId(const std::string& trackId) {
     }
 }
 
+void Player::SaveSession() const {
+    if (queue_.empty() || orderPos_ < 0) {
+        std::error_code ec;
+        std::filesystem::remove(paths::SessionFile(), ec);
+        return;
+    }
+    nlohmann::json j{
+        {"queue", queue_},
+        {"order", order_},
+        {"orderPos", orderPos_},
+        {"source", SourceName(source_)},
+        {"sourceId", sourceId_},
+        {"position", TimePlayed()},
+    };
+    std::ofstream out(paths::SessionFile());
+    out << j.dump(2) << '\n';
+}
+
+void Player::RestoreSession() {
+    std::ifstream in(paths::SessionFile());
+    if (!in) return;
+    std::vector<std::string> savedQueue;
+    std::vector<int> savedOrder;
+    int savedPos = -1;
+    float position = 0;
+    QueueSource source = QueueSource::None;
+    std::string sourceId;
+    try {
+        nlohmann::json j = nlohmann::json::parse(in);
+        savedQueue = j.value("queue", savedQueue);
+        savedOrder = j.value("order", savedOrder);
+        savedPos = j.value("orderPos", savedPos);
+        position = j.value("position", position);
+        source = SourceFromName(j.value("source", "none"));
+        sourceId = j.value("sourceId", "");
+    } catch (const std::exception&) {
+        return;
+    }
+
+    // Drop tracks that left the library since last run, remapping the play
+    // order onto the surviving queue indices.
+    std::vector<int> remap(savedQueue.size(), -1);
+    std::vector<std::string> queue;
+    for (size_t i = 0; i < savedQueue.size(); i++) {
+        if (lib_.TrackById(savedQueue[i]) != nullptr) {
+            remap[i] = static_cast<int>(queue.size());
+            queue.push_back(savedQueue[i]);
+        }
+    }
+    if (queue.empty()) return;
+    std::vector<int> order;
+    int orderPos = -1;
+    for (size_t p = 0; p < savedOrder.size(); p++) {
+        const int qi = savedOrder[p];
+        if (qi < 0 || qi >= static_cast<int>(remap.size()) || remap[qi] < 0) continue;
+        if (static_cast<int>(p) == savedPos) orderPos = static_cast<int>(order.size());
+        order.push_back(remap[qi]);
+    }
+    // A tampered order can't be trusted to index the queue; fall back to
+    // natural order unless it's a full permutation.
+    std::vector<int> check = order;
+    std::sort(check.begin(), check.end());
+    std::vector<int> want(queue.size());
+    std::iota(want.begin(), want.end(), 0);
+    if (check != want) {
+        order = want;
+        orderPos = savedPos;
+    }
+
+    queue_ = std::move(queue);
+    order_ = std::move(order);
+    orderPos_ = std::clamp(orderPos, 0, static_cast<int>(queue_.size()) - 1);
+    source_ = source;
+    sourceId_ = std::move(sourceId);
+    // Cue up paused at the saved spot; play is one Space away.
+    if (LoadCurrent(false) && position > 0) SeekTo(position);
+}
+
 bool Player::LoadCurrent(bool autoplay) {
     UnloadCurrent();
     const Track* track = Current();
@@ -148,7 +253,11 @@ void Player::TogglePause() {
         state_ = State::Paused;
     } else {
         if (state_ == State::Stopped) {
+            // PlayAudioBuffer zeroes framesProcessed, losing any position cued
+            // while stopped (session restore); re-seek to where we were.
+            const float resume = TimePlayed();
             PlayMusicStream(music_);
+            if (resume > 0) SeekMusicStream(music_, resume);
         } else {
             ResumeMusicStream(music_);
         }

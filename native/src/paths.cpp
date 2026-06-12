@@ -27,6 +27,7 @@ std::string ArtDir() { return EnsureDir(DataDir() + "/art"); }
 std::string LibraryFile() { return DataDir() + "/library.json"; }
 std::string ConfigFile() { return DataDir() + "/config.json"; }
 std::string PlaylistsFile() { return DataDir() + "/playlists.json"; }
+std::string SessionFile() { return DataDir() + "/session.json"; }
 
 std::string MusicDir() {
     const char* home = std::getenv("HOME");

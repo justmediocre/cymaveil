@@ -118,6 +118,13 @@ Done in this first slice:
       remote commands work even while the app is blocked idle on OS events.
       Builds against libdbus when present (stubbed out otherwise; the dev
       container has it). Disable with `mpris: false` in config.json.
+- [x] Playback-position restore across sessions: the live queue (incl. shuffle
+      order and queue source), current track, and play position persist to
+      `session.json` — on quit and checkpointed every 10 s while playing, so a
+      crash loses at most a few seconds. The next launch cues everything back
+      up paused at the saved position; tracks that left the library are
+      dropped from the restored queue. `--play` resumes a restored session
+      instead of restarting the library from the top.
 
 Not yet ported from the Electron app:
 
@@ -127,7 +134,6 @@ Not yet ported from the Electron app:
       — full-surface (the default) is in
 - [ ] Light theme, settings UI
 - [ ] File watching / incremental rescan (currently full rescan per change)
-- [ ] Playback-position restore across sessions
 - [ ] Gapless playback / crossfade
 
 Known limitations:
