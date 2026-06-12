@@ -99,6 +99,14 @@ private:
     };
     TableResult DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, float* scroll,
                                bool showAlbum, bool removable = false);
+    // Scrollable grid of album cards inside r. Each card is cardW wide with a
+    // square cover artH tall plus a two-line caption; cards are spaced by gap.
+    // Clicking a card opens its AlbumDetail view. showYear appends "· year" to
+    // the subtitle (Albums view); Search omits it. Caller has already drawn the
+    // section header and set up r; this owns scrolling, scissoring, and hit-test.
+    void DrawAlbumGrid(Rectangle r, const std::vector<const Album*>& albums, float cardW,
+                       float artH, float gap, float titleSize, float subSize, bool showYear,
+                       float* scroll);
     void PlayFromTrackList(const std::vector<const Track*>& list, int index,
                            QueueSource source = QueueSource::Library, std::string sourceId = "");
     // Enables shuffle and plays the list starting from a random track.

@@ -1141,6 +1141,43 @@ std::vector<const Track*> App::ResolveTracks(const std::vector<std::string>& ids
     return out;
 }
 
+void App::DrawAlbumGrid(Rectangle r, const std::vector<const Album*>& albums, float cardW,
+                        float artH, float gap, float titleSize, float subSize, bool showYear,
+                        float* scroll) {
+    const float pad = 24;
+    const float cardH = artH + 50;
+    const int cols = std::max(1, static_cast<int>((r.width - pad * 2 + gap) / (cardW + gap)));
+    const int rows = (static_cast<int>(albums.size()) + cols - 1) / cols;
+    const float contentH = rows * (cardH + gap) + 8;
+
+    ui::ScrollArea(r, contentH, scroll);
+    BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(r.width),
+                     static_cast<int>(r.height));
+    for (size_t i = 0; i < albums.size(); i++) {
+        const int row = static_cast<int>(i) / cols, col = static_cast<int>(i) % cols;
+        const float x = r.x + pad + col * (cardW + gap);
+        const float y = r.y + 8 + row * (cardH + gap) - *scroll;
+        if (y + cardH < r.y || y > r.y + r.height) continue;
+        const Album& a = *albums[i];
+        const Rectangle card{x - 8, y - 8, cardW + 16, cardH + 16};
+        if (ui::Hover(card) && ui::Hover(r)) {
+            DrawRectangleRounded(card, 0.08f, 6, ui::theme.elevated);
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                detailAlbumId_ = a.id;
+                detailScroll_ = 0;
+                view_ = View::AlbumDetail;
+            }
+        }
+        DrawAlbumArt(Rectangle{x, y, cardW, artH}, &a, 1.0f);
+        ui::TextEllipsis(a.title, Vector2{x, y + artH + 8}, cardW, titleSize, ui::theme.text);
+        const std::string sub = (showYear && a.year > 0)
+                                    ? TextFormat("%s · %d", a.artist.c_str(), a.year)
+                                    : a.artist;
+        ui::TextEllipsis(sub, Vector2{x, y + artH + 28}, cardW, subSize, ui::theme.textSecondary);
+    }
+    EndScissorMode();
+}
+
 void App::DrawSearchView(Rectangle r) {
     const float pad = 24;
 
@@ -1205,36 +1242,11 @@ void App::DrawSearchView(Rectangle r) {
     if (!albums.empty()) {
         ui::Text("ALBUMS", Vector2{r.x + pad, y}, 12, ui::theme.textTertiary);
         y += 24;
-        const float cardW = 150, artH = 150, cardH = artH + 46, gap = 18;
+        const float cardW = 150, artH = 150, gap = 18;
+        const float cardH = artH + 50;
         const Rectangle grid{r.x, y, r.width, std::min((bottom - y) * 0.4f, cardH + gap + 8)};
-        const int cols = std::max(
-            1, static_cast<int>((grid.width - pad * 2 + gap) / (cardW + gap)));
-        const int rows = (static_cast<int>(albums.size()) + cols - 1) / cols;
-        const float contentH = rows * (cardH + gap) + 8;
-        ui::ScrollArea(grid, contentH, &searchAlbumsScroll_);
-        BeginScissorMode(static_cast<int>(grid.x), static_cast<int>(grid.y),
-                         static_cast<int>(grid.width), static_cast<int>(grid.height));
-        for (size_t i = 0; i < albums.size(); i++) {
-            const int row = static_cast<int>(i) / cols, col = static_cast<int>(i) % cols;
-            const float cx = grid.x + pad + col * (cardW + gap);
-            const float cy = grid.y + 4 + row * (cardH + gap) - searchAlbumsScroll_;
-            if (cy + cardH < grid.y || cy > grid.y + grid.height) continue;
-            const Album& a = *albums[i];
-            const Rectangle card{cx - 8, cy - 8, cardW + 16, cardH + 16};
-            if (ui::Hover(card) && ui::Hover(grid)) {
-                DrawRectangleRounded(card, 0.08f, 6, ui::theme.elevated);
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                    detailAlbumId_ = a.id;
-                    detailScroll_ = 0;
-                    view_ = View::AlbumDetail;
-                }
-            }
-            DrawAlbumArt(Rectangle{cx, cy, cardW, artH}, &a, 1.0f);
-            ui::TextEllipsis(a.title, Vector2{cx, cy + artH + 8}, cardW, 14, ui::theme.text);
-            ui::TextEllipsis(a.artist, Vector2{cx, cy + artH + 26}, cardW, 12,
-                             ui::theme.textSecondary);
-        }
-        EndScissorMode();
+        DrawAlbumGrid(grid, albums, cardW, artH, gap, 14, 12, /*showYear=*/false,
+                      &searchAlbumsScroll_);
         y = grid.y + grid.height + 20;
     }
 
@@ -1294,39 +1306,12 @@ void App::DrawAlbumsView(Rectangle r) {
         ShufflePlay(all);
     }
 
-    const float pad = 24;
-    const float cardW = 172, artH = 172, cardH = artH + 50, gap = 20;
+    const float cardW = 172, artH = 172, gap = 20;
     const Rectangle grid{r.x, r.y + 72, r.width, r.height - 72};
-    const int cols = std::max(1, static_cast<int>((grid.width - pad * 2 + gap) / (cardW + gap)));
-    const auto& albums = library_.Albums();
-    const int rows = (static_cast<int>(albums.size()) + cols - 1) / cols;
-    const float contentH = pad + rows * (cardH + gap);
-
-    ui::ScrollArea(grid, contentH, &albumsScroll_);
-    BeginScissorMode(static_cast<int>(grid.x), static_cast<int>(grid.y),
-                     static_cast<int>(grid.width), static_cast<int>(grid.height));
-    for (size_t i = 0; i < albums.size(); i++) {
-        const int row = static_cast<int>(i) / cols, col = static_cast<int>(i) % cols;
-        const float x = grid.x + pad + col * (cardW + gap);
-        const float y = grid.y + 8 + row * (cardH + gap) - albumsScroll_;
-        if (y + cardH < grid.y || y > grid.y + grid.height) continue;
-        const Album& a = albums[i];
-        const Rectangle card{x - 8, y - 8, cardW + 16, cardH + 16};
-        if (ui::Hover(card) && ui::Hover(grid)) {
-            DrawRectangleRounded(card, 0.08f, 6, ui::theme.elevated);
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                detailAlbumId_ = a.id;
-                detailScroll_ = 0;
-                view_ = View::AlbumDetail;
-            }
-        }
-        DrawAlbumArt(Rectangle{x, y, cardW, artH}, &a, 1.0f);
-        ui::TextEllipsis(a.title, Vector2{x, y + artH + 8}, cardW, 15, ui::theme.text);
-        const std::string sub = a.year > 0 ? TextFormat("%s · %d", a.artist.c_str(), a.year)
-                                           : a.artist;
-        ui::TextEllipsis(sub, Vector2{x, y + artH + 28}, cardW, 13, ui::theme.textSecondary);
-    }
-    EndScissorMode();
+    std::vector<const Album*> albums;
+    albums.reserve(library_.Albums().size());
+    for (const auto& a : library_.Albums()) albums.push_back(&a);
+    DrawAlbumGrid(grid, albums, cardW, artH, gap, 15, 13, /*showYear=*/true, &albumsScroll_);
 }
 
 void App::DrawAlbumDetailView(Rectangle r) {
