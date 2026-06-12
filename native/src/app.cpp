@@ -1154,7 +1154,12 @@ void App::DrawNowPlayingView(Rectangle r) {
     const float artSize = hasFg ? std::min({440.0f, r.height - 290, r.width - 200})
                                 : std::min({360.0f, r.height - 290, r.width - 160});
     const float artX = r.x + (r.width - artSize) / 2;
-    const float artY = r.y + (hasFg ? 40 : 48);
+    // Without depth layers the bars fill the bottom, so the art stays up top.
+    // With them the visualizer lives inside the art and there are no bottom
+    // bars to balance against, so center the art + panel block on the screen.
+    // Block spans the art down to the transport row (textY + 142 below the art).
+    const float blockH = artSize + 164;
+    const float artY = hasFg ? r.y + std::max(40.0f, (r.height - blockH) / 2) : r.y + 48;
     const Rectangle artRect{artX, artY, artSize, artSize};
 
     // Ambient glow: LED-underglow style — a tight bright line at the art edge
