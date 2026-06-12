@@ -10,10 +10,11 @@ namespace {
 
 constexpr int kRtSize = 768;
 constexpr float kHalf = 0.5f;       // half the cover's side, world units
-constexpr float kThick = 0.11f;     // sleeve thickness (edge reads even in a quick turn)
+constexpr float kThick = 0.03f;     // sleeve thickness (edge reads even in a quick turn)
 constexpr float kGloss = 0.95f;     // gloss highlight strength
 constexpr float kFovy = 20.0f;      // camera field of view (mild perspective)
 constexpr float kPop = 0.24f;       // forward lift toward the viewer mid-turn
+constexpr float kWear = 0.5f;       // worn-sleeve patina strength on the covers
 
 // Light from the upper-left front; flat per-face diffuse is baked into vertex
 // colour, so only the cover's gloss sweep needs the shader.
@@ -43,15 +44,41 @@ uniform vec4 colDiffuse;
 uniform float uTurn;
 uniform float uFacing;
 uniform float uGloss;
+uniform float uWear;
 out vec4 finalColor;
+
+float hash(vec2 p) {
+    p = fract(p*vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x*p.y);
+}
+
 void main() {
     vec4 tex = texture(texture0, fragTexCoord);
     vec3 col = tex.rgb*fragColor.rgb;
+    vec2 p = fragTexCoord;
+
+    // Worn-sleeve patina (covers only): the disc's ring impression, abraded
+    // edges/corners, a faint spindle mark, speckle and a few scratches — the
+    // laminate goes lighter where it's scuffed, like a handled record sleeve.
+    if (uWear > 0.0) {
+        float edge = clamp(1.0 - 2.0*min(min(p.x, 1.0 - p.x), min(p.y, 1.0 - p.y)), 0.0, 1.0);
+        float corner = pow(edge, 3.0);
+        float r = length(p - 0.5);
+        float ring = smoothstep(0.04, 0.0, abs(r - 0.46))*(0.6 + 0.4*hash(p*60.0));
+        float spindle = smoothstep(0.085, 0.05, r)*0.4;
+        float speckle = hash(floor(p*260.0))*edge;
+        float sc = hash(vec2(floor((p.x*0.7 + p.y)*90.0), 3.0));
+        float scratch = smoothstep(0.975, 1.0, sc)*0.8;
+        float wear = (corner*0.75 + ring*0.5 + spindle*0.3 + speckle*0.3 + scratch)*uWear;
+        col = mix(col, vec3(0.66), clamp(wear, 0.0, 0.8));
+    }
+
     float facing = clamp(uFacing, 0.0, 1.0);
     // A bright diagonal light streak sweeping across the cover as it turns,
     // plus a faint overall glaze so the facing side reads as a glossy laminate.
     // A hot squared core inside a wider soft halo sells the reflection.
-    float band = fragTexCoord.x*0.6 + (1.0 - fragTexCoord.y)*0.4;
+    float band = p.x*0.6 + (1.0 - p.y)*0.4;
     float d = abs(band - uTurn);
     float streak = smoothstep(0.18, 0.0, d);
     float g = (streak*streak*uGloss + smoothstep(0.4, 0.0, d)*0.18 + 0.06)*facing;
@@ -106,9 +133,11 @@ Color Lerp(Color a, Color b, float t) {
                  static_cast<unsigned char>(a.b + (b.b - a.b)*t), 255};
 }
 
-// One flat face: 4 corners (local, pre-rotation), its UVs, a baked diffuse
-// colour, and the gloss-facing term. Culling is off, so winding doesn't matter.
-void Face(Texture2D tex, float facing, Color col, const Vector3 c[4], const Vector2 uv[4]) {
+// One flat face: 4 corners (local, pre-rotation), its UVs, and a baked diffuse
+// colour. Culling is off, so winding doesn't matter. The caller sets the
+// per-face uniforms (facing, wear) before this; we flush the batch after so
+// those uniforms actually apply to this face rather than the last face drawn.
+void Face(Texture2D tex, Color col, const Vector3 c[4], const Vector2 uv[4]) {
     rlSetTexture(tex.id);
     rlColor4ub(col.r, col.g, col.b, 255);
     rlBegin(RL_QUADS);
@@ -117,7 +146,7 @@ void Face(Texture2D tex, float facing, Color col, const Vector3 c[4], const Vect
         rlVertex3f(c[i].x, c[i].y, c[i].z);
     }
     rlEnd();
-    (void)facing;
+    rlDrawRenderBatchActive();  // draw now so this face keeps its own uniforms
 }
 
 }  // namespace
@@ -129,6 +158,7 @@ void Sleeve3D::Ensure() {
         locTurn_ = GetShaderLocation(shader_, "uTurn");
         locFacing_ = GetShaderLocation(shader_, "uFacing");
         locGloss_ = GetShaderLocation(shader_, "uGloss");
+        locWear_ = GetShaderLocation(shader_, "uWear");
     }
     if (patina_.id == 0) patina_ = GenPatina();
 }
@@ -170,8 +200,10 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
     rlDisableBackfaceCulling();
     BeginShaderMode(shader_);
     const float gloss = kGloss;
+    const float wear = kWear;
     SetShaderValue(shader_, locTurn_, &flip, SHADER_UNIFORM_FLOAT);
     SetShaderValue(shader_, locGloss_, &gloss, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader_, locWear_, &wear, SHADER_UNIFORM_FLOAT);  // covers; 0 on edges
 
     rlPushMatrix();
     rlTranslatef(0, 0, kPop * st);  // lift toward the viewer, peaking edge-on
@@ -193,7 +225,7 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
             {-kHalf, -kHalf, h}, {kHalf, -kHalf, h}, {kHalf, kHalf, h}, {-kHalf, kHalf, h}};
         const Vector2 uv[4] = {{u0, v1}, {u1, v1}, {u1, v0}, {u0, v0}};
         SetShaderValue(shader_, locFacing_, &ct, SHADER_UNIFORM_FLOAT);
-        Face(*front, ct, Shade(WHITE, nFront, 0.62f), c, uv);
+        Face(*front, Shade(WHITE, nFront, 0.62f), c, uv);
     }
     if (back != nullptr) {
         float u0, u1, v0, v1;
@@ -204,12 +236,13 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
         const Vector2 uv[4] = {{u0, v1}, {u1, v1}, {u1, v0}, {u0, v0}};
         const float facing = -ct;
         SetShaderValue(shader_, locFacing_, &facing, SHADER_UNIFORM_FLOAT);
-        Face(*back, facing, Shade(WHITE, nBack, 0.62f), c, uv);
+        Face(*back, Shade(WHITE, nBack, 0.62f), c, uv);
     }
 
-    // Patina edges: no gloss, darker ambient, album-tinted cardboard grain.
+    // Patina edges: no gloss, no face wear, darker ambient, cardboard grain.
     const float zero = 0.0f;
     SetShaderValue(shader_, locFacing_, &zero, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader_, locWear_, &zero, SHADER_UNIFORM_FLOAT);
     const Vector2 euv[4] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
     const Vector3 right[4] = {
         {kHalf, -kHalf, h}, {kHalf, -kHalf, -h}, {kHalf, kHalf, -h}, {kHalf, kHalf, h}};
@@ -219,10 +252,10 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
         {-kHalf, kHalf, h}, {kHalf, kHalf, h}, {kHalf, kHalf, -h}, {-kHalf, kHalf, -h}};
     const Vector3 bot[4] = {
         {-kHalf, -kHalf, -h}, {kHalf, -kHalf, -h}, {kHalf, -kHalf, h}, {-kHalf, -kHalf, h}};
-    Face(patina_, 0, Shade(edge, nRight, 0.58f), right, euv);
-    Face(patina_, 0, Shade(edge, nLeft, 0.58f), left, euv);
-    Face(patina_, 0, Shade(edge, nTop, 0.58f), top, euv);
-    Face(patina_, 0, Shade(edge, nBot, 0.58f), bot, euv);
+    Face(patina_, Shade(edge, nRight, 0.58f), right, euv);
+    Face(patina_, Shade(edge, nLeft, 0.58f), left, euv);
+    Face(patina_, Shade(edge, nTop, 0.58f), top, euv);
+    Face(patina_, Shade(edge, nBot, 0.58f), bot, euv);
 
     rlPopMatrix();
     EndShaderMode();

@@ -32,4 +32,5 @@ private:
     int locTurn_ = -1;
     int locFacing_ = -1;
     int locGloss_ = -1;
+    int locWear_ = -1;
 };
