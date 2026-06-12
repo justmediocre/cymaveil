@@ -14,7 +14,7 @@ constexpr float kThick = 0.03f;     // sleeve thickness (edge reads even in a qu
 constexpr float kGloss = 0.95f;     // gloss highlight strength
 constexpr float kFovy = 20.0f;      // camera field of view (mild perspective)
 constexpr float kPop = 0.24f;       // forward lift toward the viewer mid-turn
-constexpr float kWear = 0.32f;      // worn-sleeve patina strength on the covers
+constexpr float kWear = 0.6f;       // worn-sleeve patina strength on the covers
 
 // Light from the upper-left front; flat per-face diffuse is baked into vertex
 // colour, so only the cover's gloss sweep needs the shader.
@@ -72,27 +72,30 @@ void main() {
     vec3 col = tex.rgb*fragColor.rgb;
     vec2 p = fragTexCoord;
 
-    // Worn-sleeve patina (covers only): the disc's ring impression plus abraded
-    // edges and blotchy scuffing, all driven by domain-warped fractal noise so
-    // the wear is fine and irregular instead of a clean ring/uniform grain.
+    // Worn-sleeve patina (covers only). Real ring wear is sharp paper abrasion:
+    // hard, high-contrast white flecks clustered in patches, plus thin cracks —
+    // not a soft haze. A low-frequency field decides WHERE wear concentrates
+    // (edges, the disc ring, random patches); hard-thresholded high-frequency
+    // noise supplies the crisp flecks and cracks within it.
     if (uWear > 0.0) {
         vec2 q = p - 0.5;
         float r = length(q), ang = atan(q.y, q.x);
-        float grain = fbm(p*20.0 + fbm(p*7.0));   // warped fractal field
-        float micro = fbm(p*64.0);                // fine high-frequency detail
-
-        // Ring wear: radius wobbles with angle and the band is broken into arcs
-        // by noise, so it never reads as a perfect circle.
-        float rad = 0.45 + 0.03*(fbm(vec2(ang*2.0, 4.0)) - 0.5)*2.0;
-        float ring = smoothstep(0.026, 0.0, abs(r - rad))*smoothstep(0.42, 0.78, fbm(vec2(ang*4.0, r*16.0)));
-
         float edge = clamp(1.0 - 2.0*min(min(p.x, 1.0 - p.x), min(p.y, 1.0 - p.y)), 0.0, 1.0);
-        float corner = pow(edge, 2.5)*(0.3 + grain);
-        float blotch = smoothstep(0.6, 0.96, grain*0.7 + micro*0.3);
+        float rad = 0.45 + 0.03*(fbm(vec2(ang*2.0, 4.0)) - 0.5)*2.0;
+        float ringBand = smoothstep(0.06, 0.0, abs(r - rad));
+        float field = clamp(fbm(p*5.0)*0.8 + edge*0.7 + ringBand*0.7, 0.0, 1.0);
+        float gate = smoothstep(0.32, 0.7, field);
 
-        float dull = clamp((corner*0.8 + blotch*0.5)*uWear, 0.0, 0.55);
-        float light = (ring*0.5 + smoothstep(0.82, 0.93, micro)*0.22)*uWear;  // lighter scuffs
-        col = mix(col, vec3(0.58), dull) + light;
+        // Crisp flecks at two scales (paper worn through, catching light).
+        float fleck = smoothstep(0.80, 0.85, vnoise(p*250.0))*0.9 +
+                      smoothstep(0.74, 0.80, vnoise(p*95.0 + 11.0))*0.6;
+        // Thin cracks: a narrow band straddling a noise level set.
+        float cn = fbm(p*70.0);
+        float crack = (smoothstep(0.47, 0.50, cn) - smoothstep(0.50, 0.53, cn));
+
+        float light = (fleck + clamp(crack, 0.0, 1.0)*0.7)*gate*uWear;
+        float dull = field*0.16*uWear;                // faint grime in the patches
+        col = mix(col, vec3(0.5), clamp(dull, 0.0, 0.2)) + light;
     }
 
     float facing = clamp(uFacing, 0.0, 1.0);
