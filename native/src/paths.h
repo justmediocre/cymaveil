@@ -10,5 +10,8 @@ std::string DataDir();
 std::string ArtDir();
 std::string LibraryFile();
 std::string ConfigFile();
+std::string PlaylistsFile();
+// Where playlist exports land: $HOME/Music when it exists, else $HOME.
+std::string MusicDir();
 
 }  // namespace paths

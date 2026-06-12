@@ -147,11 +147,21 @@ void TextCentered(const std::string& s, Vector2 center, float size, Color c) {
     Text(s, Vector2{center.x - m.x / 2, center.y - m.y / 2}, size, c);
 }
 
-bool Hover(Rectangle r) { return CheckCollisionPointRec(GetMousePosition(), r); }
-
-bool Clicked(Rectangle r) {
-    return IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && Hover(r);
+namespace {
+bool g_inputBlocked = false;
 }
+
+void BlockInput(bool blocked) { g_inputBlocked = blocked; }
+
+bool HoverRaw(Rectangle r) { return CheckCollisionPointRec(GetMousePosition(), r); }
+
+bool ClickedRaw(Rectangle r) {
+    return IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && HoverRaw(r);
+}
+
+bool Hover(Rectangle r) { return !g_inputBlocked && HoverRaw(r); }
+
+bool Clicked(Rectangle r) { return !g_inputBlocked && ClickedRaw(r); }
 
 bool Slider(Rectangle r, float* value, bool* dragging) {
     // Generous vertical hit area for slim bars
@@ -177,6 +187,43 @@ void ScrollArea(Rectangle view, float contentHeight, float* scroll) {
         DrawRectangleRounded(Rectangle{view.x + view.width - 5, thumbY, 3, thumbH}, 1.0f, 4,
                              theme.border);
     }
+}
+
+int TextInput(Rectangle r, std::string* text, float size) {
+    DrawRectangleRounded(r, 0.25f, 6, theme.elevated);
+    DrawRectangleRoundedLinesEx(r, 0.25f, 6, 1, theme.accent);
+
+    int cp;
+    while ((cp = GetCharPressed()) != 0) {
+        char buf[5] = {};
+        int n = 0;
+        const char* utf8 = CodepointToUTF8(cp, &n);
+        for (int i = 0; i < n; i++) buf[i] = utf8[i];
+        *text += buf;
+    }
+    if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !text->empty()) {
+        // Drop one UTF-8 codepoint from the end
+        size_t i = text->size() - 1;
+        while (i > 0 && (static_cast<unsigned char>((*text)[i]) & 0xC0) == 0x80) i--;
+        text->erase(i);
+    }
+
+    const float pad = 10;
+    const Vector2 m = Measure(*text, size);
+    BeginScissorMode(static_cast<int>(r.x + pad), static_cast<int>(r.y),
+                     static_cast<int>(r.width - pad * 2), static_cast<int>(r.height));
+    // Keep the caret in view when the text outgrows the box
+    const float shift = std::max(0.0f, m.x - (r.width - pad * 2 - 4));
+    const Vector2 pos{r.x + pad - shift, r.y + (r.height - m.y) / 2};
+    Text(*text, pos, size, theme.text);
+    if (std::fmod(GetTime(), 1.0) < 0.6) {
+        DrawRectangleRec(Rectangle{pos.x + m.x + 2, r.y + 6, 1.5f, r.height - 12}, theme.text);
+    }
+    EndScissorMode();
+
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) return 1;
+    if (IsKeyPressed(KEY_ESCAPE)) return -1;
+    return 0;
 }
 
 void IconPlay(Vector2 c, float s, Color col) {
@@ -250,6 +297,52 @@ void IconNote(Vector2 c, float s, Color col) {
     DrawLineEx(Vector2{head.x + r - t / 2, head.y}, Vector2{head.x + r - t / 2, c.y - s * 0.36f}, t, col);
     DrawLineEx(Vector2{head.x + r - t, c.y - s * 0.36f}, Vector2{head.x + r + s * 0.26f, c.y - s * 0.24f},
                t * 1.6f, col);
+}
+
+void IconHeart(Vector2 c, float s, Color col, bool filled) {
+    const float r = s * 0.26f;
+    const Vector2 l{c.x - r * 0.95f, c.y - s * 0.12f};
+    const Vector2 rt{c.x + r * 0.95f, c.y - s * 0.12f};
+    const Vector2 tip{c.x, c.y + s * 0.42f};
+    if (filled) {
+        DrawCircleV(l, r, col);
+        DrawCircleV(rt, r, col);
+        Tri(Vector2{l.x - r * 0.92f, l.y + r * 0.36f}, Vector2{rt.x + r * 0.92f, rt.y + r * 0.36f},
+            tip, col);
+        Tri(Vector2{l.x - r * 0.6f, l.y + r * 0.6f}, Vector2{rt.x + r * 0.6f, rt.y + r * 0.6f}, tip,
+            col);
+    } else {
+        const float t = std::max(1.5f, s * 0.09f);
+        DrawRing(l, r - t / 2, r + t / 2, 120.0f, 320.0f, 20, col);
+        DrawRing(rt, r - t / 2, r + t / 2, 220.0f, 420.0f, 20, col);
+        DrawLineEx(Vector2{l.x - r * 0.92f, l.y + r * 0.42f}, tip, t, col);
+        DrawLineEx(Vector2{rt.x + r * 0.92f, rt.y + r * 0.42f}, tip, t, col);
+    }
+}
+
+void IconClose(Vector2 c, float s, Color col) {
+    const float e = s * 0.34f;
+    const float t = std::max(1.5f, s * 0.1f);
+    DrawLineEx(Vector2{c.x - e, c.y - e}, Vector2{c.x + e, c.y + e}, t, col);
+    DrawLineEx(Vector2{c.x - e, c.y + e}, Vector2{c.x + e, c.y - e}, t, col);
+}
+
+void IconQueue(Vector2 c, float s, Color col) {
+    const float t = std::max(1.5f, s * 0.1f);
+    const float x0 = c.x - s * 0.45f, x1 = c.x + s * 0.45f;
+    for (int i = -1; i <= 1; i++) {
+        const float y = c.y + i * s * 0.3f;
+        // Short bullet + line, like the web's queue glyph
+        DrawCircleV(Vector2{x0 + t / 2, y}, t * 0.7f, col);
+        DrawLineEx(Vector2{x0 + s * 0.22f, y}, Vector2{x1, y}, t, col);
+    }
+}
+
+void IconPlus(Vector2 c, float s, Color col) {
+    const float e = s * 0.42f;
+    const float t = std::max(1.5f, s * 0.1f);
+    DrawLineEx(Vector2{c.x - e, c.y}, Vector2{c.x + e, c.y}, t, col);
+    DrawLineEx(Vector2{c.x, c.y - e}, Vector2{c.x, c.y + e}, t, col);
 }
 
 std::string FormatTime(float seconds) {

@@ -11,6 +11,9 @@ int main(int argc, char** argv) {
             app.SetScreenshotPath(argv[++i]);
         } else if (arg == "--view" && i + 1 < argc) {
             app.SetStartView(argv[++i]);
+        } else if (arg == "--import" && i + 1 < argc) {
+            // Import an .m3u/.m3u8 playlist on launch (also available via drop)
+            app.AddStartupImport(argv[++i]);
         } else {
             app.AddStartupFolder(arg);
         }

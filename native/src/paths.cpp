@@ -26,5 +26,14 @@ std::string DataDir() {
 std::string ArtDir() { return EnsureDir(DataDir() + "/art"); }
 std::string LibraryFile() { return DataDir() + "/library.json"; }
 std::string ConfigFile() { return DataDir() + "/config.json"; }
+std::string PlaylistsFile() { return DataDir() + "/playlists.json"; }
+
+std::string MusicDir() {
+    const char* home = std::getenv("HOME");
+    const std::string base = home ? home : ".";
+    const std::string music = base + "/Music";
+    std::error_code ec;
+    return std::filesystem::is_directory(music, ec) ? music : base;
+}
 
 }  // namespace paths

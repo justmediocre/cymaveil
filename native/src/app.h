@@ -12,6 +12,7 @@
 #include "library.h"
 #include "mosaic.h"
 #include "player.h"
+#include "playlist.h"
 #include "vinyl.h"
 #include "visualizer.h"
 
@@ -34,6 +35,8 @@ private:
 class App {
 public:
     void AddStartupFolder(const std::string& path) { startupFolders_.push_back(path); }
+    // --import <file.m3u>: import a playlist at launch
+    void AddStartupImport(const std::string& path) { startupImports_.push_back(path); }
     // --play: start playing the library on launch (handy for testing)
     void SetAutoplay(bool on) { autoplay_ = on; }
     // --shot <path>: capture the window to <path> ~2s after launch
@@ -43,7 +46,7 @@ public:
     int Run();
 
 private:
-    enum class View { Library, Albums, AlbumDetail, NowPlaying };
+    enum class View { Library, Albums, AlbumDetail, Playlists, PlaylistDetail, NowPlaying };
 
     void Frame();
     void HandleInput();
@@ -59,15 +62,35 @@ private:
     void DrawLibraryView(Rectangle r);
     void DrawAlbumsView(Rectangle r);
     void DrawAlbumDetailView(Rectangle r);
+    void DrawPlaylistsView(Rectangle r);
+    void DrawPlaylistDetailView(Rectangle r);
     void DrawNowPlayingView(Rectangle r);
     void DrawEmptyState(Rectangle r);
     void DrawDebugOverlay();
+    // Collapsible queue panel on the right edge; r is the revealed strip.
+    void DrawQueuePanel(Rectangle r);
+    // Right-click menu on track rows: favorites / Now Playing / playlists.
+    void DrawTrackMenu();
+    void OpenTrackMenu(const std::string& trackId);
+    void DrawToast();
 
     void DrawAlbumArt(Rectangle r, const Album* album, float iconScale, float alpha = 1.0f);
-    // Returns the index of a clicked row, or -1.
-    int DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, float* scroll,
-                       bool showAlbum);
-    void PlayFromTrackList(const std::vector<const Track*>& list, int index);
+    // Placeholder "cover" for playlists (rounded tile + glyph).
+    void DrawPlaylistIcon(Rectangle r, const Playlist& p, float iconScale);
+    struct TableResult {
+        int clicked = -1;       // row to play
+        int rightClicked = -1;  // row to open the context menu for
+        int removed = -1;       // row whose remove button was clicked
+    };
+    TableResult DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, float* scroll,
+                               bool showAlbum, bool removable = false);
+    void PlayFromTrackList(const std::vector<const Track*>& list, int index,
+                           QueueSource source = QueueSource::Library, std::string sourceId = "");
+    std::vector<const Track*> ResolveTracks(const std::vector<std::string>& ids) const;
+    void ImportM3uFile(const std::string& path);
+    void ExportPlaylist(const Playlist& p);
+    void ToggleQueuePanel();
+    void Toast(const std::string& msg);
 
     MosaicSettings MosaicCfg() const;
     // Keeps the masked-foreground texture in sync with the playing album.
@@ -76,6 +99,7 @@ private:
 
     Config config_;
     Library library_;
+    Playlists playlists_;
     Player player_{library_};
     Visualizer visualizer_;
     ArtCache art_;
@@ -92,12 +116,36 @@ private:
     } fg_;
 
     std::vector<std::string> startupFolders_;
+    std::vector<std::string> startupImports_;
 
     View view_ = View::Library;
     std::string detailAlbumId_;
+    std::string detailPlaylistId_;
     float libScroll_ = 0;
     float albumsScroll_ = 0;
     float detailScroll_ = 0;
+    float playlistsScroll_ = 0;
+    float plDetailScroll_ = 0;
+
+    // Queue panel slide: 0 closed → 1 open; width follows the eased value.
+    float queueAnim_ = 0;
+    float queueScroll_ = 0;
+
+    // Inline playlist rename (also entered right after New Playlist)
+    std::string editPlaylistId_;
+    std::string editText_;
+    // Two-step delete: first click arms, second click deletes.
+    std::string deleteArmId_;
+
+    struct TrackMenu {
+        bool open = false;
+        bool justOpened = false;  // skip the opening click this frame
+        Vector2 pos{};
+        std::string trackId;
+    } menu_;
+
+    std::string toast_;
+    double toastUntil_ = 0;
 
     bool seekDragging_ = false;
     float seekValue_ = 0;

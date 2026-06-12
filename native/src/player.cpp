@@ -42,12 +42,80 @@ void Player::BuildOrder(int firstQueueIndex) {
     }
 }
 
-void Player::PlayQueue(std::vector<std::string> trackIds, int startIndex) {
+void Player::PlayQueue(std::vector<std::string> trackIds, int startIndex, QueueSource source,
+                       std::string sourceId) {
     if (trackIds.empty()) return;
     queue_ = std::move(trackIds);
+    source_ = source;
+    sourceId_ = std::move(sourceId);
     startIndex = std::clamp(startIndex, 0, static_cast<int>(queue_.size()) - 1);
     BuildOrder(startIndex);
     LoadCurrent(true);
+}
+
+const Track* Player::TrackAtOrderPos(int pos) const {
+    if (pos < 0 || pos >= static_cast<int>(order_.size())) return nullptr;
+    return lib_.TrackById(queue_[order_[pos]]);
+}
+
+void Player::JumpTo(int orderPos) {
+    if (orderPos < 0 || orderPos >= static_cast<int>(order_.size())) return;
+    orderPos_ = orderPos;
+    LoadCurrent(true);
+}
+
+void Player::RemoveAt(int orderPos) {
+    const int n = static_cast<int>(order_.size());
+    if (orderPos < 0 || orderPos >= n) return;
+    const bool wasCurrent = orderPos == orderPos_;
+    const bool wasPlaying = state_ == State::Playing;
+
+    const int qi = order_[orderPos];
+    queue_.erase(queue_.begin() + qi);
+    order_.erase(order_.begin() + orderPos);
+    for (int& o : order_) {
+        if (o > qi) o--;
+    }
+    if (queue_.empty()) {
+        UnloadCurrent();
+        orderPos_ = -1;
+        return;
+    }
+    if (orderPos < orderPos_) {
+        orderPos_--;
+    } else if (wasCurrent) {
+        // The next track slid into the removed slot; keep playing from there.
+        if (orderPos_ >= static_cast<int>(order_.size())) {
+            UnloadCurrent();
+            orderPos_ = 0;
+        } else {
+            LoadCurrent(wasPlaying);
+        }
+    }
+}
+
+void Player::Append(const std::string& trackId) {
+    if (queue_.empty()) return;
+    queue_.push_back(trackId);
+    order_.push_back(static_cast<int>(queue_.size()) - 1);
+}
+
+void Player::ClearQueue() {
+    UnloadCurrent();
+    queue_.clear();
+    order_.clear();
+    orderPos_ = -1;
+    source_ = QueueSource::None;
+    sourceId_.clear();
+}
+
+void Player::RemoveTrackId(const std::string& trackId) {
+    for (int pos = 0; pos < static_cast<int>(order_.size()); pos++) {
+        if (queue_[order_[pos]] == trackId) {
+            RemoveAt(pos);
+            return;
+        }
+    }
 }
 
 bool Player::LoadCurrent(bool autoplay) {

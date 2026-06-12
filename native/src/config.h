@@ -15,6 +15,8 @@ struct Config {
     bool depthLayers = true;
     // Vinyl disc that slides out from behind the Now Playing album art
     bool vinylDisc = true;
+    // Collapsible queue panel on the right edge (toggled with Q)
+    bool queuePanel = false;
 
     // Background mosaic (no settings UI yet; editable in config.json)
     bool mosaicEnabled = true;

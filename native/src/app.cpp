@@ -1,14 +1,17 @@
 #include "app.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 
 #include "raymath.h"
 
 #include "icon_png.h"
+#include "paths.h"
 #include "ui.h"
 
 namespace {
@@ -17,6 +20,10 @@ constexpr float kSidebarW = 220.0f;
 constexpr float kPlayerH = 88.0f;
 constexpr float kMiniPlayerH = 72.0f;
 constexpr float kRowH = 44.0f;
+constexpr float kQueueW = 320.0f;
+constexpr float kQueueRowH = 52.0f;
+// Red heart for Favorites, matching the web app
+constexpr Color kHeartRed{226, 85, 103, 255};
 
 Color Brighten(Color c, float t) {
     return Color{static_cast<unsigned char>(c.r + (255 - c.r) * t),
@@ -111,6 +118,8 @@ int App::Run() {
 
     config_.Load();
     library_.Load();
+    playlists_.Load();
+    queueAnim_ = config_.queuePanel ? 1.0f : 0.0f;
     mosaic_.Rebuild(library_.Albums(), MosaicCfg());
     player_.SetVolume(config_.volume);
     player_.SetShuffle(config_.shuffle);
@@ -122,7 +131,10 @@ int App::Run() {
     }
     if (startView_ == "library") view_ = View::Library;
     else if (startView_ == "albums") view_ = View::Albums;
+    else if (startView_ == "playlists") view_ = View::Playlists;
     else if (startView_ == "now") view_ = View::NowPlaying;
+    // After the view flag: a successful import lands on the playlist detail
+    for (const auto& f : startupImports_) ImportM3uFile(f);
     MarkActivity();
 
     while (!WindowShouldClose()) Frame();
@@ -176,9 +188,23 @@ void App::Frame() {
     // (none at all when nothing is loaded), like the web app's AppLayout.
     const bool fullBar = view_ == View::NowPlaying;
     const float barH = fullBar ? kPlayerH : (player_.Current() != nullptr ? kMiniPlayerH : 0.0f);
+
+    // Queue panel slide: content gives up the eased width on the right.
+    const float queueTarget = config_.queuePanel ? 1.0f : 0.0f;
+    if (queueAnim_ != queueTarget) {
+        const float step = GetFrameTime() / 0.3f;
+        queueAnim_ = Clamp(queueAnim_ + (queueAnim_ < queueTarget ? step : -step), 0.0f, 1.0f);
+    }
+    const float qe = queueAnim_ * queueAnim_ * (3.0f - 2.0f * queueAnim_);
+    const float qw = kQueueW * qe;
+
     const Rectangle sidebar{0, 0, kSidebarW, H - barH};
-    const Rectangle content{kSidebarW, 0, W - kSidebarW, H - barH};
+    const Rectangle content{kSidebarW, 0, W - kSidebarW - qw, H - barH};
+    const Rectangle queuePanel{W - qw, 0, qw, H - barH};
     const Rectangle bar{0, H - barH, W, barH};
+
+    // The context menu overlays everything; swallow the mouse underneath it.
+    ui::BlockInput(menu_.open);
 
     BeginDrawing();
     ClearBackground(ui::theme.bg);
@@ -188,17 +214,23 @@ void App::Frame() {
         case View::Library: DrawLibraryView(content); break;
         case View::Albums: DrawAlbumsView(content); break;
         case View::AlbumDetail: DrawAlbumDetailView(content); break;
+        case View::Playlists: DrawPlaylistsView(content); break;
+        case View::PlaylistDetail: DrawPlaylistDetailView(content); break;
         case View::NowPlaying: DrawNowPlayingView(content); break;
     }
     DrawSidebar(sidebar);
+    if (qw > 0.5f) DrawQueuePanel(queuePanel);
     if (fullBar) {
         DrawPlayerBar(bar);
     } else if (barH > 0) {
         DrawMiniPlayer(bar);
     }
+    DrawTrackMenu();
+    DrawToast();
     if (showDebug_) DrawDebugOverlay();
 
     EndDrawing();
+    ui::BlockInput(false);
 
     if (!screenshotPath_.empty()) showDebug_ = true;
     // Catch a mosaic tile mid-transition in the capture
@@ -222,6 +254,13 @@ void App::HandleInput() {
     }
     while (GetKeyPressed() != 0) MarkActivity();  // drain queue: any key wakes the UI
 
+    // While renaming a playlist every key belongs to the text box.
+    if (!editPlaylistId_.empty()) return;
+    if (menu_.open && IsKeyPressed(KEY_ESCAPE)) {
+        menu_.open = false;
+        return;
+    }
+
     if (IsKeyPressed(KEY_SPACE)) player_.TogglePause();
     const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     if (IsKeyPressed(KEY_RIGHT)) {
@@ -244,10 +283,13 @@ void App::HandleInput() {
     if (IsKeyPressed(KEY_DOWN)) player_.SetVolume(player_.Volume() - 0.05f);
     if (IsKeyPressed(KEY_S)) player_.ToggleShuffle();
     if (IsKeyPressed(KEY_R)) player_.CycleRepeat();
+    if (IsKeyPressed(KEY_Q)) ToggleQueuePanel();
     if (IsKeyPressed(KEY_ONE)) view_ = View::Library;
     if (IsKeyPressed(KEY_TWO)) view_ = View::Albums;
-    if (IsKeyPressed(KEY_THREE)) view_ = View::NowPlaying;
+    if (IsKeyPressed(KEY_THREE)) view_ = View::Playlists;
+    if (IsKeyPressed(KEY_FOUR)) view_ = View::NowPlaying;
     if (IsKeyPressed(KEY_ESCAPE) && view_ == View::AlbumDetail) view_ = View::Albums;
+    if (IsKeyPressed(KEY_ESCAPE) && view_ == View::PlaylistDetail) view_ = View::Playlists;
     if (IsKeyPressed(KEY_F3)) showDebug_ = !showDebug_;
     if (IsKeyPressed(KEY_B)) mosaic_.Trigger(MosaicCfg());  // manually animate a tile
 }
@@ -318,7 +360,12 @@ void App::HandleDroppedFolders() {
     FilePathList files = LoadDroppedFiles();
     for (unsigned int i = 0; i < files.count; i++) {
         const char* p = files.paths[i];
-        if (DirectoryExists(p)) {
+        std::string ext = std::filesystem::path(p).extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (ext == ".m3u" || ext == ".m3u8") {
+            ImportM3uFile(p);
+        } else if (DirectoryExists(p)) {
             library_.AddFolder(p);
         } else {
             // A dropped file adds its containing folder
@@ -338,7 +385,10 @@ void App::UpdatePacing() {
     //  - otherwise: block on OS events (near-zero usage until input arrives)
     const bool busy = library_.ScanActive() || art_.HasPendingWork() || seekDragging_ ||
                       volumeDragging_ || mosaic_.Animating() || depth_.Busy() ||
-                      vinyl_.Animating();
+                      vinyl_.Animating() ||
+                      queueAnim_ != (config_.queuePanel ? 1.0f : 0.0f) ||
+                      !editPlaylistId_.empty() ||  // caret blink
+                      GetTime() < toastUntil_;
     const bool recentInput = GetTime() - lastActivity_ < 2.5;
 
     int fps;
@@ -372,13 +422,16 @@ void App::DrawSidebar(Rectangle r) {
         const char* label;
         View view;
     };
-    const NavItem items[] = {
-        {"Library", View::Library}, {"Albums", View::Albums}, {"Now Playing", View::NowPlaying}};
+    const NavItem items[] = {{"Library", View::Library},
+                             {"Albums", View::Albums},
+                             {"Playlists", View::Playlists},
+                             {"Now Playing", View::NowPlaying}};
     float y = 78;
     for (const auto& item : items) {
         const Rectangle row{10, y, r.width - 20, 38};
         const bool active = view_ == item.view ||
-                            (item.view == View::Albums && view_ == View::AlbumDetail);
+                            (item.view == View::Albums && view_ == View::AlbumDetail) ||
+                            (item.view == View::Playlists && view_ == View::PlaylistDetail);
         if (active) {
             DrawRectangleRounded(row, 0.3f, 6, ui::theme.elevated);
         } else if (ui::Hover(row)) {
@@ -491,7 +544,15 @@ void App::DrawPlayerBar(Rectangle r) {
     ui::Text(ui::FormatTime(length), Vector2{seekR.x + seekR.width + 10, r.y + 58}, 12,
              ui::theme.textSecondary);
 
-    // Right: volume
+    // Right: queue panel toggle + volume
+    const Vector2 queueIcon{r.width - 196, by};
+    const Rectangle queueR{queueIcon.x - 12, queueIcon.y - 12, 24, 24};
+    const Color queueCol = config_.queuePanel ? ui::theme.accent
+                           : ui::Hover(queueR) ? ui::theme.text
+                                               : ui::theme.textSecondary;
+    ui::IconQueue(queueIcon, 16, queueCol);
+    if (ui::Clicked(queueR)) ToggleQueuePanel();
+
     float vol = player_.Volume();
     const Vector2 volIcon{r.width - 158, by};
     ui::IconVolume(volIcon, 17, ui::theme.textSecondary, vol);
@@ -512,6 +573,7 @@ void App::DrawMiniPlayer(Rectangle r) {
     DrawLineEx(Vector2{r.x, r.y}, Vector2{r.x + r.width, r.y}, 1, ui::theme.borderSubtle);
 
     const float cy = r.y + r.height / 2;
+    const Rectangle queueR{r.x + r.width - 152, cy - 20, 40, 40};
     const Rectangle playR{r.x + r.width - 104, cy - 20, 40, 40};
     const Rectangle nextR{r.x + r.width - 56, cy - 20, 40, 40};
     const Rectangle progressHit{r.x, r.y - 8, r.width, 20};
@@ -529,11 +591,16 @@ void App::DrawMiniPlayer(Rectangle r) {
 
     // Art thumb + track info
     DrawAlbumArt(Rectangle{r.x + 16, cy - 24, 48, 48}, album, 0.5f);
-    const float infoW = playR.x - (r.x + 80) - 12;
+    const float infoW = queueR.x - (r.x + 80) - 12;
     ui::TextEllipsis(cur->title, Vector2{r.x + 80, cy - 18}, infoW, 15, ui::theme.text);
     ui::TextEllipsis(cur->artist, Vector2{r.x + 80, cy + 2}, infoW, 12, ui::theme.textTertiary);
 
-    // Play/pause + next
+    // Queue toggle + play/pause + next
+    if (ui::Hover(queueR)) DrawCircleV(Vector2{queueR.x + 20, cy}, 20, ui::theme.hover);
+    ui::IconQueue(Vector2{queueR.x + 20, cy}, 14,
+                  config_.queuePanel ? ui::theme.accent : ui::theme.textSecondary);
+    if (ui::Clicked(queueR)) ToggleQueuePanel();
+
     if (ui::Hover(playR)) DrawCircleV(Vector2{playR.x + 20, cy}, 20, ui::theme.hover);
     if (player_.IsPlaying()) {
         ui::IconPause(Vector2{playR.x + 20, cy}, 15, ui::theme.text);
@@ -550,16 +617,18 @@ void App::DrawMiniPlayer(Rectangle r) {
     }
 
     // Anywhere else on the bar expands into Now Playing
-    if (ui::Clicked(r) && !ui::Hover(playR) && !ui::Hover(nextR) && !ui::Hover(progressHit)) {
+    if (ui::Clicked(r) && !ui::Hover(playR) && !ui::Hover(nextR) && !ui::Hover(queueR) &&
+        !ui::Hover(progressHit)) {
         view_ = View::NowPlaying;
     }
 }
 
-int App::DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, float* scroll,
-                        bool showAlbum) {
+App::TableResult App::DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks,
+                                     float* scroll, bool showAlbum, bool removable) {
     const float pad = 24;
     const float numW = 44, durW = 64;
-    const float flexW = r.width - pad * 2 - numW - durW;
+    const float removeW = removable ? 28 : 0;
+    const float flexW = r.width - pad * 2 - numW - durW - removeW;
     const float titleW = flexW * (showAlbum ? 0.42f : 0.72f);
     const float artistW = flexW * 0.28f;
     const float albumW = showAlbum ? flexW * 0.30f : 0;
@@ -573,14 +642,15 @@ int App::DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, fl
         ui::Text("ALBUM", Vector2{hx + numW + titleW + artistW, r.y + 10}, 12,
                  ui::theme.textTertiary);
     }
-    ui::TextRight("TIME", Vector2{r.x + r.width - pad, r.y + 10}, 12, ui::theme.textTertiary);
+    ui::TextRight("TIME", Vector2{r.x + r.width - pad - removeW, r.y + 10}, 12,
+                  ui::theme.textTertiary);
     DrawLineEx(Vector2{r.x + pad, r.y + 32}, Vector2{r.x + r.width - pad, r.y + 32}, 1,
                ui::theme.borderSubtle);
 
     const Rectangle list{r.x, r.y + 36, r.width, r.height - 36};
     ui::ScrollArea(list, static_cast<float>(tracks.size()) * kRowH, scroll);
 
-    int clicked = -1;
+    TableResult out;
     const Track* current = player_.Current();
     const int n = static_cast<int>(tracks.size());
     const int first = std::max(0, static_cast<int>(*scroll / kRowH));
@@ -595,7 +665,16 @@ int App::DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, fl
         const bool isCurrent = current != nullptr && current->id == t.id;
         if (ui::Hover(row) && ui::Hover(list)) {
             DrawRectangleRounded(row, 0.2f, 6, Fade(ui::theme.hover, 0.6f));
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) clicked = i;
+            bool overRemove = false;
+            if (removable) {
+                const Rectangle xR{r.x + r.width - pad - 20, y + kRowH / 2 - 10, 20, 20};
+                overRemove = ui::Hover(xR);
+                ui::IconClose(Vector2{xR.x + 10, xR.y + 10}, 14,
+                              overRemove ? ui::theme.text : ui::theme.textTertiary);
+                if (overRemove && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) out.removed = i;
+            }
+            if (!overRemove && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) out.clicked = i;
+            if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) out.rightClicked = i;
         }
         const float ty = y + 13;
         const Color titleCol = isCurrent ? ui::theme.accent : ui::theme.text;
@@ -613,20 +692,30 @@ int App::DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, fl
             ui::TextEllipsis(a != nullptr ? a->title : "", Vector2{hx + numW + titleW + artistW, ty},
                              albumW - 16, 14, ui::theme.textSecondary);
         }
-        ui::TextRight(ui::FormatTime(t.duration), Vector2{r.x + r.width - pad, ty}, 14,
+        ui::TextRight(ui::FormatTime(t.duration), Vector2{r.x + r.width - pad - removeW, ty}, 14,
                       ui::theme.textSecondary);
     }
     EndScissorMode();
-    return clicked;
+    return out;
 }
 
-void App::PlayFromTrackList(const std::vector<const Track*>& list, int index) {
+void App::PlayFromTrackList(const std::vector<const Track*>& list, int index, QueueSource source,
+                            std::string sourceId) {
     std::vector<std::string> ids;
     ids.reserve(list.size());
     for (const Track* t : list) ids.push_back(t->id);
-    player_.PlayQueue(std::move(ids), index);
+    player_.PlayQueue(std::move(ids), index, source, std::move(sourceId));
     manualSkip_ = true;
     MarkActivity();
+}
+
+std::vector<const Track*> App::ResolveTracks(const std::vector<std::string>& ids) const {
+    std::vector<const Track*> out;
+    out.reserve(ids.size());
+    for (const auto& id : ids) {
+        if (const Track* t = library_.TrackById(id)) out.push_back(t);
+    }
+    return out;
 }
 
 void App::DrawLibraryView(Rectangle r) {
@@ -641,8 +730,9 @@ void App::DrawLibraryView(Rectangle r) {
     for (const auto& t : library_.Tracks()) tracks.push_back(&t);
 
     const Rectangle table{r.x, r.y + 72, r.width, r.height - 72};
-    const int clicked = DrawTrackTable(table, tracks, &libScroll_, true);
-    if (clicked >= 0) PlayFromTrackList(tracks, clicked);
+    const TableResult res = DrawTrackTable(table, tracks, &libScroll_, true);
+    if (res.clicked >= 0) PlayFromTrackList(tracks, res.clicked);
+    if (res.rightClicked >= 0) OpenTrackMenu(tracks[res.rightClicked]->id);
 }
 
 void App::DrawAlbumsView(Rectangle r) {
@@ -721,11 +811,163 @@ void App::DrawAlbumDetailView(Rectangle r) {
                          ui::Hover(playR) ? Brighten(ui::theme.accent, 0.15f) : ui::theme.accent);
     ui::IconPlay(Vector2{playR.x + 28, playR.y + 19}, 13, ui::theme.bg);
     ui::Text("Play", Vector2{playR.x + 44, playR.y + 10}, 16, ui::theme.bg);
-    if (ui::Clicked(playR) && !tracks.empty()) PlayFromTrackList(tracks, 0);
+    if (ui::Clicked(playR) && !tracks.empty()) {
+        PlayFromTrackList(tracks, 0, QueueSource::Album, album->id);
+    }
 
     const Rectangle table{r.x, hy + 176, r.width, r.height - (hy + 176 - r.y)};
-    const int clicked = DrawTrackTable(table, tracks, &detailScroll_, false);
-    if (clicked >= 0) PlayFromTrackList(tracks, clicked);
+    const TableResult res = DrawTrackTable(table, tracks, &detailScroll_, false);
+    if (res.clicked >= 0) PlayFromTrackList(tracks, res.clicked, QueueSource::Album, album->id);
+    if (res.rightClicked >= 0) OpenTrackMenu(tracks[res.rightClicked]->id);
+}
+
+void App::DrawPlaylistsView(Rectangle r) {
+    ui::Text("Playlists", Vector2{r.x + 24, r.y + 24}, 28, ui::theme.text);
+    ui::Text("Drop a .m3u file anywhere to import", Vector2{r.x + 24, r.y + 62}, 13,
+             ui::theme.textTertiary);
+
+    const Rectangle newR{r.x + r.width - 24 - 150, r.y + 28, 150, 36};
+    DrawRectangleRounded(newR, 0.5f, 8, ui::Hover(newR) ? ui::theme.hover : ui::theme.elevated);
+    DrawRectangleRoundedLinesEx(newR, 0.5f, 8, 1, ui::theme.border);
+    ui::IconPlus(Vector2{newR.x + 24, newR.y + 18}, 13, ui::theme.text);
+    ui::Text("New Playlist", Vector2{newR.x + 40, newR.y + 9}, 14, ui::theme.text);
+    if (ui::Clicked(newR)) {
+        const std::string id = playlists_.Create("New Playlist").id;
+        detailPlaylistId_ = id;
+        plDetailScroll_ = 0;
+        deleteArmId_.clear();
+        editPlaylistId_ = id;  // name it right away
+        editText_.clear();
+        view_ = View::PlaylistDetail;
+        return;
+    }
+
+    const float rowH = 64, stride = rowH + 6;
+    const auto& lists = playlists_.All();
+    const Rectangle listArea{r.x, r.y + 96, r.width, r.height - 96};
+    ui::ScrollArea(listArea, static_cast<float>(lists.size()) * stride + 8, &playlistsScroll_);
+    BeginScissorMode(static_cast<int>(listArea.x), static_cast<int>(listArea.y),
+                     static_cast<int>(listArea.width), static_cast<int>(listArea.height));
+    for (size_t i = 0; i < lists.size(); i++) {
+        const Playlist& p = lists[i];
+        const float y = listArea.y + 8 + static_cast<float>(i) * stride - playlistsScroll_;
+        if (y + rowH < listArea.y || y > listArea.y + listArea.height) continue;
+        const Rectangle row{r.x + 16, y, r.width - 32, rowH};
+        if (ui::Hover(row) && ui::Hover(listArea)) {
+            DrawRectangleRounded(row, 0.15f, 6, Fade(ui::theme.hover, 0.6f));
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                detailPlaylistId_ = p.id;
+                plDetailScroll_ = 0;
+                deleteArmId_.clear();
+                view_ = View::PlaylistDetail;
+            }
+        }
+        DrawPlaylistIcon(Rectangle{row.x + 10, y + 10, 44, 44}, p, 1.0f);
+        ui::TextEllipsis(p.name, Vector2{row.x + 70, y + 12}, row.width - 180, 16, ui::theme.text);
+        ui::Text(TextFormat("%d tracks", static_cast<int>(p.trackIds.size())),
+                 Vector2{row.x + 70, y + 36}, 13, ui::theme.textSecondary);
+    }
+    EndScissorMode();
+}
+
+void App::DrawPlaylistDetailView(Rectangle r) {
+    const Playlist* p = playlists_.ById(detailPlaylistId_);
+    if (p == nullptr) {
+        view_ = View::Playlists;
+        return;
+    }
+    const bool isUser = !Playlists::IsSystem(p->id);
+    const bool isNowPlaying = p->id == Playlists::kNowPlayingId;
+    const auto tracks = ResolveTracks(p->trackIds);
+    const QueueSource src = isNowPlaying ? QueueSource::NowPlaying : QueueSource::Playlist;
+
+    const Rectangle backR{r.x + 24, r.y + 18, 92, 24};
+    ui::Text("< Playlists", Vector2{backR.x, backR.y + 2}, 14,
+             ui::Hover(backR) ? ui::theme.text : ui::theme.textSecondary);
+    if (ui::Clicked(backR)) {
+        view_ = View::Playlists;
+        return;
+    }
+
+    const float hy = r.y + 56;
+    DrawPlaylistIcon(Rectangle{r.x + 24, hy, 160, 160}, *p, 1.0f);
+    const float tx = r.x + 24 + 160 + 24;
+    ui::Text("PLAYLIST", Vector2{tx, hy + 8}, 12, ui::theme.textTertiary);
+    if (editPlaylistId_ == p->id) {
+        const Rectangle inR{tx, hy + 26, std::min(420.0f, r.width - tx - 24), 40};
+        const int res = ui::TextInput(inR, &editText_, 18);
+        ui::Text("Enter to save · Esc to cancel", Vector2{tx, hy + 74}, 12, ui::theme.textTertiary);
+        if (res != 0) {
+            if (res == 1) playlists_.Rename(p->id, editText_);
+            editPlaylistId_.clear();
+        }
+    } else {
+        ui::TextEllipsis(p->name, Vector2{tx, hy + 28}, r.width - tx - 24, 30, ui::theme.text);
+        float dur = 0;
+        for (const Track* t : tracks) dur += t->duration;
+        ui::TextEllipsis(TextFormat("%d tracks, %s", static_cast<int>(tracks.size()),
+                                    ui::FormatTime(dur).c_str()),
+                         Vector2{tx, hy + 70}, r.width - tx - 24, 14, ui::theme.textSecondary);
+    }
+
+    float bx = tx;
+    const Rectangle playR{bx, hy + 108, 112, 38};
+    DrawRectangleRounded(playR, 0.6f, 8,
+                         ui::Hover(playR) ? Brighten(ui::theme.accent, 0.15f) : ui::theme.accent);
+    ui::IconPlay(Vector2{playR.x + 28, playR.y + 19}, 13, ui::theme.bg);
+    ui::Text("Play", Vector2{playR.x + 44, playR.y + 10}, 16, ui::theme.bg);
+    if (ui::Clicked(playR) && !tracks.empty()) PlayFromTrackList(tracks, 0, src, p->id);
+    bx += 124;
+
+    const auto button = [&](const std::string& label, float w) {
+        const Rectangle b{bx, hy + 112, w, 30};
+        if (ui::Hover(b)) DrawRectangleRounded(b, 0.6f, 8, Fade(ui::theme.hover, 0.7f));
+        DrawRectangleRoundedLinesEx(b, 0.6f, 8, 1, ui::theme.border);
+        ui::TextCentered(label, Vector2{b.x + w / 2, b.y + 15}, 13,
+                         ui::Hover(b) ? ui::theme.text : ui::theme.textSecondary);
+        bx += w + 10;
+        return ui::Clicked(b);
+    };
+    if (button("Export .m3u8", 104) && !tracks.empty()) ExportPlaylist(*p);
+    if (isUser) {
+        if (button("Rename", 76)) {
+            editPlaylistId_ = p->id;
+            editText_ = p->name;
+        }
+        const bool armed = deleteArmId_ == p->id;
+        if (button(armed ? "Confirm delete" : "Delete", armed ? 116 : 76)) {
+            if (armed) {
+                playlists_.Remove(p->id);
+                view_ = View::Playlists;
+                return;
+            }
+            deleteArmId_ = p->id;
+        }
+    } else if (isNowPlaying) {
+        if (button("Clear", 64) && !p->trackIds.empty()) {
+            playlists_.NowPlaying().trackIds.clear();
+            playlists_.Save();
+            if (player_.Source() == QueueSource::NowPlaying) player_.ClearQueue();
+            return;
+        }
+    }
+
+    const Rectangle table{r.x, hy + 176, r.width, r.height - (hy + 176 - r.y)};
+    if (tracks.empty()) {
+        ui::TextCentered("No tracks yet — right-click any track to add it here",
+                         Vector2{r.x + r.width / 2, table.y + 80}, 14, ui::theme.textSecondary);
+        return;
+    }
+    const TableResult res = DrawTrackTable(table, tracks, &plDetailScroll_, true, true);
+    if (res.clicked >= 0) PlayFromTrackList(tracks, res.clicked, src, p->id);
+    if (res.rightClicked >= 0) OpenTrackMenu(tracks[res.rightClicked]->id);
+    if (res.removed >= 0) {
+        const std::string tid = tracks[res.removed]->id;
+        playlists_.RemoveTrack(p->id, tid);
+        if (isNowPlaying && player_.Source() == QueueSource::NowPlaying) {
+            player_.RemoveTrackId(tid);
+        }
+    }
 }
 
 void App::DrawNowPlayingView(Rectangle r) {
@@ -844,6 +1086,350 @@ void App::DrawAlbumArt(Rectangle r, const Album* album, float iconScale, float a
                      Fade(ui::theme.textTertiary, alpha));
     }
     DrawRectangleLinesEx(r, 1, Fade(ui::theme.borderSubtle, alpha));
+}
+
+void App::DrawPlaylistIcon(Rectangle r, const Playlist& p, float iconScale) {
+    DrawRectangleRounded(r, 0.12f, 6, ui::theme.elevated);
+    const Vector2 c{r.x + r.width / 2, r.y + r.height / 2};
+    const float s = std::min(r.width, r.height) * 0.42f * iconScale;
+    if (p.id == Playlists::kFavoritesId) {
+        ui::IconHeart(c, s, kHeartRed, true);
+    } else if (p.id == Playlists::kNowPlayingId) {
+        ui::IconQueue(c, s, ui::theme.accent);
+    } else {
+        ui::IconNote(c, s, ui::theme.textSecondary);
+    }
+    DrawRectangleLinesEx(r, 1, ui::theme.borderSubtle);
+}
+
+void App::ToggleQueuePanel() {
+    config_.queuePanel = !config_.queuePanel;
+    MarkActivity();
+}
+
+void App::DrawQueuePanel(Rectangle r) {
+    DrawRectangleRec(r, ui::theme.surface);
+    DrawLineEx(Vector2{r.x, r.y}, Vector2{r.x, r.y + r.height}, 1, ui::theme.borderSubtle);
+    // Content is laid out at full panel width anchored to the sliding left
+    // edge; whatever exceeds the window is clipped by the screen itself.
+    const float x0 = r.x;
+
+    enum class Mode { Queue, NowPlayingList, Empty };
+    Mode mode = Mode::Empty;
+    std::vector<const Track*> rows;
+    std::string title = "Queue";
+    const bool nowPlayingSource = player_.Source() == QueueSource::NowPlaying;
+    if (player_.QueueSize() > 0) {
+        mode = Mode::Queue;
+        rows.reserve(player_.QueueSize());
+        for (int i = 0; i < player_.QueueSize(); i++) rows.push_back(player_.TrackAtOrderPos(i));
+        switch (player_.Source()) {
+            case QueueSource::NowPlaying: title = "Now Playing"; break;
+            case QueueSource::Playlist: {
+                const Playlist* p = playlists_.ById(player_.SourceId());
+                title = p != nullptr ? p->name : "Playlist";
+                break;
+            }
+            case QueueSource::Album: {
+                const Album* a = library_.AlbumById(player_.SourceId());
+                title = a != nullptr ? a->title : "Album";
+                break;
+            }
+            case QueueSource::Library: title = "Library"; break;
+            default: break;
+        }
+    } else if (!playlists_.NowPlaying().trackIds.empty()) {
+        // Queue idle but the Now Playing list has tracks parked: show it with
+        // a Play button, like the web's QueuePanel fallback.
+        mode = Mode::NowPlayingList;
+        rows = ResolveTracks(playlists_.NowPlaying().trackIds);
+        title = "Now Playing";
+    }
+
+    ui::TextEllipsis(title, Vector2{x0 + 20, r.y + 20}, kQueueW - 88, 17, ui::theme.text);
+    ui::Text(TextFormat("%d tracks", static_cast<int>(rows.size())), Vector2{x0 + 20, r.y + 46},
+             12, ui::theme.textSecondary);
+    const Rectangle closeR{x0 + kQueueW - 44, r.y + 16, 28, 28};
+    ui::IconClose(Vector2{closeR.x + 14, closeR.y + 14}, 14,
+                  ui::Hover(closeR) ? ui::theme.text : ui::theme.textSecondary);
+    if (ui::Clicked(closeR)) ToggleQueuePanel();
+
+    float top = r.y + 74;
+    const bool showPlay = mode == Mode::NowPlayingList;
+    const bool showClear =
+        mode == Mode::NowPlayingList || (mode == Mode::Queue && nowPlayingSource);
+    if (showPlay || showClear) {
+        float bx = x0 + 20;
+        if (showPlay) {
+            const Rectangle pR{bx, top, 76, 30};
+            DrawRectangleRounded(pR, 0.6f, 8,
+                                 ui::Hover(pR) ? Brighten(ui::theme.accent, 0.15f)
+                                               : ui::theme.accent);
+            ui::IconPlay(Vector2{pR.x + 19, pR.y + 15}, 11, ui::theme.bg);
+            ui::Text("Play", Vector2{pR.x + 31, pR.y + 7}, 14, ui::theme.bg);
+            if (ui::Clicked(pR) && !rows.empty()) {
+                PlayFromTrackList(rows, 0, QueueSource::NowPlaying, Playlists::kNowPlayingId);
+            }
+            bx += 86;
+        }
+        if (showClear) {
+            const Rectangle cR{bx, top, 70, 30};
+            if (ui::Hover(cR)) DrawRectangleRounded(cR, 0.6f, 8, Fade(ui::theme.hover, 0.7f));
+            DrawRectangleRoundedLinesEx(cR, 0.6f, 8, 1, ui::theme.border);
+            ui::TextCentered("Clear", Vector2{cR.x + 35, cR.y + 15}, 13,
+                             ui::Hover(cR) ? ui::theme.text : ui::theme.textSecondary);
+            if (ui::Clicked(cR)) {
+                playlists_.NowPlaying().trackIds.clear();
+                playlists_.Save();
+                if (nowPlayingSource) player_.ClearQueue();
+                return;
+            }
+        }
+        top += 42;
+    }
+
+    if (mode == Mode::Empty) {
+        ui::TextCentered("Queue is empty", Vector2{x0 + kQueueW / 2, r.y + r.height / 2 - 12}, 15,
+                         ui::theme.textSecondary);
+        ui::TextCentered("Play something, or right-click tracks",
+                         Vector2{x0 + kQueueW / 2, r.y + r.height / 2 + 12}, 12,
+                         ui::theme.textTertiary);
+        ui::TextCentered("to add them to Now Playing",
+                         Vector2{x0 + kQueueW / 2, r.y + r.height / 2 + 30}, 12,
+                         ui::theme.textTertiary);
+        return;
+    }
+
+    const Rectangle list{x0, top, kQueueW, r.y + r.height - top};
+    ui::ScrollArea(list, static_cast<float>(rows.size()) * kQueueRowH, &queueScroll_);
+    const int n = static_cast<int>(rows.size());
+    const int first = std::max(0, static_cast<int>(queueScroll_ / kQueueRowH));
+    const int last = std::min(n, static_cast<int>((queueScroll_ + list.height) / kQueueRowH) + 1);
+    const Track* current = player_.Current();
+
+    int jump = -1, removeIdx = -1;
+    BeginScissorMode(static_cast<int>(list.x), static_cast<int>(list.y),
+                     static_cast<int>(list.width), static_cast<int>(list.height));
+    for (int i = first; i < last; i++) {
+        const Track* t = rows[i];
+        const float y = list.y + i * kQueueRowH - queueScroll_;
+        const Rectangle row{x0 + 8, y, kQueueW - 16, kQueueRowH};
+        const bool isCurrent = mode == Mode::Queue
+                                   ? i == player_.OrderPos()
+                                   : (current != nullptr && t != nullptr && current->id == t->id);
+        const bool rowHovered = ui::Hover(row) && ui::Hover(list);
+        if (rowHovered) {
+            DrawRectangleRounded(row, 0.2f, 6, Fade(ui::theme.hover, 0.6f));
+            // The remove button replaces the duration while hovered
+            const Rectangle xR{row.x + row.width - 30, y + kQueueRowH / 2 - 10, 20, 20};
+            const bool overRemove = ui::Hover(xR);
+            ui::IconClose(Vector2{xR.x + 10, xR.y + 10}, 13,
+                          overRemove ? ui::theme.text : ui::theme.textTertiary);
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                if (overRemove) removeIdx = i;
+                else jump = i;
+            }
+        }
+        const float textX = row.x + (isCurrent ? 34.0f : 14.0f);
+        if (isCurrent) ui::IconNote(Vector2{row.x + 18, y + kQueueRowH / 2}, 15, ui::theme.accent);
+        const float textW = row.width - (textX - row.x) - 76;
+        if (t != nullptr) {
+            ui::TextEllipsis(t->title, Vector2{textX, y + 9}, textW, 14,
+                             isCurrent ? ui::theme.accent : ui::theme.text);
+            ui::TextEllipsis(t->artist, Vector2{textX, y + 29}, textW, 12,
+                             ui::theme.textTertiary);
+            if (!rowHovered) {
+                ui::TextRight(ui::FormatTime(t->duration),
+                              Vector2{row.x + row.width - 12, y + 17}, 12,
+                              ui::theme.textSecondary);
+            }
+        } else {
+            ui::Text("(missing track)", Vector2{textX, y + 17}, 13, ui::theme.textTertiary);
+        }
+    }
+    EndScissorMode();
+
+    if (jump >= 0) {
+        if (mode == Mode::Queue) {
+            player_.JumpTo(jump);
+            manualSkip_ = true;
+            MarkActivity();
+        } else {
+            PlayFromTrackList(rows, jump, QueueSource::NowPlaying, Playlists::kNowPlayingId);
+        }
+    }
+    if (removeIdx >= 0 && rows[removeIdx] != nullptr) {
+        const std::string tid = rows[removeIdx]->id;
+        if (mode == Mode::Queue) {
+            player_.RemoveAt(removeIdx);
+            if (nowPlayingSource) playlists_.RemoveTrack(Playlists::kNowPlayingId, tid);
+        } else {
+            playlists_.RemoveTrack(Playlists::kNowPlayingId, tid);
+        }
+        MarkActivity();
+    }
+}
+
+void App::OpenTrackMenu(const std::string& trackId) {
+    menu_.open = true;
+    menu_.justOpened = true;
+    menu_.trackId = trackId;
+    menu_.pos = GetMousePosition();
+    MarkActivity();
+}
+
+void App::DrawTrackMenu() {
+    if (!menu_.open) return;
+    const Track* t = library_.TrackById(menu_.trackId);
+    if (t == nullptr) {
+        menu_.open = false;
+        return;
+    }
+
+    struct Item {
+        std::string label;
+        std::function<void()> fn;
+        bool sep = false;  // divider above
+    };
+    std::vector<Item> items;
+    items.push_back({"Play", [this, t] {
+                         PlayFromTrackList({t}, 0, QueueSource::None);
+                     }});
+    const bool fav = playlists_.IsFavorite(t->id);
+    items.push_back({fav ? "Remove from Favorites" : "Add to Favorites",
+                     [this, t] { playlists_.ToggleFavorite(t->id); }});
+    const bool inNp = playlists_.Contains(Playlists::kNowPlayingId, t->id);
+    items.push_back({inNp ? "Remove from Now Playing" : "Add to Now Playing",
+                     [this, t, inNp] {
+                         if (inNp) {
+                             playlists_.RemoveTrack(Playlists::kNowPlayingId, t->id);
+                             if (player_.Source() == QueueSource::NowPlaying) {
+                                 player_.RemoveTrackId(t->id);
+                             }
+                         } else {
+                             playlists_.AddTrack(Playlists::kNowPlayingId, t->id);
+                             // Live queue built from this list: keep it in sync.
+                             if (player_.Source() == QueueSource::NowPlaying) {
+                                 player_.Append(t->id);
+                             }
+                         }
+                     }});
+    bool sep = true;
+    for (const auto& p : playlists_.All()) {
+        if (Playlists::IsSystem(p.id)) continue;
+        const bool has = playlists_.Contains(p.id, t->id);
+        const std::string pid = p.id;
+        items.push_back({(has ? "Remove from " : "Add to ") + p.name,
+                         [this, t, pid, has] {
+                             if (has) playlists_.RemoveTrack(pid, t->id);
+                             else playlists_.AddTrack(pid, t->id);
+                         },
+                         sep});
+        sep = false;
+    }
+    items.push_back({"New playlist with track",
+                     [this, t] {
+                         const std::string id = playlists_.Create("New Playlist").id;
+                         playlists_.AddTrack(id, t->id);
+                         detailPlaylistId_ = id;
+                         plDetailScroll_ = 0;
+                         deleteArmId_.clear();
+                         editPlaylistId_ = id;
+                         editText_.clear();
+                         view_ = View::PlaylistDetail;
+                     },
+                     sep});
+
+    const float W = static_cast<float>(GetScreenWidth());
+    const float H = static_cast<float>(GetScreenHeight());
+    const float w = 240, ih = 34, sepH = 9;
+    float h = 16;
+    for (const auto& it : items) h += ih + (it.sep ? sepH : 0);
+    const Vector2 pos{std::min(menu_.pos.x, W - w - 8), std::min(menu_.pos.y, H - h - 8)};
+    const Rectangle box{pos.x, pos.y, w, h};
+    DrawRectangleRounded(Rectangle{box.x + 3, box.y + 4, w, h}, 0.08f, 6, Fade(BLACK, 0.4f));
+    DrawRectangleRounded(box, 0.08f, 6, ui::theme.elevated);
+    DrawRectangleLinesEx(box, 1, ui::theme.border);
+
+    bool clickedItem = false;
+    float y = box.y + 8;
+    for (const auto& it : items) {
+        if (it.sep) {
+            DrawLineEx(Vector2{box.x + 10, y + 4}, Vector2{box.x + w - 10, y + 4}, 1,
+                       ui::theme.borderSubtle);
+            y += sepH;
+        }
+        const Rectangle row{box.x + 6, y, w - 12, ih};
+        if (ui::HoverRaw(row)) DrawRectangleRounded(row, 0.25f, 6, ui::theme.hover);
+        ui::TextEllipsis(it.label, Vector2{row.x + 10, row.y + 8}, row.width - 20, 14,
+                         ui::theme.text);
+        if (!menu_.justOpened && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && ui::HoverRaw(row)) {
+            it.fn();
+            clickedItem = true;
+        }
+        y += ih;
+    }
+    if (!menu_.justOpened &&
+        (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))) {
+        if (clickedItem || !ui::HoverRaw(box)) menu_.open = false;
+    }
+    menu_.justOpened = false;
+}
+
+void App::Toast(const std::string& msg) {
+    toast_ = msg;
+    toastUntil_ = GetTime() + 3.5;
+    MarkActivity();
+}
+
+void App::DrawToast() {
+    if (GetTime() >= toastUntil_) return;
+    const float W = static_cast<float>(GetScreenWidth());
+    const float H = static_cast<float>(GetScreenHeight());
+    const Vector2 m = ui::Measure(toast_, 14);
+    const float w = std::min(m.x + 36, W - 40), h = 40;
+    const Rectangle box{(W - w) / 2, H - kPlayerH - h - 24, w, h};
+    DrawRectangleRounded(box, 0.5f, 8, Fade(ui::theme.elevated, 0.97f));
+    DrawRectangleRoundedLinesEx(box, 0.5f, 8, 1, ui::theme.border);
+    ui::TextEllipsis(toast_, Vector2{box.x + 18, box.y + (h - m.y) / 2}, w - 36, 14,
+                     ui::theme.text);
+}
+
+void App::ImportM3uFile(const std::string& path) {
+    const std::string fname = std::filesystem::path(path).filename().string();
+    m3u::ImportResult res;
+    if (!m3u::Import(path, library_, &res)) {
+        Toast("Couldn't read " + fname);
+        return;
+    }
+    if (res.trackIds.empty()) {
+        Toast(TextFormat("%s: no matches for its %d entries — add the music folder first",
+                         fname.c_str(), res.total));
+        return;
+    }
+    Playlist& pl = playlists_.Create(res.name.empty() ? "Imported playlist" : res.name);
+    pl.trackIds = std::move(res.trackIds);
+    const std::string id = pl.id;
+    const int matched = static_cast<int>(pl.trackIds.size());
+    playlists_.Save();
+    Toast(TextFormat("Imported %d of %d tracks from %s", matched, res.total, fname.c_str()));
+    detailPlaylistId_ = id;
+    plDetailScroll_ = 0;
+    deleteArmId_.clear();
+    view_ = View::PlaylistDetail;
+}
+
+void App::ExportPlaylist(const Playlist& p) {
+    std::string name = p.name.empty() ? "playlist" : p.name;
+    for (char& c : name) {
+        if (c == '/' || c == '\\' || c == ':' || static_cast<unsigned char>(c) < 32) c = '-';
+    }
+    const std::string path = paths::MusicDir() + "/" + name + ".m3u8";
+    if (m3u::Export(path, ResolveTracks(p.trackIds))) {
+        Toast("Exported to " + path);
+    } else {
+        Toast("Export failed: " + path);
+    }
 }
 
 void App::DrawDebugOverlay() {

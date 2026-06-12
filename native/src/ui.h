@@ -34,13 +34,23 @@ void TextRight(const std::string& s, Vector2 posRight, float size, Color c);
 void TextCentered(const std::string& s, Vector2 center, float size, Color c);
 
 // ── Interaction ──
+// While blocked (an overlay like a context menu is open), Hover/Clicked
+// return false so widgets underneath ignore the mouse. The overlay itself
+// reads input through HoverRaw/ClickedRaw.
+void BlockInput(bool blocked);
 bool Hover(Rectangle r);
 bool Clicked(Rectangle r);  // left button pressed inside r this frame
+bool HoverRaw(Rectangle r);
+bool ClickedRaw(Rectangle r);
 // Horizontal drag slider over r; value in [0,1]. Returns true while the user
 // is changing the value. `dragging` is caller-persisted state.
 bool Slider(Rectangle r, float* value, bool* dragging);
 // Mouse-wheel scrolling + scrollbar for a clipped area. Clamps *scroll.
 void ScrollArea(Rectangle view, float contentHeight, float* scroll);
+// Single-line edit box; call every frame while focused. Appends typed
+// characters to *text (UTF-8), handles backspace. Returns Enter=1, Esc=-1, 0
+// otherwise.
+int TextInput(Rectangle r, std::string* text, float size);
 
 // ── Icons (pure geometry, sized to fit a square of `size` at center c) ──
 void IconPlay(Vector2 c, float size, Color col);
@@ -51,6 +61,10 @@ void IconShuffle(Vector2 c, float size, Color col);
 void IconRepeat(Vector2 c, float size, Color col, bool one);
 void IconVolume(Vector2 c, float size, Color col, float level);
 void IconNote(Vector2 c, float size, Color col);
+void IconHeart(Vector2 c, float size, Color col, bool filled);
+void IconClose(Vector2 c, float size, Color col);
+void IconQueue(Vector2 c, float size, Color col);  // stacked-list glyph
+void IconPlus(Vector2 c, float size, Color col);
 
 std::string FormatTime(float seconds);
 
