@@ -308,19 +308,25 @@ int TextInput(Rectangle r, std::string* text, float size) {
     DrawRectangleRounded(r, 0.25f, 6, theme.elevated);
     DrawRectangleRoundedLinesEx(r, 0.25f, 6, 1, theme.accent);
 
-    int cp;
-    while ((cp = GetCharPressed()) != 0) {
-        char buf[5] = {};
-        int n = 0;
-        const char* utf8 = CodepointToUTF8(cp, &n);
-        for (int i = 0; i < n; i++) buf[i] = utf8[i];
-        *text += buf;
-    }
-    if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !text->empty()) {
-        // Drop one UTF-8 codepoint from the end
-        size_t i = text->size() - 1;
-        while (i > 0 && (static_cast<unsigned char>((*text)[i]) & 0xC0) == 0x80) i--;
-        text->erase(i);
+    // While an overlay (e.g. a context menu) is blocking input, draw the field
+    // but swallow all keyboard activity: the text must not change under the
+    // overlay, and the Esc/Enter that dismisses the overlay must not be read
+    // here as a field action.
+    if (!g_inputBlocked) {
+        int cp;
+        while ((cp = GetCharPressed()) != 0) {
+            char buf[5] = {};
+            int n = 0;
+            const char* utf8 = CodepointToUTF8(cp, &n);
+            for (int i = 0; i < n; i++) buf[i] = utf8[i];
+            *text += buf;
+        }
+        if ((KeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !text->empty()) {
+            // Drop one UTF-8 codepoint from the end
+            size_t i = text->size() - 1;
+            while (i > 0 && (static_cast<unsigned char>((*text)[i]) & 0xC0) == 0x80) i--;
+            text->erase(i);
+        }
     }
 
     const float pad = 10;
@@ -336,8 +342,9 @@ int TextInput(Rectangle r, std::string* text, float size) {
     }
     EndScissorMode();
 
-    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) return 1;
-    if (IsKeyPressed(KEY_ESCAPE)) return -1;
+    if (g_inputBlocked) return 0;
+    if (KeyPressed(KEY_ENTER) || KeyPressed(KEY_KP_ENTER)) return 1;
+    if (KeyPressed(KEY_ESCAPE)) return -1;
     return 0;
 }
 

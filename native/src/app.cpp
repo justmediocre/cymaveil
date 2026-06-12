@@ -408,6 +408,7 @@ void App::HandleInput() {
     }
     if (menu_.open && IsKeyPressed(KEY_ESCAPE)) {
         menu_.open = false;
+        ui::ConsumeKey(KEY_ESCAPE);  // don't let the Search input re-read this press
         return;
     }
 
