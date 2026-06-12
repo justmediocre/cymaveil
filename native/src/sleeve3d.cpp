@@ -112,14 +112,13 @@ void main() {
         float dull = field*0.12*uWear;                // faint grime in the worn zones
         col = mix(col, vec3(0.5), clamp(dull, 0.0, 0.15)) + light;
 
-        // Record relief: the disc inside the sleeve presses a shallow dome, fine
-        // concentric grooves and a raised label into the laminate. Bump-light the
-        // height field (via screen-space derivatives) so the turning cover catches
-        // light with real surface depth instead of reading dead flat.
+        // Record relief: the disc inside the sleeve presses a shallow dome and a
+        // raised label into the laminate. Bump-light the height field (via
+        // screen-space derivatives) so the turning cover catches light with real
+        // surface depth instead of reading dead flat.
         float disc = smoothstep(0.485, 0.45, r);
-        float grooves = (sin(r*200.0)*0.5 + 0.5)*disc;
         float labelBump = smoothstep(0.155, 0.135, r);
-        float hgt = disc*0.5 + grooves*0.11 + labelBump*0.4;
+        float hgt = disc*0.5 + labelBump*0.4;
         vec3 nrm = normalize(vec3(-dFdx(hgt)*5.0, -dFdy(hgt)*5.0, 1.0));
         vec3 Lr = normalize(vec3(-0.45, 0.5, 0.8));
         col += (dot(nrm, Lr) - Lr.z)*0.38;            // relief shading, zero on flats
