@@ -31,15 +31,6 @@ std::string HashId(const std::string& s) {
     return buf;
 }
 
-std::string Lower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
-    return s;
-}
-
-bool IsSupportedAudio(const std::string& ext) {
-    return ext == ".mp3" || ext == ".flac" || ext == ".ogg" || ext == ".wav";
-}
-
 bool IsKnownUnsupported(const std::string& ext) {
     return ext == ".m4a" || ext == ".aac" || ext == ".opus" || ext == ".wma" || ext == ".aiff";
 }
@@ -58,6 +49,15 @@ AlbumColors ColorsFromArt(const unsigned char* bytes, int size, const char* ext)
 }
 
 }  // namespace
+
+std::string Lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+    return s;
+}
+
+bool IsSupportedAudio(const std::string& ext) {
+    return ext == ".mp3" || ext == ".flac" || ext == ".ogg" || ext == ".wav";
+}
 
 Library::~Library() {
     if (scanThread_.joinable()) scanThread_.join();

@@ -9,6 +9,15 @@
 
 #include "raylib.h"
 
+// Lowercases an ASCII string (used for case-insensitive sorting and matching
+// file extensions). Shared so the folder watcher can match the same set of
+// supported audio extensions without duplicating the logic.
+std::string Lower(std::string s);
+
+// True if ext (a lowercased extension including the leading dot, e.g. ".mp3")
+// is one of the audio formats the scanner imports.
+bool IsSupportedAudio(const std::string& ext);
+
 struct Track {
     std::string id;
     std::string title;

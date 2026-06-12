@@ -13,7 +13,8 @@
 #include <filesystem>
 #include <unordered_map>
 
-#include "raylib.h"  // TraceLog
+#include "library.h"  // Lower, IsSupportedAudio
+#include "raylib.h"   // TraceLog
 
 // raylib's GLFW backend; safe to call from any thread, wakes WaitEvents.
 extern "C" void glfwPostEmptyEvent(void);
@@ -28,14 +29,13 @@ constexpr int kDebounceMs = 900;
 constexpr uint32_t kWatchMask = IN_CREATE | IN_CLOSE_WRITE | IN_DELETE | IN_MOVED_FROM |
                                 IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF | IN_ONLYDIR;
 
+// True if an inotify event's filename ends in a supported audio extension.
+// Defers to the library's predicate so both stay in sync on the format set.
 bool HasAudioExt(const char* name) {
     if (name == nullptr) return false;
     const char* dot = std::strrchr(name, '.');
     if (dot == nullptr) return false;
-    std::string ext(dot);
-    std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return ext == ".mp3" || ext == ".flac" || ext == ".ogg" || ext == ".wav";
+    return IsSupportedAudio(Lower(dot));
 }
 
 }  // namespace
