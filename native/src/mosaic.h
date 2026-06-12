@@ -56,4 +56,5 @@ private:
     float nextAnim_ = 3.0f;
 
     Texture2D vignette_{};
+    Color vignetteBg_{0, 0, 0, 0};  // bg the cached vignette was baked with
 };

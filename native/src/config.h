@@ -20,6 +20,10 @@ struct Config {
     // MPRIS D-Bus interface (desktop media controls / media keys)
     bool mpris = true;
 
+    // Color theme preference: "system" follows the desktop's color-scheme
+    // (via the XDG portal), "light"/"dark" force a palette.
+    std::string theme = "system";
+
     // Background mosaic (no settings UI yet; editable in config.json)
     bool mosaicEnabled = true;
     float mosaicOpacity = 0.18f;

@@ -47,7 +47,7 @@ public:
     int Run();
 
 private:
-    enum class View { Search, Library, Albums, AlbumDetail, Playlists, PlaylistDetail, NowPlaying };
+    enum class View { Search, Library, Albums, AlbumDetail, Playlists, PlaylistDetail, NowPlaying, Settings };
 
     void Frame();
     void HandleInput();
@@ -70,6 +70,7 @@ private:
     void DrawPlaylistsView(Rectangle r);
     void DrawPlaylistDetailView(Rectangle r);
     void DrawNowPlayingView(Rectangle r);
+    void DrawSettingsView(Rectangle r);
     void DrawEmptyState(Rectangle r);
     void DrawDebugOverlay();
     // Collapsible queue panel on the right edge; r is the revealed strip.
@@ -105,6 +106,8 @@ private:
     void Toast(const std::string& msg);
 
     MosaicSettings MosaicCfg() const;
+    // Resolves config_.theme ("system"/"light"/"dark") and applies the palette.
+    void ApplyTheme();
     // Keeps the masked-foreground texture in sync with the playing album.
     void UpdateForeground();
     void BuildForeground(const Album& album);

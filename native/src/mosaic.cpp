@@ -266,7 +266,16 @@ void Mosaic::Draw(Rectangle screen, ArtCache& art, const Library& lib, const Mos
     // 70% of the way to the farthest corner. Cached as a texture, stretched
     // into the farthest-corner ellipse.
     const int vw = 256, vh = 256;
+    // Rebake when the theme changes: bg is baked into the texture, so a stale
+    // dark vignette would keep fading to black under the light palette.
+    const bool bgChanged = bg.r != vignetteBg_.r || bg.g != vignetteBg_.g ||
+                           bg.b != vignetteBg_.b || bg.a != vignetteBg_.a;
+    if (vignette_.id != 0 && bgChanged) {
+        UnloadTexture(vignette_);
+        vignette_ = Texture2D{};
+    }
     if (vignette_.id == 0) {
+        vignetteBg_ = bg;
         Image img = GenImageColor(vw, vh, BLANK);
         auto* px = static_cast<Color*>(img.data);
         for (int y = 0; y < vh; y++) {

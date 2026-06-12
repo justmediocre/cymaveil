@@ -10,6 +10,7 @@
 
 #include "raymath.h"
 
+#include "appearance.h"
 #include "icon_png.h"
 #include "paths.h"
 #include "ui.h"
@@ -117,6 +118,7 @@ int App::Run() {
     ui::Init();
 
     config_.Load();
+    ApplyTheme();
     library_.Load();
     playlists_.Load();
     queueAnim_ = config_.queuePanel ? 1.0f : 0.0f;
@@ -136,6 +138,7 @@ int App::Run() {
     else if (startView_ == "albums") view_ = View::Albums;
     else if (startView_ == "playlists") view_ = View::Playlists;
     else if (startView_ == "now") view_ = View::NowPlaying;
+    else if (startView_ == "settings") view_ = View::Settings;
     // After the view flag: a successful import lands on the playlist detail
     for (const auto& f : startupImports_) ImportM3uFile(f);
     MarkActivity();
@@ -234,6 +237,7 @@ void App::Frame() {
         case View::Playlists: DrawPlaylistsView(content); break;
         case View::PlaylistDetail: DrawPlaylistDetailView(content); break;
         case View::NowPlaying: DrawNowPlayingView(content); break;
+        case View::Settings: DrawSettingsView(content); break;
     }
     DrawSidebar(sidebar);
     if (qw > 0.5f) DrawQueuePanel(queuePanel);
@@ -392,8 +396,10 @@ void App::HandleInput() {
     if (IsKeyPressed(KEY_TWO)) view_ = View::Albums;
     if (IsKeyPressed(KEY_THREE)) view_ = View::Playlists;
     if (IsKeyPressed(KEY_FOUR)) view_ = View::NowPlaying;
+    if (IsKeyPressed(KEY_COMMA)) view_ = View::Settings;  // common "preferences" shortcut
     if (IsKeyPressed(KEY_ESCAPE) && view_ == View::AlbumDetail) view_ = View::Albums;
     if (IsKeyPressed(KEY_ESCAPE) && view_ == View::PlaylistDetail) view_ = View::Playlists;
+    if (IsKeyPressed(KEY_ESCAPE) && view_ == View::Settings) view_ = View::Library;
     if (IsKeyPressed(KEY_F3)) showDebug_ = !showDebug_;
     if (IsKeyPressed(KEY_B)) mosaic_.Trigger(MosaicCfg());  // manually animate a tile
 }
@@ -401,6 +407,15 @@ void App::HandleInput() {
 MosaicSettings App::MosaicCfg() const {
     return MosaicSettings{config_.mosaicEnabled, config_.mosaicOpacity, config_.mosaicDensity,
                           config_.mosaicTransition, config_.mosaicFlat};
+}
+
+void App::ApplyTheme() {
+    bool light = config_.theme == "light";
+    if (config_.theme == "system") {
+        light = appearance::SystemScheme() == appearance::Scheme::Light;
+    }
+    ui::ApplyTheme(light);
+    MarkActivity();
 }
 
 void App::UpdateForeground() {
@@ -530,7 +545,8 @@ void App::DrawSidebar(Rectangle r) {
                              {"Library", View::Library},
                              {"Albums", View::Albums},
                              {"Playlists", View::Playlists},
-                             {"Now Playing", View::NowPlaying}};
+                             {"Now Playing", View::NowPlaying},
+                             {"Settings", View::Settings}};
     float y = 78;
     for (const auto& item : items) {
         const Rectangle row{10, y, r.width - 20, 38};
@@ -1337,6 +1353,52 @@ void App::DrawNowPlayingView(Rectangle r) {
                                                : ui::theme.textSecondary;
     ui::IconQueue(queueIcon, 16, queueCol);
     if (ui::Clicked(queueR)) ToggleQueuePanel();
+}
+
+void App::DrawSettingsView(Rectangle r) {
+    ui::Text("Settings", Vector2{r.x + 24, r.y + 24}, 28, ui::theme.text);
+
+    const float pad = 20;
+    const Rectangle card{r.x + 24, r.y + 84, std::min(r.width - 48, 560.0f), 150};
+    DrawRectangleRounded(card, 0.1f, 8, ui::theme.surface);
+    DrawRectangleRoundedLinesEx(card, 0.1f, 8, 1, ui::theme.borderSubtle);
+
+    ui::Text("Appearance", Vector2{card.x + pad, card.y + 18}, 13, ui::theme.textSecondary);
+    ui::Text("Theme", Vector2{card.x + pad, card.y + 42}, 17, ui::theme.text);
+
+    // Segmented control: System / Light / Dark. Selecting one applies the
+    // palette immediately and persists the preference.
+    struct Seg {
+        const char* label;
+        const char* value;
+    };
+    const Seg segs[] = {{"System", "system"}, {"Light", "light"}, {"Dark", "dark"}};
+    const float segW = 100, segH = 34, gap = 8;
+    float sx = card.x + pad;
+    const float sy = card.y + 78;
+    for (const auto& seg : segs) {
+        const Rectangle b{sx, sy, segW, segH};
+        const bool sel = config_.theme == seg.value;
+        if (sel) {
+            DrawRectangleRounded(b, 0.35f, 6, Fade(ui::theme.accent, 0.15f));
+            DrawRectangleRoundedLinesEx(b, 0.35f, 6, 1, ui::theme.accent);
+        } else if (ui::Hover(b)) {
+            DrawRectangleRounded(b, 0.35f, 6, ui::theme.elevated);
+        }
+        ui::TextCentered(seg.label, Vector2{b.x + b.width / 2, b.y + b.height / 2}, 15,
+                         sel ? ui::theme.accent : ui::theme.textSecondary);
+        if (ui::Clicked(b) && !sel) {
+            config_.theme = seg.value;
+            ApplyTheme();
+            config_.Save();
+        }
+        sx += segW + gap;
+    }
+
+    const char* hint = config_.theme == "system"
+                           ? "Follows your desktop's color scheme."
+                           : "Forcing a fixed palette, ignoring the desktop setting.";
+    ui::Text(hint, Vector2{card.x + pad, sy + segH + 12}, 13, ui::theme.textTertiary);
 }
 
 void App::DrawEmptyState(Rectangle r) {

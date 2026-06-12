@@ -13,6 +13,27 @@ namespace ui {
 
 Theme theme;
 
+Theme DarkTheme() { return Theme{}; }
+
+// [data-theme='light'] from src/index.css — warm paper neutrals with a
+// muted-bronze accent.
+Theme LightTheme() {
+    return Theme{
+        .bg = {246, 245, 241, 255},
+        .surface = {255, 255, 255, 255},
+        .elevated = {238, 238, 233, 255},
+        .hover = {228, 228, 222, 255},
+        .border = {221, 221, 214, 255},
+        .borderSubtle = {232, 232, 226, 255},
+        .text = {26, 26, 27, 255},
+        .textSecondary = {110, 110, 114, 255},
+        .textTertiary = {160, 160, 166, 255},
+        .accent = {154, 107, 58, 255},
+    };
+}
+
+void ApplyTheme(bool light) { theme = light ? LightTheme() : DarkTheme(); }
+
 namespace {
 
 // Glyphs downscaled from a single large atlas look smeared at UI sizes, so

@@ -39,7 +39,8 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
 - **Drag & drop** a music folder onto the window to add it to the library (or pass folders
   as CLI args). Rescans happen on a background thread. Dropping a `.m3u`/`.m3u8` file
   imports it as a playlist instead (entries are matched against the library by path).
-- Library / Albums / Playlists / Now Playing views via the sidebar or keys **1 / 2 / 3 / 4**.
+- Library / Albums / Playlists / Now Playing views via the sidebar or keys **1 / 2 / 3 / 4**;
+  the sidebar **Settings** entry (or **,**) opens the theme picker.
 - **Ctrl+F** (or the sidebar **Search** entry) filters across tracks, albums, and artists;
   **Esc** clears the query, then exits back to the Library.
 - **Right-click any track row** for the context menu: play, toggle Favorites, add/remove
@@ -48,8 +49,8 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
   queue in play order — click to jump, hover for per-row remove — or the parked Now
   Playing list with Play/Clear when nothing is queued.
 - **Space** play/pause · **←/→** seek ±5s · **Ctrl+←/→** prev/next · **↑/↓** volume ·
-  **S** shuffle · **R** repeat cycle · **Q** queue panel · **B** animate a mosaic tile ·
-  **Esc** back · **F3** debug overlay.
+  **S** shuffle · **R** repeat cycle · **Q** queue panel · **,** settings ·
+  **B** animate a mosaic tile · **Esc** back · **F3** debug overlay.
 
 Library cache, settings, playlists, and extracted album art live in
 `~/.local/share/cymaveil/`. Playlist exports are written to `~/Music/<name>.m3u8`.
@@ -131,13 +132,22 @@ Done in this first slice:
       titles/artists. The sidebar **Search** entry (or **Ctrl+F**) opens an
       always-focused box; matches are split into an album grid (click to open
       the album) and a track table (click to play, right-click for the menu).
+- [x] Light theme + theme preference: the dark palette gained a light
+      counterpart (ported from `index.css`), chosen from a new **Settings** view
+      in the sidebar (or the **,** shortcut). The preference — Light / Dark /
+      System — persists to `config.json`; **System** follows the desktop's
+      color scheme via the XDG settings portal (`org.freedesktop.appearance`,
+      reusing the libdbus dependency), falling back to dark where no portal is
+      present.
 
 Not yet ported from the Electron app:
 
 - [ ] Manual mask painting (brush editor), mask import/export, batch pre-generation
 - [ ] Alternative visualizer styles (contour bars, radial burst, waveform, mirrored)
       — full-surface (the default) is in
-- [ ] Light theme, settings UI
+- [ ] Fuller settings UI: the Settings view so far holds only the theme picker;
+      the remaining `config.json` tunables (mosaic, depth layers, library
+      folders) still need surfacing
 - [ ] File watching / incremental rescan (currently full rescan per change)
 - [ ] Gapless playback / crossfade
 

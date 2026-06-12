@@ -6,7 +6,9 @@
 
 namespace ui {
 
-// Theme tokens ported from src/index.css (dark theme).
+// Theme tokens ported from src/index.css. Defaults are the dark palette; the
+// light palette comes from LightTheme(). Use ApplyTheme() to switch the active
+// global at runtime.
 struct Theme {
     Color bg{10, 10, 11, 255};
     Color surface{19, 19, 21, 255};
@@ -21,6 +23,11 @@ struct Theme {
 };
 
 extern Theme theme;
+
+// The two ported palettes. ApplyTheme swaps `theme` to one of them.
+Theme DarkTheme();
+Theme LightTheme();
+void ApplyTheme(bool light);
 
 void Init();      // loads fonts (system TTF with fallback to raylib default)
 void Shutdown();
