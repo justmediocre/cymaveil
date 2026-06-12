@@ -54,6 +54,17 @@ const Track* Player::Current() const {
 float Player::TimePlayed() const { return loaded_ ? GetMusicTimePlayed(music_) : 0.0f; }
 float Player::TimeLength() const { return loaded_ ? GetMusicTimeLength(music_) : 0.0f; }
 
+const Track* Player::PeekNext() const {
+    if (queue_.empty()) return nullptr;
+    if (repeat_ == RepeatMode::One) return Current();
+    int next = orderPos_ + 1;
+    if (next >= static_cast<int>(order_.size())) {
+        if (repeat_ != RepeatMode::All) return nullptr;  // would stop at the end
+        next = 0;
+    }
+    return TrackAtOrderPos(next);
+}
+
 void Player::BuildOrder(int firstQueueIndex) {
     order_.resize(queue_.size());
     std::iota(order_.begin(), order_.end(), 0);

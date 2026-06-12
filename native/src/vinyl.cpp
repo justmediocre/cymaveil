@@ -108,33 +108,46 @@ void Vinyl::Update(float dt, const std::string& targetAlbumId, bool playing, boo
                    bool enabled) {
     if (skipIntent) fast_ = true;
 
-    // Album change: retract first if the disc is showing, else swap right away
+    // A different album wants the stage: buffer it and tuck the current record
+    // into its sleeve first. The art only flips over once the disc is hidden;
+    // if it's already away (paused, vinyl disabled) the flip begins at once.
     if (targetAlbumId != displayed_ && targetAlbumId != pending_) {
-        if (slide_ > 0.001f) {
-            pending_ = targetAlbumId;
-            out_ = false;
-        } else {
-            displayed_ = targetAlbumId;
-            pending_.clear();
-            artEnter_ = 0;
+        pending_ = targetAlbumId;
+        out_ = false;
+        if (slide_ <= 0.001f && !flipping_) {
+            flipping_ = true;
+            flip_ = 0;
         }
+    } else if (!flipping_ && !pending_.empty() && targetAlbumId == displayed_) {
+        // A pre-fired target backed out before the flip began (paused at the
+        // brink, or the predicted next track changed): abandon the retract and
+        // let the current record slide back out.
+        pending_.clear();
     }
 
     const float slideDur = fast_ ? 0.3f : 0.8f;
     slide_ = std::clamp(slide_ + (out_ ? 1.0f : -1.0f) * dt / slideDur, 0.0f, 1.0f);
 
-    // Retract finished: swap in the buffered album and run the art entrance
-    if (slide_ <= 0.0f && !pending_.empty()) {
-        displayed_ = pending_;
-        pending_.clear();
-        artEnter_ = 0;
+    // Disc fully retracted with an album buffered: begin the sleeve flip.
+    if (slide_ <= 0.0f && !pending_.empty() && !flipping_) {
+        flipping_ = true;
+        flip_ = 0;
     }
 
-    const float artDur = fast_ ? 0.25f : 0.6f;
-    if (artEnter_ < 1.0f) artEnter_ = std::min(1.0f, artEnter_ + dt / artDur);
+    if (flipping_) {
+        const float flipDur = fast_ ? 0.3f : 0.55f;
+        flip_ = std::min(1.0f, flip_ + dt / flipDur);
+        // Edge-on (the turn's halfway point): the new cover now faces us, so
+        // swap which album the art draws.
+        if (flip_ >= 0.5f && !pending_.empty()) {
+            displayed_ = pending_;
+            pending_.clear();
+        }
+        if (flip_ >= 1.0f) flipping_ = false;
+    }
 
-    // Steady state (art entered, nothing buffered): disc follows playback
-    if (pending_.empty() && artEnter_ >= 1.0f) {
+    // Steady state (settled, nothing buffered): disc follows playback
+    if (!flipping_ && pending_.empty()) {
         out_ = enabled && playing;
         if (slide_ == (out_ ? 1.0f : 0.0f)) fast_ = false;  // sequence settled
     }
@@ -142,11 +155,8 @@ void Vinyl::Update(float dt, const std::string& targetAlbumId, bool playing, boo
     if (playing) spinDeg_ = std::fmod(spinDeg_ + dt / kSpinSecondsPerRev * 360.0f, 360.0f);
 }
 
-float Vinyl::ArtAlpha() const { return EaseOut(artEnter_); }
-float Vinyl::ArtScale() const { return 0.92f + 0.08f * EaseOut(artEnter_); }
-
 bool Vinyl::Animating() const {
-    return artEnter_ < 1.0f || !pending_.empty() || slide_ != (out_ ? 1.0f : 0.0f);
+    return flipping_ || !pending_.empty() || slide_ != (out_ ? 1.0f : 0.0f);
 }
 
 void Vinyl::EnsureTextures() {
@@ -155,8 +165,11 @@ void Vinyl::EnsureTextures() {
 }
 
 void Vinyl::Draw(Rectangle artRect, Color labelAccent, Color labelDominant) {
+    // Hidden entirely while the sleeve flips — the record is tucked away inside
+    // it, so only the turning cover shows.
+    if (flipping_) return;
     const float e = EaseOut(slide_);
-    // While sequencing an album change the disc stays opaque as it slides
+    // While retracting for an album change the disc stays opaque as it slides
     // under the art; plain pause-retracts fade out with the slide.
     const float alpha = !pending_.empty() ? 1.0f : e;
     if (alpha <= 0.004f) return;

@@ -46,6 +46,10 @@ public:
     bool IsStopped() const { return state_ == State::Stopped; }
     bool HasTrack() const { return loaded_; }
     const Track* Current() const;
+    // The track auto-advance would land on when the current one ends, or
+    // nullptr if playback would stop. Mirrors Advance(1, /*manual=*/false)
+    // without mutating state, so the UI can anticipate the upcoming track.
+    const Track* PeekNext() const;
     float TimePlayed() const;
     float TimeLength() const;
 

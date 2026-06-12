@@ -22,6 +22,10 @@ constexpr float kMiniPlayerH = 72.0f;
 constexpr float kRowH = 44.0f;
 constexpr float kQueueW = 320.0f;
 constexpr float kQueueRowH = 52.0f;
+// Pre-fire the vinyl retract this many seconds before a track's natural end so
+// the disc is tucked away and the sleeve flip lands on the audio change. Equal
+// to the normal retract duration in vinyl.cpp.
+constexpr float kVinylLeadSeconds = 0.8f;
 // Red heart for Favorites, matching the web app
 constexpr Color kHeartRed{226, 85, 103, 255};
 
@@ -213,8 +217,24 @@ void App::Frame() {
     art_.ProcessQueue(2);
     {
         const Track* cur = player_.Current();
-        vinyl_.Update(GetFrameTime(), cur != nullptr ? cur->albumId : std::string{},
-                      player_.IsPlaying(), manualSkip_, config_.vinylDisc);
+        std::string targetAlbum = cur != nullptr ? cur->albumId : std::string{};
+        // Pre-fire the vinyl transition so the disc retract + sleeve flip lines
+        // up with the audio change rather than lagging a beat behind it. As a
+        // playing track nears its natural end, peek at the auto-advance target;
+        // if it's a different album, hand the vinyl that album now so it starts
+        // retracting and the flip lands on the switch. Only with the disc shown:
+        // without the retract to spend the lead, the flip would fire too early.
+        if (config_.vinylDisc && player_.IsPlaying() && !seekDragging_ &&
+            player_.Repeat() != RepeatMode::One) {
+            const float remaining = player_.TimeLength() - player_.TimePlayed();
+            if (remaining > 0.0f && remaining <= kVinylLeadSeconds &&
+                player_.TimePlayed() > kVinylLeadSeconds) {
+                const Track* next = player_.PeekNext();
+                if (next != nullptr && next->albumId != targetAlbum) targetAlbum = next->albumId;
+            }
+        }
+        vinyl_.Update(GetFrameTime(), targetAlbum, player_.IsPlaying(), manualSkip_,
+                      config_.vinylDisc);
         manualSkip_ = false;
     }
     UpdateForeground();
@@ -1548,7 +1568,6 @@ void App::DrawNowPlayingView(Rectangle r) {
     if (shownAlbum == nullptr) shownAlbum = album;
     const Color glow = shownAlbum != nullptr ? shownAlbum->dominant : ui::theme.accent;
     const bool hasFg = fg_.tex.id != 0 && shownAlbum != nullptr && fg_.albumId == shownAlbum->id;
-    const float artAlpha = vinyl_.ArtAlpha();
 
     // Ambient wash from the album's dominant color, breathing with the bass
     const float bass = visualizer_.BassLevel();
@@ -1585,12 +1604,17 @@ void App::DrawNowPlayingView(Rectangle r) {
         vinyl_.Draw(artRect, shownAlbum->accent, shownAlbum->dominant);
     }
 
-    // Entrance animation: scale up and fade in around the art center
-    const float s = vinyl_.ArtScale();
-    const Rectangle shownRect{artRect.x + artRect.width * (1 - s) / 2,
-                              artRect.y + artRect.height * (1 - s) / 2, artRect.width * s,
-                              artRect.height * s};
-    DrawAlbumArt(shownRect, shownAlbum, 1.4f, artAlpha);
+    // Album switch: the sleeve flips over, the new cover riding its back face.
+    // Width squishes to nothing at edge-on (flip midpoint), where the shown
+    // album swaps under us, so each half of the turn shows the correct cover.
+    // A touch of shadow as it turns sells the third dimension.
+    const float flipW = std::fabs(std::cos(vinyl_.FlipProgress() * PI));
+    const Rectangle shownRect{artRect.x + artRect.width * (1 - flipW) / 2, artRect.y,
+                              artRect.width * flipW, artRect.height};
+    DrawAlbumArt(shownRect, shownAlbum, 1.4f, 1.0f);
+    if (flipW < 0.999f) {
+        DrawRectangleRounded(shownRect, 0.06f, 6, Fade(BLACK, 0.4f * (1.0f - flipW)));
+    }
 
     if (hasFg && vinyl_.ArtEntered()) {
         // The headline feature: bars play between the art and its subject.
