@@ -417,15 +417,19 @@ void App::HandleInput() {
         view_ = View::Search;
         return;
     }
-    // On the Search view the always-focused input owns the keyboard.
-    if (view_ == View::Search) return;
+    // On the Search view the always-focused input owns every printable key, so
+    // any shortcut bound to a bare letter/digit/comma/space would steal a
+    // keystroke from the box. Those stay gated behind `!onSearch`; arrow keys,
+    // modifier combos, and function keys produce no text the box reads, so they
+    // keep working as global shortcuts here too.
+    const bool onSearch = view_ == View::Search;
 
-    if (IsKeyPressed(KEY_SPACE)) player_.TogglePause();
+    if (IsKeyPressed(KEY_SPACE) && !onSearch) player_.TogglePause();
     if (IsKeyPressed(KEY_RIGHT)) {
         if (ctrl) {
             player_.Next();
             manualSkip_ = true;
-        } else {
+        } else if (!onSearch) {
             player_.SeekTo(player_.TimePlayed() + 5.0f);
         }
     }
@@ -433,36 +437,38 @@ void App::HandleInput() {
         if (ctrl) {
             player_.Prev();
             manualSkip_ = true;
-        } else {
+        } else if (!onSearch) {
             player_.SeekTo(player_.TimePlayed() - 5.0f);
         }
     }
     if (IsKeyPressed(KEY_UP)) player_.SetVolume(player_.Volume() + 0.05f);
     if (IsKeyPressed(KEY_DOWN)) player_.SetVolume(player_.Volume() - 0.05f);
-    if (IsKeyPressed(KEY_S)) player_.ToggleShuffle();
-    if (IsKeyPressed(KEY_R)) player_.CycleRepeat();
-    if (IsKeyPressed(KEY_Q)) ToggleQueuePanel();
+    if (IsKeyPressed(KEY_S) && !onSearch) player_.ToggleShuffle();
+    if (IsKeyPressed(KEY_R) && !onSearch) player_.CycleRepeat();
+    if (IsKeyPressed(KEY_Q) && !onSearch) ToggleQueuePanel();
     // X opens the mask brush editor for the album on screen (same as the
     // brush button in Now Playing). Inside the editor X toggles paint/erase.
     // The Esc handler above closes an open track menu first, so X must also
     // defer to it rather than stack the editor under the live menu.
-    if (IsKeyPressed(KEY_X) && !menu_.open) {
+    if (IsKeyPressed(KEY_X) && !menu_.open && !onSearch) {
         ui::ConsumeKey(KEY_X);  // don't let DrawBrushEditor re-read this press
         const Track* cur = player_.Current();
         const Album* shown = library_.AlbumById(vinyl_.DisplayedAlbumId());
         if (shown == nullptr && cur != nullptr) shown = library_.AlbumById(cur->albumId);
         if (shown != nullptr && !shown->artPath.empty()) OpenBrushEditor(*shown);
     }
-    if (IsKeyPressed(KEY_ONE)) view_ = View::Library;
-    if (IsKeyPressed(KEY_TWO)) view_ = View::Albums;
-    if (IsKeyPressed(KEY_THREE)) view_ = View::Playlists;
-    if (IsKeyPressed(KEY_FOUR)) view_ = View::NowPlaying;
-    if (IsKeyPressed(KEY_COMMA)) view_ = View::Settings;  // common "preferences" shortcut
+    if (!onSearch) {
+        if (IsKeyPressed(KEY_ONE)) view_ = View::Library;
+        if (IsKeyPressed(KEY_TWO)) view_ = View::Albums;
+        if (IsKeyPressed(KEY_THREE)) view_ = View::Playlists;
+        if (IsKeyPressed(KEY_FOUR)) view_ = View::NowPlaying;
+        if (IsKeyPressed(KEY_COMMA)) view_ = View::Settings;  // common "preferences" shortcut
+    }
     if (IsKeyPressed(KEY_ESCAPE) && view_ == View::AlbumDetail) view_ = View::Albums;
     if (IsKeyPressed(KEY_ESCAPE) && view_ == View::PlaylistDetail) view_ = View::Playlists;
     if (IsKeyPressed(KEY_ESCAPE) && view_ == View::Settings) view_ = View::Library;
     if (IsKeyPressed(KEY_F3)) showDebug_ = !showDebug_;
-    if (IsKeyPressed(KEY_B)) mosaic_.Trigger(MosaicCfg());  // manually animate a tile
+    if (IsKeyPressed(KEY_B) && !onSearch) mosaic_.Trigger(MosaicCfg());  // manually animate a tile
 }
 
 MosaicSettings App::MosaicCfg() const {
