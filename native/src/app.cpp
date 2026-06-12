@@ -444,7 +444,9 @@ void App::HandleInput() {
     if (IsKeyPressed(KEY_Q)) ToggleQueuePanel();
     // X opens the mask brush editor for the album on screen (same as the
     // brush button in Now Playing). Inside the editor X toggles paint/erase.
-    if (IsKeyPressed(KEY_X)) {
+    // The Esc handler above closes an open track menu first, so X must also
+    // defer to it rather than stack the editor under the live menu.
+    if (IsKeyPressed(KEY_X) && !menu_.open) {
         ui::ConsumeKey(KEY_X);  // don't let DrawBrushEditor re-read this press
         const Track* cur = player_.Current();
         const Album* shown = library_.AlbumById(vinyl_.DisplayedAlbumId());
@@ -537,6 +539,10 @@ void App::BuildForeground(const Album& album) {
 
 void App::OpenBrushEditor(const Album& album) {
     if (album.artPath.empty()) return;
+    // Never open the editor under a live context menu: the menu draws on top,
+    // and its raw mouse reads would otherwise both activate a row and stamp
+    // paint into the canvas underneath on the same click.
+    menu_.open = false;
     const std::string maskPath = DepthEngine::MaskPath(album.id);
     // Seed from the existing mask when there is one, else start from a blank
     // (all-background) canvas the user paints the in-front subject onto.
@@ -678,8 +684,11 @@ void App::DrawBrushEditor(Rectangle r) {
     DrawRectangleLinesEx(artRect, 1, Fade(ui::theme.text, 0.08f));
 
     // ── Painting: mouse → mask-space, with brush stroke interpolation ──
+    // The editor draws beneath the context menu, so suppress canvas strokes
+    // while a menu is up — otherwise a click on a menu row over the canvas
+    // would both activate the row and stamp paint here (both use raw reads).
     const Vector2 m = GetMousePosition();
-    const bool overCanvas = CheckCollisionPointRec(m, artRect);
+    const bool overCanvas = !menu_.open && CheckCollisionPointRec(m, artRect);
     const float toMask = brush_.canvas.Width() / artRect.width;  // px → mask units
     const float mx = (m.x - artRect.x) * toMask;
     const float my = (m.y - artRect.y) * toMask;
