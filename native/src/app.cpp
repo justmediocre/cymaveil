@@ -2034,23 +2034,28 @@ void App::DrawQueuePanel(Rectangle r) {
     const Track* current = player_.Current();
 
     // Follow the currently playing track: when it advances, scroll to keep it
-    // centered. We only react when the playing row index changes, so manual
-    // scrolling between advances is left untouched.
+    // centered. We key off the playing track's identity (not its row index), so
+    // manual scrolling between advances is left untouched and removing a row
+    // above the playing track doesn't yank the view to recenter.
     int curRow = -1;
+    std::string curId;
     if (mode == Mode::Queue) {
         curRow = player_.OrderPos();
+        const Track* cur = player_.TrackAtOrderPos(curRow);
+        if (cur != nullptr) curId = cur->id;
     } else if (current != nullptr) {
         for (int i = 0; i < n; i++) {
             if (rows[i] != nullptr && rows[i]->id == current->id) {
                 curRow = i;
+                curId = current->id;
                 break;
             }
         }
     }
-    if (curRow >= 0 && curRow != queueFollowPos_) {
+    if (curRow >= 0 && curId != queueFollowId_) {
         queueScroll_ = curRow * kQueueRowH - (list.height - kQueueRowH) / 2.0f;
     }
-    queueFollowPos_ = curRow;
+    queueFollowId_ = curId;
 
     ui::ScrollArea(list, static_cast<float>(rows.size()) * kQueueRowH, &queueScroll_);
     const int first = std::max(0, static_cast<int>(queueScroll_ / kQueueRowH));

@@ -183,9 +183,11 @@ private:
     // Queue panel slide: 0 closed → 1 open; width follows the eased value.
     float queueAnim_ = 0;
     float queueScroll_ = 0;
-    // Row index the queue panel last auto-scrolled to follow; lets us react to
-    // track changes without fighting the user's manual scrolling.
-    int queueFollowPos_ = -1;
+    // Identity of the track the queue panel last auto-scrolled to follow; lets
+    // us react to the playing track changing without fighting the user's manual
+    // scrolling, and without recentering when the playing row's index merely
+    // shifts (e.g. a row above it is removed).
+    std::string queueFollowId_;
 
     // Inline playlist rename (also entered right after New Playlist)
     std::string editPlaylistId_;
