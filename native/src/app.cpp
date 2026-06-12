@@ -856,7 +856,19 @@ void App::DrawSearchView(Rectangle r) {
         y += 22;
         const Rectangle table{r.x, y, r.width, bottom - y};
         const TableResult tr = DrawTrackTable(table, tracks, &searchTracksScroll_, true);
-        if (tr.clicked >= 0) PlayFromTrackList(tracks, tr.clicked);
+        if (tr.clicked >= 0) {
+            // Play the clicked track within the full library — like the Library view —
+            // rather than turning the whole search result set into the queue.
+            const Track* picked = tracks[tr.clicked];
+            std::vector<const Track*> all;
+            all.reserve(library_.Tracks().size());
+            int pickedIdx = 0;
+            for (const auto& t : library_.Tracks()) {
+                if (&t == picked) pickedIdx = static_cast<int>(all.size());
+                all.push_back(&t);
+            }
+            PlayFromTrackList(all, pickedIdx);
+        }
         if (tr.rightClicked >= 0) OpenTrackMenu(tracks[tr.rightClicked]->id);
     }
 }
