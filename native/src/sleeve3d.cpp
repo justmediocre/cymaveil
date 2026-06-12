@@ -88,8 +88,8 @@ void main() {
         // lightly breaks it so it isn't a perfect circle.
         float aN = fbm(vec2(ang*3.0, 5.0));
         float aBreak = fbm(vec2(ang*5.0 + 20.0, 9.0));
-        float rOuter = 0.45 + 0.02*(aN - 0.5)*2.0;
-        float ringCore = smoothstep(0.03, 0.0, abs(r - rOuter));    // tight band
+        float rOuter = 0.45 + 0.01*(aN - 0.5)*2.0;
+        float ringCore = smoothstep(0.015, 0.0, abs(r - rOuter));   // tight band
         float outer = ringCore*(0.7 + 0.5*aBreak);
         float spindle = smoothstep(0.05, 0.0, r);                   // centre spot only
         float edgeW = pow(edge, 2.0)*0.55;
