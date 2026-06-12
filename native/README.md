@@ -36,16 +36,24 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
 ## Usage
 
 - **Drag & drop** a music folder onto the window to add it to the library (or pass folders
-  as CLI args). Rescans happen on a background thread.
-- Library / Albums / Now Playing views via the sidebar or keys **1 / 2 / 3**.
+  as CLI args). Rescans happen on a background thread. Dropping a `.m3u`/`.m3u8` file
+  imports it as a playlist instead (entries are matched against the library by path).
+- Library / Albums / Playlists / Now Playing views via the sidebar or keys **1 / 2 / 3 / 4**.
+- **Right-click any track row** for the context menu: play, toggle Favorites, add/remove
+  Now Playing, add to a playlist (or start a new one from the track).
+- **Q** (or the list button in either player bar) toggles the queue panel: the active
+  queue in play order — click to jump, hover for per-row remove — or the parked Now
+  Playing list with Play/Clear when nothing is queued.
 - **Space** play/pause · **←/→** seek ±5s · **Ctrl+←/→** prev/next · **↑/↓** volume ·
-  **S** shuffle · **R** repeat cycle · **B** animate a mosaic tile · **Esc** back ·
-  **F3** debug overlay.
+  **S** shuffle · **R** repeat cycle · **Q** queue panel · **B** animate a mosaic tile ·
+  **Esc** back · **F3** debug overlay.
 
-Library cache, settings, and extracted album art live in `~/.local/share/cymaveil/`.
+Library cache, settings, playlists, and extracted album art live in
+`~/.local/share/cymaveil/`. Playlist exports are written to `~/Music/<name>.m3u8`.
 
-Dev/testing flags: `--play` (autoplay the library on launch), `--view library|albums|now`
-(start on a view), `--shot <path>` (capture a screenshot ~2s in, with debug overlay).
+Dev/testing flags: `--play` (autoplay the library on launch),
+`--view library|albums|playlists|now` (start on a view), `--import <file.m3u8>` (import a
+playlist on launch), `--shot <path>` (capture a screenshot ~2s in, with debug overlay).
 
 ## Status
 
@@ -85,10 +93,17 @@ Done in this first slice:
       run during playback, so the idle state stays at zero cost. Tunables live
       in `config.json` (`mosaicEnabled`, `mosaicOpacity`, `mosaicDensity`,
       `mosaicTransition`, `mosaicFlat`) until there's a settings UI.
+- [x] Playlists: Favorites and Now Playing system playlists plus user playlists
+      (inline rename, two-step delete), persisted to `playlists.json`; M3U8 import
+      via file drop or `--import` and export to `~/Music`; a right-click track menu
+      for building lists; and the collapsible queue panel (Q), which tracks the
+      player's queue source so Now Playing edits stay in sync with live playback —
+      ported from `usePlaylists.ts` / `QueuePanel.tsx`. One deliberate divergence:
+      the web app's "queue-building click mode" setting wasn't carried over —
+      clicks always play in context, and queue building goes through the menu.
 
 Not yet ported from the Electron app:
 
-- [ ] Playlists (+ M3U8 import/export) and Favorites
 - [ ] Search
 - [ ] Manual mask painting (brush editor), mask import/export, batch pre-generation
 - [ ] Alternative visualizer styles (contour bars, radial burst, waveform, mirrored)
