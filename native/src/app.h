@@ -11,6 +11,7 @@
 #include "depth.h"
 #include "library.h"
 #include "mosaic.h"
+#include "mpris.h"
 #include "player.h"
 #include "playlist.h"
 #include "vinyl.h"
@@ -51,6 +52,10 @@ private:
     void Frame();
     void HandleInput();
     void HandleDroppedFolders();
+    // Drains commands from the MPRIS worker (media keys, desktop applets).
+    void HandleMprisRequests();
+    // Pushes the current player state to the MPRIS worker (cheap when idle).
+    void PublishMpris();
     // Idle-aware pacing: 60 fps only when it matters, event-waiting when idle.
     void UpdatePacing();
     void MarkActivity() { lastActivity_ = GetTime(); }
@@ -113,6 +118,7 @@ private:
     Mosaic mosaic_;
     DepthEngine depth_;
     Vinyl vinyl_;
+    Mpris mpris_;
     bool manualSkip_ = false;  // user-initiated track change this frame
 
     // Album art with the segmentation mask baked into its alpha channel

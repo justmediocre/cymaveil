@@ -27,6 +27,8 @@ public:
     void PlayQueue(std::vector<std::string> trackIds, int startIndex,
                    QueueSource source = QueueSource::None, std::string sourceId = "");
     void TogglePause();
+    // MPRIS Stop: halt and rewind, keep the queue so Play resumes here.
+    void Stop();
     void Next() { Advance(1, true); }
     void Prev();
     void SeekTo(float seconds);
@@ -41,6 +43,7 @@ public:
     RepeatMode Repeat() const { return repeat_; }
 
     bool IsPlaying() const { return state_ == State::Playing; }
+    bool IsStopped() const { return state_ == State::Stopped; }
     bool HasTrack() const { return loaded_; }
     const Track* Current() const;
     float TimePlayed() const;

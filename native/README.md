@@ -28,7 +28,8 @@ cmake --build native/build
 ```
 
 Dependencies (raylib, TagLib, nlohmann/json) are pulled via CMake `FetchContent` on first
-configure — no system installs needed beyond the windowing/audio dev packages.
+configure — no system installs needed beyond the windowing/audio dev packages (plus
+`libdbus-1-dev` for MPRIS; optional, the build falls back to a stub without it).
 
 Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire socket
 (`$XDG_RUNTIME_DIR/pulse` is mounted; miniaudio picks it up via `PULSE_SERVER`).
@@ -101,6 +102,13 @@ Done in this first slice:
       ported from `usePlaylists.ts` / `QueuePanel.tsx`. One deliberate divergence:
       the web app's "queue-building click mode" setting wasn't carried over —
       clicks always play in context, and queue building goes through the menu.
+- [x] MPRIS / media keys: `org.mpris.MediaPlayer2.cymaveil` on the session bus
+      with full metadata (incl. cover art), transport/seek/position, and
+      writable Volume/Shuffle/LoopStatus — media keys arrive through this on
+      modern desktops. The D-Bus worker thread pokes the GLFW event loop, so
+      remote commands work even while the app is blocked idle on OS events.
+      Builds against libdbus when present (stubbed out otherwise; the dev
+      container has it). Disable with `mpris: false` in config.json.
 
 Not yet ported from the Electron app:
 
@@ -111,7 +119,6 @@ Not yet ported from the Electron app:
 - [ ] Light theme, settings UI
 - [ ] File watching / incremental rescan (currently full rescan per change)
 - [ ] Playback-position restore across sessions
-- [ ] MPRIS / media-key integration
 - [ ] Gapless playback / crossfade
 
 Known limitations:

@@ -17,6 +17,8 @@ struct Config {
     bool vinylDisc = true;
     // Collapsible queue panel on the right edge (toggled with Q)
     bool queuePanel = false;
+    // MPRIS D-Bus interface (desktop media controls / media keys)
+    bool mpris = true;
 
     // Background mosaic (no settings UI yet; editable in config.json)
     bool mosaicEnabled = true;

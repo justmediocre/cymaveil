@@ -125,6 +125,7 @@ int App::Run() {
     player_.SetShuffle(config_.shuffle);
     player_.SetRepeat(static_cast<RepeatMode>(config_.repeat));
     visualizer_.Attach();
+    if (config_.mpris) mpris_.Start();
 
     for (const auto& f : startupFolders_) {
         if (DirectoryExists(f.c_str())) library_.AddFolder(f);
@@ -144,6 +145,7 @@ int App::Run() {
     config_.repeat = static_cast<int>(player_.Repeat());
     config_.Save();
 
+    mpris_.Stop();  // before CloseWindow: the worker pokes the GLFW event loop
     player_.Shutdown();
     visualizer_.Detach();
     mosaic_.Unload();
@@ -159,6 +161,7 @@ int App::Run() {
 void App::Frame() {
     HandleDroppedFolders();
     HandleInput();
+    HandleMprisRequests();
     player_.Update();
     if (library_.PollScan()) {
         mosaic_.Rebuild(library_.Albums(), MosaicCfg());
@@ -244,7 +247,90 @@ void App::Frame() {
         UnloadImage(shot);
         quitRequested_ = true;
     }
+    PublishMpris();
     UpdatePacing();
+}
+
+void App::HandleMprisRequests() {
+    MprisRequest req;
+    while (mpris_.PollRequest(&req)) {
+        MarkActivity();
+        switch (req.cmd) {
+            case MprisCommand::Raise: SetWindowFocused(); break;
+            case MprisCommand::Quit: quitRequested_ = true; break;
+            case MprisCommand::Next:
+                player_.Next();
+                manualSkip_ = true;
+                break;
+            case MprisCommand::Previous:
+                player_.Prev();
+                manualSkip_ = true;
+                break;
+            case MprisCommand::Pause:
+                if (player_.IsPlaying()) player_.TogglePause();
+                break;
+            case MprisCommand::PlayPause: player_.TogglePause(); break;
+            case MprisCommand::Stop: player_.Stop(); break;
+            case MprisCommand::Play:
+                if (!player_.IsPlaying()) player_.TogglePause();
+                break;
+            case MprisCommand::SeekBy: {
+                const float target = player_.TimePlayed() + static_cast<float>(req.value);
+                // Per spec: seeking past the end acts like Next
+                if (player_.HasTrack() && target >= player_.TimeLength()) {
+                    player_.Next();
+                    manualSkip_ = true;
+                } else {
+                    player_.SeekTo(target);
+                }
+                break;
+            }
+            case MprisCommand::SetPosition: {
+                const Track* cur = player_.Current();
+                if (cur != nullptr && cur->id == req.str) {
+                    player_.SeekTo(static_cast<float>(req.value));
+                }
+                break;
+            }
+            case MprisCommand::SetVolume:
+                player_.SetVolume(static_cast<float>(req.value));
+                break;
+            case MprisCommand::SetShuffle:
+                if (player_.Shuffle() != (req.value != 0)) player_.ToggleShuffle();
+                break;
+            case MprisCommand::SetLoop:
+                if (req.str == "None") player_.SetRepeat(RepeatMode::Off);
+                else if (req.str == "Playlist") player_.SetRepeat(RepeatMode::All);
+                else if (req.str == "Track") player_.SetRepeat(RepeatMode::One);
+                break;
+        }
+    }
+}
+
+void App::PublishMpris() {
+    if (!mpris_.Active()) return;
+    MprisState s;
+    s.hasTrack = player_.HasTrack();
+    s.hasQueue = player_.QueueSize() > 0;
+    s.status = player_.IsPlaying() ? "Playing"
+               : (player_.HasTrack() && !player_.IsStopped()) ? "Paused"
+                                                              : "Stopped";
+    if (const Track* cur = player_.Current(); cur != nullptr) {
+        s.trackId = cur->id;
+        s.title = cur->title;
+        s.artist = cur->artist;
+        s.lengthUs = static_cast<long long>(cur->duration * 1e6);
+        if (const Album* a = library_.AlbumById(cur->albumId); a != nullptr) {
+            s.album = a->title;
+            if (!a->artPath.empty()) s.artUrl = MprisFileUrl(a->artPath);
+        }
+    }
+    s.shuffle = player_.Shuffle();
+    s.loop = player_.Repeat() == RepeatMode::All    ? "Playlist"
+             : player_.Repeat() == RepeatMode::One ? "Track"
+                                                   : "None";
+    s.volume = player_.Volume();
+    mpris_.Publish(s, player_.TimePlayed(), GetFrameTime());
 }
 
 void App::HandleInput() {

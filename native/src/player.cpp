@@ -156,6 +156,12 @@ void Player::TogglePause() {
     }
 }
 
+void Player::Stop() {
+    if (!loaded_) return;
+    StopMusicStream(music_);  // rewinds to the start
+    state_ = State::Stopped;
+}
+
 void Player::Prev() {
     if (loaded_ && GetMusicTimePlayed(music_) > 3.0f) {
         SeekMusicStream(music_, 0.0f);

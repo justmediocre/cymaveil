@@ -18,6 +18,7 @@ void Config::Load() {
         depthLayers = j.value("depthLayers", depthLayers);
         vinylDisc = j.value("vinylDisc", vinylDisc);
         queuePanel = j.value("queuePanel", queuePanel);
+        mpris = j.value("mpris", mpris);
         mosaicEnabled = j.value("mosaicEnabled", mosaicEnabled);
         mosaicOpacity = std::clamp(j.value("mosaicOpacity", mosaicOpacity), 0.0f, 1.0f);
         mosaicDensity = std::clamp(j.value("mosaicDensity", mosaicDensity), 2, 16);
@@ -36,6 +37,7 @@ void Config::Save() const {
         {"depthLayers", depthLayers},
         {"vinylDisc", vinylDisc},
         {"queuePanel", queuePanel},
+        {"mpris", mpris},
         {"mosaicEnabled", mosaicEnabled},
         {"mosaicOpacity", mosaicOpacity},
         {"mosaicDensity", mosaicDensity},

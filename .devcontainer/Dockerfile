@@ -23,6 +23,7 @@ RUN apt-get update \
         libxkbcommon-dev \
         libgl1-mesa-dev \
         libasound2-dev \
+        libdbus-1-dev \
         libpulse0 \
         fonts-dejavu-core \
         mesa-utils \

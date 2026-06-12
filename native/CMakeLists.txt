@@ -96,6 +96,20 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ort
     Threads::Threads)
 
+# ── libdbus (MPRIS / media keys) ──
+# Optional: without it the Mpris class compiles to a stub. The runtime dep
+# (libdbus-1.so.3) ships with every desktop Linux.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(DBUS IMPORTED_TARGET dbus-1)
+endif()
+if(DBUS_FOUND)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE CYMAVEIL_HAVE_DBUS=1)
+    target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::DBUS)
+else()
+    message(STATUS "dbus-1 not found - building without MPRIS support")
+endif()
+
 # Ship libonnxruntime next to the binary and resolve it via $ORIGIN so the
 # build runs both inside the dev container and on the host.
 set_target_properties(${PROJECT_NAME} PROPERTIES BUILD_RPATH "$ORIGIN")
