@@ -634,19 +634,21 @@ App::TableResult App::DrawTrackTable(Rectangle r, const std::vector<const Track*
                                      float* scroll, bool showAlbum, bool removable) {
     const float pad = 24;
     const float numW = 44, durW = 64;
+    const float artW = 32, artGap = 12;
     const float removeW = removable ? 28 : 0;
-    const float flexW = r.width - pad * 2 - numW - durW - removeW;
+    const float flexW = r.width - pad * 2 - numW - artW - artGap - durW - removeW;
     const float titleW = flexW * (showAlbum ? 0.42f : 0.72f);
     const float artistW = flexW * 0.28f;
     const float albumW = showAlbum ? flexW * 0.30f : 0;
 
     // Header
     const float hx = r.x + pad;
+    const float titleX = hx + numW + artW + artGap;
     ui::Text("#", Vector2{hx, r.y + 10}, 12, ui::theme.textTertiary);
-    ui::Text("TITLE", Vector2{hx + numW, r.y + 10}, 12, ui::theme.textTertiary);
-    ui::Text("ARTIST", Vector2{hx + numW + titleW, r.y + 10}, 12, ui::theme.textTertiary);
+    ui::Text("TITLE", Vector2{titleX, r.y + 10}, 12, ui::theme.textTertiary);
+    ui::Text("ARTIST", Vector2{titleX + titleW, r.y + 10}, 12, ui::theme.textTertiary);
     if (showAlbum) {
-        ui::Text("ALBUM", Vector2{hx + numW + titleW + artistW, r.y + 10}, 12,
+        ui::Text("ALBUM", Vector2{titleX + titleW + artistW, r.y + 10}, 12,
                  ui::theme.textTertiary);
     }
     ui::TextRight("TIME", Vector2{r.x + r.width - pad - removeW, r.y + 10}, 12,
@@ -691,12 +693,13 @@ App::TableResult App::DrawTrackTable(Rectangle r, const std::vector<const Track*
             ui::Text(t.trackNum > 0 ? TextFormat("%d", t.trackNum) : "-", Vector2{hx, ty}, 15,
                      ui::theme.textTertiary);
         }
-        ui::TextEllipsis(t.title, Vector2{hx + numW, ty}, titleW - 16, 15, titleCol);
-        ui::TextEllipsis(t.artist, Vector2{hx + numW + titleW, ty}, artistW - 16, 14,
+        const Album* a = library_.AlbumById(t.albumId);
+        DrawAlbumArt(Rectangle{hx + numW, y + (kRowH - artW) / 2, artW, artW}, a, 0.7f);
+        ui::TextEllipsis(t.title, Vector2{titleX, ty}, titleW - 16, 15, titleCol);
+        ui::TextEllipsis(t.artist, Vector2{titleX + titleW, ty}, artistW - 16, 14,
                          ui::theme.textSecondary);
         if (showAlbum) {
-            const Album* a = library_.AlbumById(t.albumId);
-            ui::TextEllipsis(a != nullptr ? a->title : "", Vector2{hx + numW + titleW + artistW, ty},
+            ui::TextEllipsis(a != nullptr ? a->title : "", Vector2{titleX + titleW + artistW, ty},
                              albumW - 16, 14, ui::theme.textSecondary);
         }
         ui::TextRight(ui::FormatTime(t.duration), Vector2{r.x + r.width - pad - removeW, ty}, 14,
