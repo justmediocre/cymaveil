@@ -183,6 +183,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${taglib_BINARY_DIR}
     ${taglib_BINARY_DIR}/taglib)
 
+# We link TagLib statically. Without TAGLIB_STATIC its headers decorate the API
+# with __declspec(dllimport) on Windows (the LNK4217 warnings), and that
+# dllimport-vs-static mismatch corrupts the heap around by-value, PIMPL-
+# refcounted ByteVector/String temporaries during scanning — a Windows-only
+# hard crash (ucrtbase, no exception). Harmless elsewhere.
+target_compile_definitions(${PROJECT_NAME} PRIVATE TAGLIB_STATIC)
+
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
 
