@@ -39,11 +39,18 @@ bool IsKnownUnsupported(const std::string& ext) {
 // Operates on CPU-side Image data (thread-safe).
 AlbumColors ColorsFromArt(const unsigned char* bytes, int size, const char* ext) {
     AlbumColors colors;
+    if (bytes == nullptr || size <= 0) return colors;
     Image img = LoadImageFromMemory(ext, bytes, size);
-    if (img.data == nullptr) return colors;
+    // Bail on anything raylib couldn't decode into a sane bitmap — feeding a
+    // zero/garbage-sized image into the resize + color extraction below would
+    // read out of bounds.
+    if (img.data == nullptr || img.width <= 0 || img.height <= 0) {
+        UnloadImage(img);
+        return colors;
+    }
     ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
     ImageResize(&img, 64, 64);
-    ExtractAlbumColors(static_cast<const unsigned char*>(img.data), &colors);
+    if (img.data != nullptr) ExtractAlbumColors(static_cast<const unsigned char*>(img.data), &colors);
     UnloadImage(img);
     return colors;
 }
@@ -323,105 +330,114 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
         const fs::path& path = found.path;
         scanCurrent_++;
 
-        // Unchanged since the last scan? Reuse the cached track and its album —
-        // but only if the album's cached art still exists on disk. If the art
-        // cache was deleted, fall through to a full parse so it gets
-        // re-extracted from the file's embedded artwork.
-        if (const auto cached = oldByPath.find(path.string());
-            cached != oldByPath.end() && found.mtime != 0 && cached->second->mtime == found.mtime) {
-            const Track& old = *cached->second;
-            const Album* oldAlbum = nullptr;
-            if (const auto oa = oldAlbumById.find(old.albumId); oa != oldAlbumById.end()) {
-                oldAlbum = oa->second;
-            }
-            std::error_code artEc;
-            const bool artMissing =
-                oldAlbum && !oldAlbum->artPath.empty() && !fs::exists(oldAlbum->artPath, artEc);
-            if (!artMissing) {
-                if (oldAlbum && !albums.count(old.albumId)) {
-                    albums[old.albumId] = *oldAlbum;
+        // One malformed file must not take down the scan worker: an uncaught
+        // exception here (TagLib, std, ...) would abort the whole process
+        // (seen as a ucrtbase.dll fault on Windows). Skip the file instead.
+        try {
+            // Unchanged since the last scan? Reuse the cached track and its album
+            // — but only if the album's cached art still exists on disk. If the
+            // art cache was deleted, fall through to a full parse so it gets
+            // re-extracted from the file's embedded artwork.
+            if (const auto cached = oldByPath.find(path.string());
+                cached != oldByPath.end() && found.mtime != 0 &&
+                cached->second->mtime == found.mtime) {
+                const Track& old = *cached->second;
+                const Album* oldAlbum = nullptr;
+                if (const auto oa = oldAlbumById.find(old.albumId); oa != oldAlbumById.end()) {
+                    oldAlbum = oa->second;
                 }
-                tracks.push_back(old);
-                continue;
+                std::error_code artEc;
+                const bool artMissing =
+                    oldAlbum && !oldAlbum->artPath.empty() && !fs::exists(oldAlbum->artPath, artEc);
+                if (!artMissing) {
+                    if (oldAlbum && !albums.count(old.albumId)) {
+                        albums[old.albumId] = *oldAlbum;
+                    }
+                    tracks.push_back(old);
+                    continue;
+                }
             }
-        }
 
-        TagLib::FileRef f(path.string().c_str(), true, TagLib::AudioProperties::Average);
-        if (f.isNull() || f.file() == nullptr) continue;
+            TagLib::FileRef f(path.string().c_str(), true, TagLib::AudioProperties::Average);
+            if (f.isNull() || f.file() == nullptr) continue;
 
-        Track t;
-        t.filePath = path.string();
-        t.id = HashId(t.filePath);
-        t.mtime = found.mtime;
+            Track t;
+            t.filePath = path.string();
+            t.id = HashId(t.filePath);
+            t.mtime = found.mtime;
 
-        std::string albumTitle = "Unknown Album";
-        std::string albumArtist;
-        if (const TagLib::Tag* tag = f.tag()) {
-            t.title = tag->title().to8Bit(true);
-            t.artist = tag->artist().to8Bit(true);
-            t.trackNum = static_cast<int>(tag->track());
-            if (!tag->album().isEmpty()) albumTitle = tag->album().to8Bit(true);
+            std::string albumTitle = "Unknown Album";
+            std::string albumArtist;
+            if (const TagLib::Tag* tag = f.tag()) {
+                t.title = tag->title().to8Bit(true);
+                t.artist = tag->artist().to8Bit(true);
+                t.trackNum = static_cast<int>(tag->track());
+                if (!tag->album().isEmpty()) albumTitle = tag->album().to8Bit(true);
 
-            const auto props = f.file()->properties();
-            if (props.contains("ALBUMARTIST")) {
-                albumArtist = props["ALBUMARTIST"].front().to8Bit(true);
-            }
-            if (props.contains("DISCNUMBER")) {
-                t.discNum = std::atoi(props["DISCNUMBER"].front().to8Bit(true).c_str());
-            }
-            if (albumArtist.empty()) albumArtist = t.artist;
+                const auto props = f.file()->properties();
+                if (props.contains("ALBUMARTIST") && !props["ALBUMARTIST"].isEmpty()) {
+                    albumArtist = props["ALBUMARTIST"].front().to8Bit(true);
+                }
+                if (props.contains("DISCNUMBER") && !props["DISCNUMBER"].isEmpty()) {
+                    t.discNum = std::atoi(props["DISCNUMBER"].front().to8Bit(true).c_str());
+                }
+                if (albumArtist.empty()) albumArtist = t.artist;
 
-            const std::string albumKey = Lower(albumArtist) + "\x1f" + Lower(albumTitle);
-            t.albumId = HashId(albumKey);
+                const std::string albumKey = Lower(albumArtist) + "\x1f" + Lower(albumTitle);
+                t.albumId = HashId(albumKey);
 
-            auto [it, inserted] = albums.try_emplace(t.albumId);
-            Album& album = it->second;
-            if (inserted) {
-                album.id = t.albumId;
-                album.title = albumTitle;
-                album.artist = albumArtist.empty() ? "Unknown Artist" : albumArtist;
-            }
-            if (album.year == 0 && tag->year() > 0) album.year = static_cast<int>(tag->year());
+                auto [it, inserted] = albums.try_emplace(t.albumId);
+                Album& album = it->second;
+                if (inserted) {
+                    album.id = t.albumId;
+                    album.title = albumTitle;
+                    album.artist = albumArtist.empty() ? "Unknown Artist" : albumArtist;
+                }
+                if (album.year == 0 && tag->year() > 0) album.year = static_cast<int>(tag->year());
 
-            if (album.artPath.empty()) {
-                const auto pictures = f.file()->complexProperties("PICTURE");
-                if (!pictures.isEmpty()) {
-                    const auto& pic = pictures.front();
-                    const auto data = pic.value("data").value<TagLib::ByteVector>();
-                    if (!data.isEmpty()) {
-                        const std::string mime = pic.value("mimeType").value<TagLib::String>().to8Bit(true);
-                        const char* ext = (mime.find("png") != std::string::npos) ? ".png" : ".jpg";
-                        const std::string artPath = artDir + "/" + album.id + ext;
-                        std::ofstream out(artPath, std::ios::binary);
-                        if (out.write(data.data(), static_cast<std::streamsize>(data.size()))) {
-                            album.artPath = artPath;
-                            const AlbumColors colors = ColorsFromArt(
-                                reinterpret_cast<const unsigned char*>(data.data()),
-                                static_cast<int>(data.size()), ext);
-                            album.dominant = colors.dominant;
-                            album.accent = colors.accent;
-                            album.accentSecondary = colors.accentSecondary;
-                            album.hasSecondary = colors.hasSecondary;
+                if (album.artPath.empty()) {
+                    const auto pictures = f.file()->complexProperties("PICTURE");
+                    if (!pictures.isEmpty()) {
+                        const auto& pic = pictures.front();
+                        const auto data = pic.value("data").value<TagLib::ByteVector>();
+                        if (!data.isEmpty()) {
+                            const std::string mime =
+                                pic.value("mimeType").value<TagLib::String>().to8Bit(true);
+                            const char* ext = (mime.find("png") != std::string::npos) ? ".png" : ".jpg";
+                            const std::string artPath = artDir + "/" + album.id + ext;
+                            std::ofstream out(artPath, std::ios::binary);
+                            if (out.write(data.data(), static_cast<std::streamsize>(data.size()))) {
+                                album.artPath = artPath;
+                                const AlbumColors colors = ColorsFromArt(
+                                    reinterpret_cast<const unsigned char*>(data.data()),
+                                    static_cast<int>(data.size()), ext);
+                                album.dominant = colors.dominant;
+                                album.accent = colors.accent;
+                                album.accentSecondary = colors.accentSecondary;
+                                album.hasSecondary = colors.hasSecondary;
+                            }
                         }
                     }
                 }
+            } else {
+                t.albumId = HashId("\x1funknown");
+                auto [it, inserted] = albums.try_emplace(t.albumId);
+                if (inserted) {
+                    it->second.id = t.albumId;
+                    it->second.title = "Unknown Album";
+                    it->second.artist = "Unknown Artist";
+                }
             }
-        } else {
-            t.albumId = HashId("\x1funknown");
-            auto [it, inserted] = albums.try_emplace(t.albumId);
-            if (inserted) {
-                it->second.id = t.albumId;
-                it->second.title = "Unknown Album";
-                it->second.artist = "Unknown Artist";
-            }
-        }
 
-        if (t.title.empty()) t.title = path.stem().string();
-        if (t.artist.empty()) t.artist = "Unknown Artist";
-        if (const TagLib::AudioProperties* ap = f.audioProperties()) {
-            t.duration = static_cast<float>(ap->lengthInMilliseconds()) / 1000.0f;
+            if (t.title.empty()) t.title = path.stem().string();
+            if (t.artist.empty()) t.artist = "Unknown Artist";
+            if (const TagLib::AudioProperties* ap = f.audioProperties()) {
+                t.duration = static_cast<float>(ap->lengthInMilliseconds()) / 1000.0f;
+            }
+            tracks.push_back(std::move(t));
+        } catch (const std::exception& e) {
+            TraceLog(LOG_WARNING, "LIBRARY: skipped %s: %s", path.string().c_str(), e.what());
         }
-        tracks.push_back(std::move(t));
     }
 
     // Backfill artwork/palette from the prior cache for any album that ended up
