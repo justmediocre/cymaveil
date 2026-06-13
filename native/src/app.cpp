@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -88,6 +89,9 @@ void ArtCache::Clear() {
 // ── App ──
 
 int App::Run() {
+    // Unbuffered logging so a hard crash (e.g. a bad decode corrupting the heap)
+    // doesn't swallow the last TraceLog lines that point at the culprit.
+    setvbuf(stdout, nullptr, _IONBF, 0);
     // Fixed-size in screenshot mode so tiling WMs float the window at the
     // requested resolution instead of fitting it into the layout, and no
     // HIGHDPI so shots come out at the exact requested pixel size on any

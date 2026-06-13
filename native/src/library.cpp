@@ -35,6 +35,50 @@ bool IsKnownUnsupported(const std::string& ext) {
     return ext == ".m4a" || ext == ".aac" || ext == ".opus" || ext == ".wma" || ext == ".aiff";
 }
 
+// Probe PNG/JPEG header dimensions without decoding. Returns false when the
+// dimensions are unreadable or large enough that width*height*4 overflows
+// raylib's int pixel-size math — that under-allocates the buffer, the decoder
+// then overruns it and corrupts the heap (a hard crash with no catchable
+// exception, seen as a ucrtbase.dll fault). Unknown formats pass through to the
+// decoder, which enforces its own per-dimension limits.
+bool ArtDimensionsSafe(const unsigned char* b, int size) {
+    auto be16 = [&](int o) { return (b[o] << 8) | b[o + 1]; };
+    auto be32 = [&](int o) {
+        return (static_cast<long long>(b[o]) << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3];
+    };
+    long long w = 0, h = 0;
+    if (size >= 24 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {
+        // PNG: IHDR is the first chunk after the 8-byte signature; width/height
+        // are the first two big-endian u32s of its data.
+        w = be32(16);
+        h = be32(20);
+    } else if (size >= 4 && b[0] == 0xFF && b[1] == 0xD8) {
+        // JPEG: walk the marker segments to the start-of-frame, which carries
+        // the frame dimensions.
+        for (int p = 2; p + 9 < size;) {
+            if (b[p] != 0xFF) {
+                p++;
+                continue;
+            }
+            const int marker = b[p + 1];
+            const int len = be16(p + 2);
+            if (marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 &&
+                marker != 0xCC) {
+                h = be16(p + 5);
+                w = be16(p + 7);
+                break;
+            }
+            if (len < 2) break;
+            p += 2 + len;
+        }
+    } else {
+        return true;
+    }
+    if (w <= 0 || h <= 0) return false;
+    // 64M px (×4 = 256 MB) sits well below INT_MAX and far above any real cover.
+    return w <= 16384 && h <= 16384 && w * h <= 64'000'000;
+}
+
 // Runs the ported web-app color extraction on embedded artwork bytes.
 // Operates on CPU-side Image data (thread-safe).
 AlbumColors ColorsFromArt(const unsigned char* bytes, int size, const char* ext) {
@@ -400,7 +444,15 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
                     if (!pictures.isEmpty()) {
                         const auto& pic = pictures.front();
                         const auto data = pic.value("data").value<TagLib::ByteVector>();
-                        if (!data.isEmpty()) {
+                        const auto* artBytes = reinterpret_cast<const unsigned char*>(data.data());
+                        const int artSize = static_cast<int>(data.size());
+                        if (data.isEmpty() || !ArtDimensionsSafe(artBytes, artSize)) {
+                            if (!data.isEmpty()) {
+                                TraceLog(LOG_WARNING,
+                                         "LIBRARY: skipping oversized/unreadable art in %s",
+                                         path.string().c_str());
+                            }
+                        } else {
                             const std::string mime =
                                 pic.value("mimeType").value<TagLib::String>().to8Bit(true);
                             const char* ext = (mime.find("png") != std::string::npos) ? ".png" : ".jpg";
