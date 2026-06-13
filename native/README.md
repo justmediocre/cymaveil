@@ -205,6 +205,7 @@ Not yet ported from the Electron app:
       music-folder manager; the remaining `config.json` tunables (mosaic, depth
       layers) still need surfacing
 - [ ] Gapless playback / crossfade
+- [ ] Copy and paste text in inputs
 
 Known limitations:
 
