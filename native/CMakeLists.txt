@@ -145,8 +145,8 @@ endif()
 # and the POST_BUILD copy below puts the dylib right beside it.
 if(WIN32)
     file(GLOB ORT_SHARED_LIBS ${onnxruntime_SOURCE_DIR}/lib/onnxruntime*.dll)
-    # URLDownloadToFile (depth model fetch) lives in urlmon.
-    target_link_libraries(${PROJECT_NAME} PRIVATE urlmon)
+    # urlmon: URLDownloadToFile (depth model fetch). dbghelp: crash backtraces.
+    target_link_libraries(${PROJECT_NAME} PRIVATE urlmon dbghelp)
 elseif(APPLE)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         BUILD_RPATH "@loader_path" INSTALL_RPATH "@loader_path")

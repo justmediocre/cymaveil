@@ -13,6 +13,7 @@
 #include "raymath.h"
 
 #include "appearance.h"
+#include "crashlog.h"
 #include "icon_png.h"
 #include "paths.h"
 #include "ui.h"
@@ -115,6 +116,8 @@ int App::Run() {
     setvbuf(stdout, nullptr, _IONBF, 0);
     g_logFile = std::fopen((paths::DataDir() + "/cymaveil.log").c_str(), "w");
     SetTraceLogCallback(FileTraceLog);
+    // Dump a symbolized stack trace to the log if the process crashes.
+    crashlog::Install((paths::DataDir() + "/cymaveil.log").c_str());
     // Fixed-size in screenshot mode so tiling WMs float the window at the
     // requested resolution instead of fitting it into the layout, and no
     // HIGHDPI so shots come out at the exact requested pixel size on any
