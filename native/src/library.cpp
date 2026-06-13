@@ -292,14 +292,21 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
     for (const auto& folder : folders) {
         std::error_code ec;
         fs::recursive_directory_iterator it(folder, fs::directory_options::skip_permission_denied, ec);
-        if (ec) continue;
-        for (const auto& entry : it) {
-            if (!entry.is_regular_file(ec)) continue;
+        // Drive iteration with the non-throwing increment(ec). The range-for's
+        // operator++ throws filesystem_error on a mid-tree error (long paths
+        // >MAX_PATH, junctions/reparse points, transient I/O — far more common
+        // on Windows), and in this worker thread that uncaught throw would call
+        // std::terminate. Stop this tree on error and keep what we collected.
+        const fs::recursive_directory_iterator end;
+        for (; !ec && it != end; it.increment(ec)) {
+            const fs::directory_entry& entry = *it;
+            std::error_code fileEc;
+            if (!entry.is_regular_file(fileEc)) continue;
             const std::string ext = Lower(entry.path().extension().string());
             if (IsSupportedAudio(ext)) {
-                const auto wt = fs::last_write_time(entry.path(), ec);
+                const auto wt = fs::last_write_time(entry.path(), fileEc);
                 const long long mtime =
-                    ec ? 0 : static_cast<long long>(wt.time_since_epoch().count());
+                    fileEc ? 0 : static_cast<long long>(wt.time_since_epoch().count());
                 files.push_back({entry.path(), mtime});
             } else if (IsKnownUnsupported(ext)) {
                 scanSkipped_++;
