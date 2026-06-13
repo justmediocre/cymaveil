@@ -175,7 +175,10 @@ bool DepthEngine::EnsureModel() {
             Ort::SessionOptions opts;
             opts.SetIntraOpNumThreads(2);
             opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-            state->session = std::make_unique<Ort::Session>(state->env, path.c_str(), opts);
+            // Ort::Session wants ORTCHAR_T* (wchar_t on Windows, char elsewhere);
+            // fs::path::c_str() yields exactly that on every platform.
+            const std::filesystem::path modelPath(path);
+            state->session = std::make_unique<Ort::Session>(state->env, modelPath.c_str(), opts);
             Ort::AllocatorWithDefaultOptions alloc;
             state->inputName = state->session->GetInputNameAllocated(0, alloc).get();
             state->outputName = state->session->GetOutputNameAllocated(0, alloc).get();
