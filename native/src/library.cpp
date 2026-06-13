@@ -19,6 +19,15 @@ using nlohmann::json;
 
 namespace {
 
+// fs::path::string() encodes in the OS-native narrow charset — UTF-8 on Linux,
+// but the ANSI codepage on Windows, which is not valid UTF-8 for non-ASCII
+// names. We persist paths as JSON (which requires UTF-8) and key the cache on
+// them, so always go through UTF-8. u8string() yields UTF-8 on every platform.
+std::string Utf8(const fs::path& p) {
+    const std::u8string s = p.u8string();
+    return std::string(reinterpret_cast<const char*>(s.data()), s.size());
+}
+
 std::string HashId(const std::string& s) {
     // FNV-1a 64-bit
     uint64_t h = 1469598103934665603ull;
@@ -189,7 +198,10 @@ void Library::Save() const {
     }
     json j{{"folders", folders_}, {"tracks", std::move(jt)}, {"albums", std::move(ja)}};
     std::ofstream out(paths::LibraryFile());
-    out << j.dump() << '\n';
+    // error_handler::replace: never throw on a stray non-UTF-8 byte (e.g. a path
+    // from a codepage we didn't normalize) — substitute U+FFFD instead. An
+    // uncaught dump() throw here was crashing the whole app at scan completion.
+    out << j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) << '\n';
 }
 
 void Library::AddFolder(const std::string& path) {
@@ -378,12 +390,12 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
         // exception here (TagLib, std, ...) would abort the whole process
         // (seen as a ucrtbase.dll fault on Windows). Skip the file instead.
         try {
-            TraceLog(LOG_INFO, "SCAN: %s", path.string().c_str());
+            TraceLog(LOG_INFO, "SCAN: %s", Utf8(path).c_str());
             // Unchanged since the last scan? Reuse the cached track and its album
             // — but only if the album's cached art still exists on disk. If the
             // art cache was deleted, fall through to a full parse so it gets
             // re-extracted from the file's embedded artwork.
-            if (const auto cached = oldByPath.find(path.string());
+            if (const auto cached = oldByPath.find(Utf8(path));
                 cached != oldByPath.end() && found.mtime != 0 &&
                 cached->second->mtime == found.mtime) {
                 const Track& old = *cached->second;
@@ -403,11 +415,14 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
                 }
             }
 
-            TagLib::FileRef f(path.string().c_str(), true, TagLib::AudioProperties::Average);
+            // path.c_str() is wchar_t* on Windows / char* elsewhere; TagLib's
+            // FileName takes the matching overload, so non-ASCII paths open
+            // without depending on the process codepage.
+            TagLib::FileRef f(path.c_str(), true, TagLib::AudioProperties::Average);
             if (f.isNull() || f.file() == nullptr) continue;
 
             Track t;
-            t.filePath = path.string();
+            t.filePath = Utf8(path);
             t.id = HashId(t.filePath);
             t.mtime = found.mtime;
 
@@ -482,7 +497,7 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
                 }
             }
 
-            if (t.title.empty()) t.title = path.stem().string();
+            if (t.title.empty()) t.title = Utf8(path.stem());
             if (t.artist.empty()) t.artist = "Unknown Artist";
             if (const TagLib::AudioProperties* ap = f.audioProperties()) {
                 t.duration = static_cast<float>(ap->lengthInMilliseconds()) / 1000.0f;

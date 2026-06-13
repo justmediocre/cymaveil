@@ -1,6 +1,16 @@
 #include "app.h"
 
+#ifdef _WIN32
+#include <clocale>
+#endif
+
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    // Make the CRT's narrow file APIs (raylib's fopen for playback/art) treat
+    // paths as UTF-8 — matching how the library stores them — so non-ASCII
+    // filenames open. No-op on Windows older than 10 1803 (no ".UTF8" locale).
+    std::setlocale(LC_ALL, ".UTF8");
+#endif
     App app;
     // Optional: music folders as CLI args (also available via drag & drop)
     for (int i = 1; i < argc; i++) {
