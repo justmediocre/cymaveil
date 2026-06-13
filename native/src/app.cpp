@@ -119,6 +119,23 @@ int App::Run() {
     const Vector2 dpi = GetWindowScaleDPI();  // {1,1} without FLAG_WINDOW_HIGHDPI
     SetWindowMinSize(static_cast<int>(980 * (onWayland ? 1.0f : dpi.x)),
                      static_cast<int>(640 * (onWayland ? 1.0f : dpi.y)));
+#ifndef __linux__
+    // GLFW leaves initial placement to the OS, and on HiDPI/multi-monitor
+    // Windows the SCALE_TO_MONITOR growth can shove the window (title bar and
+    // all) off-screen. Center it on its monitor in physical pixels — render
+    // size and monitor size share units here — and clamp so the top-left never
+    // lands above/left of the monitor. (Linux keeps its WM-driven placement;
+    // SetWindowPosition is a no-op on Wayland anyway.)
+    {
+        const int mon = GetCurrentMonitor();
+        const Vector2 mpos = GetMonitorPosition(mon);
+        const int mx = static_cast<int>(mpos.x);
+        const int my = static_cast<int>(mpos.y);
+        int x = mx + (GetMonitorWidth(mon) - GetRenderWidth()) / 2;
+        int y = my + (GetMonitorHeight(mon) - GetRenderHeight()) / 2;
+        SetWindowPosition(x < mx ? mx : x, y < my ? my : y);
+    }
+#endif
     SetExitKey(KEY_NULL);  // ESC navigates, doesn't quit
     SetTargetFPS(targetFps_);
     InitAudioDevice();
