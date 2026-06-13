@@ -378,6 +378,7 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
         // exception here (TagLib, std, ...) would abort the whole process
         // (seen as a ucrtbase.dll fault on Windows). Skip the file instead.
         try {
+            TraceLog(LOG_INFO, "SCAN: %s", path.string().c_str());
             // Unchanged since the last scan? Reuse the cached track and its album
             // — but only if the album's cached art still exists on disk. If the
             // art cache was deleted, fall through to a full parse so it gets
@@ -488,7 +489,9 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
             }
             tracks.push_back(std::move(t));
         } catch (const std::exception& e) {
-            TraceLog(LOG_WARNING, "LIBRARY: skipped %s: %s", path.string().c_str(), e.what());
+            // Don't call path.string() here — it can itself throw on Windows for
+            // un-encodable names, which would escape the worker.
+            TraceLog(LOG_WARNING, "LIBRARY: skipped a file: %s", e.what());
         }
     }
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -17,6 +18,24 @@
 #include "ui.h"
 
 namespace {
+
+// Mirror every raylib/TraceLog line to a file in the data dir, flushed per
+// line, so a hard crash (which never reaches a clean shutdown and can lose
+// buffered stdout) still leaves a trail whose last line points at the culprit.
+FILE* g_logFile = nullptr;
+void FileTraceLog(int level, const char* text, va_list args) {
+    (void)level;
+    va_list copy;
+    va_copy(copy, args);
+    std::vprintf(text, args);
+    std::putchar('\n');
+    if (g_logFile != nullptr) {
+        std::vfprintf(g_logFile, text, copy);
+        std::fputc('\n', g_logFile);
+        std::fflush(g_logFile);
+    }
+    va_end(copy);
+}
 
 constexpr float kSidebarW = 220.0f;
 constexpr float kMiniPlayerH = 72.0f;
@@ -90,8 +109,11 @@ void ArtCache::Clear() {
 
 int App::Run() {
     // Unbuffered logging so a hard crash (e.g. a bad decode corrupting the heap)
-    // doesn't swallow the last TraceLog lines that point at the culprit.
+    // doesn't swallow the last TraceLog lines that point at the culprit. Also
+    // tee everything to <data dir>/cymaveil.log for when no console is attached.
     setvbuf(stdout, nullptr, _IONBF, 0);
+    g_logFile = std::fopen((paths::DataDir() + "/cymaveil.log").c_str(), "w");
+    SetTraceLogCallback(FileTraceLog);
     // Fixed-size in screenshot mode so tiling WMs float the window at the
     // requested resolution instead of fitting it into the layout, and no
     // HIGHDPI so shots come out at the exact requested pixel size on any
