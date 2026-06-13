@@ -377,6 +377,7 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
         }
     }
     scanTotal_ = static_cast<int>(files.size());
+    TraceLog(LOG_INFO, "LIBRARY: scanning %d files", scanTotal_.load());
 
     std::vector<Track> tracks;
     std::unordered_map<std::string, Album> albums;
@@ -385,12 +386,13 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
     for (const auto& found : files) {
         const fs::path& path = found.path;
         scanCurrent_++;
+        if (scanCurrent_ % 250 == 0)
+            TraceLog(LOG_INFO, "LIBRARY: scanned %d/%d", scanCurrent_.load(), scanTotal_.load());
 
         // One malformed file must not take down the scan worker: an uncaught
         // exception here (TagLib, std, ...) would abort the whole process
         // (seen as a ucrtbase.dll fault on Windows). Skip the file instead.
         try {
-            TraceLog(LOG_INFO, "SCAN: %s", Utf8(path).c_str());
             // Unchanged since the last scan? Reuse the cached track and its album
             // — but only if the album's cached art still exists on disk. If the
             // art cache was deleted, fall through to a full parse so it gets
@@ -528,6 +530,8 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
         if (album.year == 0) album.year = oa->second->year;
     }
 
+    TraceLog(LOG_INFO, "LIBRARY: scan complete — %zu tracks, %zu albums", tracks.size(),
+             albums.size());
     {
         std::lock_guard<std::mutex> lock(resultMutex_);
         pendingGeneration_ = generation;
