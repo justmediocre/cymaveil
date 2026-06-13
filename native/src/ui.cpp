@@ -58,6 +58,12 @@ std::vector<std::string> FontCandidates() {
         fonts + "segoeui.ttf",  // Segoe UI — default Windows UI face
         fonts + "arial.ttf",    // fallback present on every install
     };
+#elif defined(__APPLE__)
+    return {
+        "/System/Library/Fonts/Supplemental/Arial.ttf",  // plain ttf, full coverage
+        "/Library/Fonts/Arial.ttf",                      // older macOS location
+        "/System/Library/Fonts/Helvetica.ttc",           // always present (face 0)
+    };
 #else
     return {
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",       // debian/ubuntu (dev container)

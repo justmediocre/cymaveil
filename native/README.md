@@ -51,6 +51,31 @@ next to the executable as a post-build step. The Linux-only features (inotify fi
 watching, D-Bus/MPRIS, the freedesktop appearance portal) compile to no-op stubs on
 Windows; everything else — playback, library, visualizer, depth layers — is shared.
 
+### macOS
+
+Needs the Xcode Command Line Tools (`xcode-select --install`) and CMake. From the
+repo root:
+
+```sh
+cmake -S native -B native/build -G Ninja
+cmake --build native/build
+open native/build/cymaveil/cymaveil.app
+```
+
+The build produces a `cymaveil.app` bundle (universal2 ONNX Runtime, so one build
+runs on both Apple Silicon and Intel; the dylib is bundled in `Contents/MacOS` and
+resolved via an `@loader_path` rpath). The same Linux-only features stub out here.
+
+To package a disk image:
+
+```sh
+cd native/build && cpack   # → Cymaveil-<version>.dmg
+```
+
+The `.dmg` is **unsigned** — on first launch macOS Gatekeeper will block it.
+Right-click the app → **Open** (then confirm), or clear the quarantine bit:
+`xattr -dr com.apple.quarantine /Applications/cymaveil.app`.
+
 ## Usage
 
 - **Drag & drop** a music folder onto the window to add it to the library (or pass folders
@@ -74,7 +99,8 @@ Windows; everything else — playback, library, visualizer, depth layers — is 
   **B** animate a mosaic tile · **Esc** back · **F3** debug overlay.
 
 Library cache, settings, playlists, and extracted album art live in
-`~/.local/share/cymaveil/` (`%APPDATA%\cymaveil\` on Windows). Playlist exports are
+`~/.local/share/cymaveil/` (`%APPDATA%\cymaveil\` on Windows,
+`~/Library/Application Support/cymaveil/` on macOS). Playlist exports are
 written to `~/Music/<name>.m3u8` (`%USERPROFILE%\Music\` on Windows).
 
 **Desktop integration:** copy `native/cymaveil.desktop` to

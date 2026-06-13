@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24...3.30)
-project(cymaveil CXX)
+project(cymaveil VERSION 0.1.0 LANGUAGES CXX)
 
 include(FetchContent)
 
@@ -63,11 +63,13 @@ FetchContent_Declare(
 
 # ── ONNX Runtime (Depth Anything v2 inference for depth layers) ──
 # Microsoft ships prebuilt binaries per platform; pick the matching archive.
-# The Windows package is MSVC-built (.dll + .lib import library), the Linux
-# package a versioned .so.
+# Windows is MSVC-built (.dll + .lib import library), Linux a versioned .so,
+# macOS a universal2 .dylib (one build for Apple Silicon + Intel).
 set(ORT_VERSION 1.20.1)
 if(WIN32)
     set(ORT_URL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip)
+elseif(APPLE)
+    set(ORT_URL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-osx-universal2-${ORT_VERSION}.tgz)
 else()
     set(ORT_URL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz)
 endif()
@@ -105,6 +107,10 @@ if(WIN32)
         IMPORTED_LOCATION ${onnxruntime_SOURCE_DIR}/lib/onnxruntime.dll
         IMPORTED_IMPLIB ${onnxruntime_SOURCE_DIR}/lib/onnxruntime.lib
         INTERFACE_INCLUDE_DIRECTORIES ${onnxruntime_SOURCE_DIR}/include)
+elseif(APPLE)
+    set_target_properties(ort PROPERTIES
+        IMPORTED_LOCATION ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.${ORT_VERSION}.dylib
+        INTERFACE_INCLUDE_DIRECTORIES ${onnxruntime_SOURCE_DIR}/include)
 else()
     set_target_properties(ort PROPERTIES
         IMPORTED_LOCATION ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so.${ORT_VERSION}
@@ -133,15 +139,21 @@ else()
 endif()
 
 # Ship the ONNX Runtime shared lib next to the binary so it resolves at runtime.
-# On Linux that needs an $ORIGIN rpath (ELF-only); on Windows the executable's
-# own directory is already on the DLL search path.
-if(NOT WIN32)
-    set_target_properties(${PROJECT_NAME} PROPERTIES BUILD_RPATH "$ORIGIN")
-    file(GLOB ORT_SHARED_LIBS ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so*)
-else()
+# Linux needs an $ORIGIN rpath and macOS an @loader_path rpath (both mean "next
+# to me"); on Windows the executable's own directory is already on the DLL
+# search path. With MACOSX_BUNDLE the binary lives in cymaveil.app/Contents/MacOS,
+# and the POST_BUILD copy below puts the dylib right beside it.
+if(WIN32)
     file(GLOB ORT_SHARED_LIBS ${onnxruntime_SOURCE_DIR}/lib/onnxruntime*.dll)
     # URLDownloadToFile (depth model fetch) lives in urlmon.
     target_link_libraries(${PROJECT_NAME} PRIVATE urlmon)
+elseif(APPLE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        BUILD_RPATH "@loader_path" INSTALL_RPATH "@loader_path")
+    file(GLOB ORT_SHARED_LIBS ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime*.dylib)
+else()
+    set_target_properties(${PROJECT_NAME} PROPERTIES BUILD_RPATH "$ORIGIN")
+    file(GLOB ORT_SHARED_LIBS ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so*)
 endif()
 foreach(ORT_LIB ${ORT_SHARED_LIBS})
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
@@ -173,4 +185,50 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
+
+    # ── macOS .app bundle ──
+    # SetWindowIcon is a no-op on macOS, so the Dock/Finder icon must come from
+    # the bundle. Build cymaveil.icns from build/icon.png (512px source, so cap
+    # the iconset at 512) using the system sips/iconutil, then drop it into the
+    # bundle's Resources. The POST_BUILD ONNX-dylib copy above already targets
+    # Contents/MacOS (TARGET_FILE_DIR resolves there once MACOSX_BUNDLE is on).
+    set(ICNS_OUT ${CMAKE_BINARY_DIR}/cymaveil.icns)
+    set(ICONSET_DIR ${CMAKE_BINARY_DIR}/cymaveil.iconset)
+    add_custom_command(
+        OUTPUT ${ICNS_OUT}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${ICONSET_DIR}
+        COMMAND sips -z 16 16   ${ICON_PNG} --out ${ICONSET_DIR}/icon_16x16.png
+        COMMAND sips -z 32 32   ${ICON_PNG} --out ${ICONSET_DIR}/icon_16x16@2x.png
+        COMMAND sips -z 32 32   ${ICON_PNG} --out ${ICONSET_DIR}/icon_32x32.png
+        COMMAND sips -z 64 64   ${ICON_PNG} --out ${ICONSET_DIR}/icon_32x32@2x.png
+        COMMAND sips -z 128 128 ${ICON_PNG} --out ${ICONSET_DIR}/icon_128x128.png
+        COMMAND sips -z 256 256 ${ICON_PNG} --out ${ICONSET_DIR}/icon_128x128@2x.png
+        COMMAND sips -z 256 256 ${ICON_PNG} --out ${ICONSET_DIR}/icon_256x256.png
+        COMMAND sips -z 512 512 ${ICON_PNG} --out ${ICONSET_DIR}/icon_256x256@2x.png
+        COMMAND sips -z 512 512 ${ICON_PNG} --out ${ICONSET_DIR}/icon_512x512.png
+        COMMAND iconutil -c icns ${ICONSET_DIR} -o ${ICNS_OUT}
+        DEPENDS ${ICON_PNG}
+        COMMENT "Generating cymaveil.icns from icon.png")
+    set_source_files_properties(${ICNS_OUT} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(${PROJECT_NAME} PRIVATE ${ICNS_OUT})
+
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE ON
+        MACOSX_BUNDLE_BUNDLE_NAME "Cymaveil"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.cymaveil.app"
+        MACOSX_BUNDLE_ICON_FILE "cymaveil.icns"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+
+    # ── .dmg packaging (unsigned) ──
+    # `cpack` from the build dir produces Cymaveil-<ver>.dmg containing the .app.
+    # install re-copies the target fresh, so the ONNX dylib must be installed into
+    # the bundle explicitly (the POST_BUILD copy only touches the build tree).
+    install(TARGETS ${PROJECT_NAME} BUNDLE DESTINATION .)
+    install(FILES ${ORT_SHARED_LIBS} DESTINATION cymaveil.app/Contents/MacOS)
+    set(CPACK_GENERATOR "DragNDrop")
+    set(CPACK_PACKAGE_NAME "Cymaveil")
+    set(CPACK_PACKAGE_FILE_NAME "Cymaveil-${PROJECT_VERSION}")
+    set(CPACK_DMG_VOLUME_NAME "Cymaveil")
+    include(CPack)
 endif()

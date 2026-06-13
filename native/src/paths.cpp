@@ -26,6 +26,9 @@ std::string DataDir() {
     const char* appdata = std::getenv("APPDATA");
     const std::string base = appdata && *appdata ? appdata : Home();
     return EnsureDir(base + "/cymaveil");
+#elif defined(__APPLE__)
+    // The macOS convention for per-user app data.
+    return EnsureDir(Home() + "/Library/Application Support/cymaveil");
 #else
     const char* xdg = std::getenv("XDG_DATA_HOME");
     std::string base;
