@@ -84,6 +84,7 @@ const Texture2D* ArtCache::Get(const Album& album) {
 void ArtCache::ProcessQueue(int budget) {
     while (budget-- > 0 && !wanted_.empty()) {
         auto it = wanted_.begin();
+        TraceLog(LOG_INFO, "ART: loading %s", it->second.c_str());
         Image img = LoadImage(it->second.c_str());
         if (img.data != nullptr) {
             Texture2D tex = LoadTextureFromImage(img);
