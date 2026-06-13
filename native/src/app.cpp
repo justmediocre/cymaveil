@@ -108,10 +108,14 @@ int App::Run() {
     // GLFW size limits are physical pixels on X11 but logical units on
     // Wayland; convert so the minimum stays 980x640 logical either way.
     // Backend check mirrors GLFW's own platform selection (platform.c).
+#ifdef __linux__
     const char* session = std::getenv("XDG_SESSION_TYPE");
     const bool onWayland =
         std::getenv("WAYLAND_DISPLAY") != nullptr &&
         !(session != nullptr && std::strcmp(session, "x11") == 0 && std::getenv("DISPLAY") != nullptr);
+#else
+    const bool onWayland = false;  // Win32/Cocoa report physical pixels like X11
+#endif
     const Vector2 dpi = GetWindowScaleDPI();  // {1,1} without FLAG_WINDOW_HIGHDPI
     SetWindowMinSize(static_cast<int>(980 * (onWayland ? 1.0f : dpi.x)),
                      static_cast<int>(640 * (onWayland ? 1.0f : dpi.y)));
@@ -1916,7 +1920,7 @@ void App::DrawFolderSettings(Rectangle anchor) {
         if (path.empty()) return;
         // Expand a leading ~ only for "~" or a "~/" prefix; leave "~user" forms untouched.
         if (path == "~" || (path.size() >= 2 && path[0] == '~' && path[1] == '/')) {
-            if (const char* home = std::getenv("HOME"); home != nullptr) path = home + path.substr(1);
+            path = paths::Home() + path.substr(1);
         }
         if (DirectoryExists(path.c_str())) {
             library_.AddFolder(path);

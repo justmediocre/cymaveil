@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -44,14 +46,29 @@ int g_fontDataSize = 0;
 std::vector<int> g_cps;
 std::unordered_map<int, Font> g_fonts;
 
-const char* kFontCandidates[] = {
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",       // debian/ubuntu (dev container)
-    "/usr/share/fonts/TTF/DejaVuSans.ttf",                   // arch
-    "/usr/share/fonts/noto/NotoSans-Regular.ttf",            // arch noto
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",   // debian noto
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
-};
+// System fonts tried in order; first one that loads wins. The set covers the
+// Latin/Greek/Cyrillic ranges in Codepoints(). Built at runtime because the
+// Windows font directory comes from an environment variable.
+std::vector<std::string> FontCandidates() {
+#ifdef _WIN32
+    const char* windir = std::getenv("WINDIR");
+    if (windir == nullptr || *windir == '\0') windir = std::getenv("SystemRoot");
+    const std::string fonts = std::string(windir && *windir ? windir : "C:/Windows") + "/Fonts/";
+    return {
+        fonts + "segoeui.ttf",  // Segoe UI — default Windows UI face
+        fonts + "arial.ttf",    // fallback present on every install
+    };
+#else
+    return {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",       // debian/ubuntu (dev container)
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",                   // arch
+        "/usr/share/fonts/noto/NotoSans-Regular.ttf",            // arch noto
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",   // debian noto
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+    };
+#endif
+}
 
 std::vector<int> Codepoints() {
     std::vector<int> cps;
@@ -105,14 +122,14 @@ void Tri(Vector2 a, Vector2 b, Vector2 c, Color col) {
 
 void Init() {
     g_cps = Codepoints();
-    for (const char* path : kFontCandidates) {
+    for (const std::string& path : FontCandidates()) {
         if (std::filesystem::exists(path)) {
             int dataSize = 0;
-            unsigned char* data = LoadFileData(path, &dataSize);
+            unsigned char* data = LoadFileData(path.c_str(), &dataSize);
             if (data != nullptr && dataSize > 0) {
                 g_fontData = data;
                 g_fontDataSize = dataSize;
-                TraceLog(LOG_INFO, "UI: font %s, dpi scale %.2f", path, DpiScale());
+                TraceLog(LOG_INFO, "UI: font %s, dpi scale %.2f", path.c_str(), DpiScale());
                 break;
             }
             if (data != nullptr) UnloadFileData(data);

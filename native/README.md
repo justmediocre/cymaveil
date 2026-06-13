@@ -27,12 +27,29 @@ cmake --build native/build
 ./native/build/cymaveil/cymaveil [music-folder ...]
 ```
 
-Dependencies (raylib, TagLib, nlohmann/json) are pulled via CMake `FetchContent` on first
-configure — no system installs needed beyond the windowing/audio dev packages (plus
-`libdbus-1-dev` for MPRIS; optional, the build falls back to a stub without it).
+Dependencies (raylib, TagLib, nlohmann/json, ONNX Runtime) are pulled via CMake
+`FetchContent` on first configure — no system installs needed beyond the windowing/audio dev
+packages (plus `libdbus-1-dev` for MPRIS; optional, the build falls back to a stub without it).
 
 Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire socket
 (`$XDG_RUNTIME_DIR/pulse` is mounted; miniaudio picks it up via `PULSE_SERVER`).
+
+### Windows (MSVC)
+
+Needs Visual Studio 2022 with the **Desktop development with C++** workload (which
+includes CMake), then from the repo root:
+
+```bat
+cmake -S native -B native/build -G "Visual Studio 17 2022" -A x64
+cmake --build native/build --config Release
+native\build\cymaveil\Release\Cymaveil.exe
+```
+
+Dependencies come through `FetchContent` exactly as on Linux — the configure step
+automatically selects the win-x64 ONNX Runtime build, and `onnxruntime.dll` is copied
+next to the executable as a post-build step. The Linux-only features (inotify file
+watching, D-Bus/MPRIS, the freedesktop appearance portal) compile to no-op stubs on
+Windows; everything else — playback, library, visualizer, depth layers — is shared.
 
 ## Usage
 
@@ -57,7 +74,8 @@ Audio inside the dev container is forwarded to the host's PulseAudio/PipeWire so
   **B** animate a mosaic tile · **Esc** back · **F3** debug overlay.
 
 Library cache, settings, playlists, and extracted album art live in
-`~/.local/share/cymaveil/`. Playlist exports are written to `~/Music/<name>.m3u8`.
+`~/.local/share/cymaveil/` (`%APPDATA%\cymaveil\` on Windows). Playlist exports are
+written to `~/Music/<name>.m3u8` (`%USERPROFILE%\Music\` on Windows).
 
 **Desktop integration:** copy `native/cymaveil.desktop` to
 `~/.local/share/applications/` and point `Exec`/`Icon` at the built binary and
@@ -102,8 +120,8 @@ Done in this first slice:
       disk as 256px grayscale PNGs; the Now Playing view renders art, then the
       full-surface visualizer (48 bars, shadow/glow/core passes), then the masked
       foreground on top — so the bars play behind the subject. The ~25 MB model
-      downloads to `~/.local/share/cymaveil/models/` on first use (needs `curl`).
-      Disable with `depthLayers: false` in config.json.
+      downloads to the data dir's `models/` on first use (via libcurl-style fetch on
+      Linux, `URLDownloadToFile` on Windows). Disable with `depthLayers: false` in config.json.
 - [x] Mini player while browsing (ported from `MiniPlayer.tsx`): compact bar with
       scrubbable hairline progress, play/pause + next, click to expand into Now
       Playing; the full transport lives on the Now Playing view

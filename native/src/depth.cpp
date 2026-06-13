@@ -9,6 +9,16 @@
 
 #include <onnxruntime_cxx_api.h>
 
+#ifdef _WIN32
+// Suppress the GDI/USER surface so windows.h doesn't clash with raylib's
+// Rectangle/LoadImage/DrawText/CloseWindow etc. — we only need urlmon here.
+#define WIN32_LEAN_AND_MEAN
+#define NOGDI
+#define NOUSER
+#include <windows.h>
+#include <urlmon.h>  // URLDownloadToFileA — linked via urlmon (see CMakeLists)
+#endif
+
 #include "raylib.h"
 
 #include "maskpipe.h"
@@ -22,6 +32,19 @@ constexpr int kMaskSize = 256;
 const char* kModelUrl =
     "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/"
     "model_quantized.onnx";
+
+// Fetch url to dest over HTTPS. Windows uses urlmon (URLDownloadToFile follows
+// the HuggingFace redirect); elsewhere we shell out to curl, which every desktop
+// Linux ships. Returns true on success.
+bool DownloadFile(const char* url, const std::string& dest) {
+#ifdef _WIN32
+    return URLDownloadToFileA(nullptr, url, dest.c_str(), 0, nullptr) == S_OK;
+#else
+    const std::string cmd =
+        "curl --location --fail --silent --output \"" + dest + "\" \"" + url + "\"";
+    return std::system(cmd.c_str()) == 0;
+#endif
+}
 
 std::string ModelPath() {
     const std::string dir = paths::DataDir() + "/models";
@@ -157,10 +180,8 @@ bool DepthEngine::EnsureModel() {
     if (!std::filesystem::exists(path, ec)) {
         status_ = Status::DownloadingModel;
         const std::string tmp = path + ".part";
-        const std::string cmd =
-            "curl --location --fail --silent --output \"" + tmp + "\" \"" + kModelUrl + "\"";
-        if (std::system(cmd.c_str()) != 0) {
-            TraceLog(LOG_WARNING, "DEPTH: model download failed (is curl installed?)");
+        if (!DownloadFile(kModelUrl, tmp)) {
+            TraceLog(LOG_WARNING, "DEPTH: model download failed");
             std::filesystem::remove(tmp, ec);
             return false;
         }

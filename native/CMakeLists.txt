@@ -19,9 +19,12 @@ endif()
 set(RAYLIB_VERSION 6.0)
 
 # Build GLFW with both backends; it picks Wayland at runtime when
-# WAYLAND_DISPLAY is set and falls back to X11 otherwise.
-set(GLFW_BUILD_WAYLAND ON CACHE BOOL "" FORCE)
-set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+# WAYLAND_DISPLAY is set and falls back to X11 otherwise. Linux-only — GLFW
+# uses the native Win32 backend on Windows and ignores these.
+if(UNIX AND NOT APPLE)
+    set(GLFW_BUILD_WAYLAND ON CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+endif()
 
 # PATCH_COMMANDs: fix a double free in raylib 6.0's FLAC unload path, set the
 # Wayland app_id / X11 WM_CLASS so desktops can match the window to
@@ -59,11 +62,19 @@ FetchContent_Declare(
 )
 
 # ── ONNX Runtime (Depth Anything v2 inference for depth layers) ──
+# Microsoft ships prebuilt binaries per platform; pick the matching archive.
+# The Windows package is MSVC-built (.dll + .lib import library), the Linux
+# package a versioned .so.
 set(ORT_VERSION 1.20.1)
+if(WIN32)
+    set(ORT_URL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip)
+else()
+    set(ORT_URL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz)
+endif()
 FetchContent_Declare(
     onnxruntime
     DOWNLOAD_EXTRACT_TIMESTAMP OFF
-    URL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz
+    URL ${ORT_URL}
 )
 
 # ── nlohmann/json (library cache + settings persistence) ──
@@ -89,9 +100,16 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME})
 
 add_library(ort SHARED IMPORTED)
-set_target_properties(ort PROPERTIES
-    IMPORTED_LOCATION ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so.${ORT_VERSION}
-    INTERFACE_INCLUDE_DIRECTORIES ${onnxruntime_SOURCE_DIR}/include)
+if(WIN32)
+    set_target_properties(ort PROPERTIES
+        IMPORTED_LOCATION ${onnxruntime_SOURCE_DIR}/lib/onnxruntime.dll
+        IMPORTED_IMPLIB ${onnxruntime_SOURCE_DIR}/lib/onnxruntime.lib
+        INTERFACE_INCLUDE_DIRECTORIES ${onnxruntime_SOURCE_DIR}/include)
+else()
+    set_target_properties(ort PROPERTIES
+        IMPORTED_LOCATION ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so.${ORT_VERSION}
+        INTERFACE_INCLUDE_DIRECTORIES ${onnxruntime_SOURCE_DIR}/include)
+endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     raylib
@@ -114,10 +132,17 @@ else()
     message(STATUS "dbus-1 not found - building without MPRIS support")
 endif()
 
-# Ship libonnxruntime next to the binary and resolve it via $ORIGIN so the
-# build runs both inside the dev container and on the host.
-set_target_properties(${PROJECT_NAME} PROPERTIES BUILD_RPATH "$ORIGIN")
-file(GLOB ORT_SHARED_LIBS ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so*)
+# Ship the ONNX Runtime shared lib next to the binary so it resolves at runtime.
+# On Linux that needs an $ORIGIN rpath (ELF-only); on Windows the executable's
+# own directory is already on the DLL search path.
+if(NOT WIN32)
+    set_target_properties(${PROJECT_NAME} PROPERTIES BUILD_RPATH "$ORIGIN")
+    file(GLOB ORT_SHARED_LIBS ${onnxruntime_SOURCE_DIR}/lib/libonnxruntime.so*)
+else()
+    file(GLOB ORT_SHARED_LIBS ${onnxruntime_SOURCE_DIR}/lib/onnxruntime*.dll)
+    # URLDownloadToFile (depth model fetch) lives in urlmon.
+    target_link_libraries(${PROJECT_NAME} PRIVATE urlmon)
+endif()
 foreach(ORT_LIB ${ORT_SHARED_LIBS})
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_LIB} $<TARGET_FILE_DIR:${PROJECT_NAME}>)

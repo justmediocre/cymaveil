@@ -15,5 +15,7 @@ std::string PlaylistsFile();
 std::string SessionFile();
 // Where playlist exports land: $HOME/Music when it exists, else $HOME.
 std::string MusicDir();
+// The user's home directory ($HOME on Unix, %USERPROFILE% on Windows); "." if unset.
+std::string Home();
 
 }  // namespace paths
