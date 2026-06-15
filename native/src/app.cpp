@@ -56,6 +56,33 @@ Color Brighten(Color c, float t) {
                  static_cast<unsigned char>(c.b + (255 - c.b) * t), 255};
 }
 
+// The monitor the window mostly covers. raylib's GetCurrentMonitor() infers
+// this from the window's center point and can fall back to the primary display;
+// picking the largest-overlap monitor is steadier and copes with a window
+// straddling two screens.
+int MonitorForWindow() {
+    const int count = GetMonitorCount();
+    if (count <= 1) return 0;
+    const Vector2 wp = GetWindowPosition();
+    const float ww = static_cast<float>(GetScreenWidth());
+    const float wh = static_cast<float>(GetScreenHeight());
+    int best = 0;
+    float bestArea = -1.0f;
+    for (int i = 0; i < count; i++) {
+        const Vector2 mp = GetMonitorPosition(i);
+        const float mw = static_cast<float>(GetMonitorWidth(i));
+        const float mh = static_cast<float>(GetMonitorHeight(i));
+        const float ox = std::max(0.0f, std::min(wp.x + ww, mp.x + mw) - std::max(wp.x, mp.x));
+        const float oy = std::max(0.0f, std::min(wp.y + wh, mp.y + mh) - std::max(wp.y, mp.y));
+        const float area = ox * oy;
+        if (area > bestArea) {
+            bestArea = area;
+            best = i;
+        }
+    }
+    return best;
+}
+
 // Slider with track + fill + knob visuals. Returns true while interacting.
 bool BarSlider(Rectangle r, float* value, bool* dragging, Color fill) {
     DrawRectangleRounded(r, 1.0f, 4, Fade(ui::theme.text, 0.12f));
@@ -1045,7 +1072,18 @@ void App::ToggleFullscreenMode() {
     // GLFW_DECORATED, which is the order X11 actually honours. It targets the
     // monitor's current video mode (GLFW_DONT_CARE refresh), so there's no
     // resolution switch — it stays at the desktop resolution.
-    ToggleFullscreen();
+    if (!fullscreen_) {
+        // Pin the monitor the window is actually on. Under X11 GetCurrentMonitor()
+        // can land on the primary display, so we reassert the correct one from the
+        // window rectangle. Under Wayland the window position is unavailable, so
+        // detection collapses to monitor 0 (no correction) and a raylib/GLFW patch
+        // makes the compositor fullscreen on the window's current output instead.
+        const int monitor = MonitorForWindow();
+        ToggleFullscreen();
+        if (IsWindowFullscreen() && GetCurrentMonitor() != monitor) SetWindowMonitor(monitor);
+    } else {
+        ToggleFullscreen();
+    }
     fullscreen_ = IsWindowFullscreen();
     // Reveal the cursor immediately on the way out (and reset the idle timer so
     // it lingers for a moment on the way in).

@@ -28,8 +28,10 @@ endif()
 
 # PATCH_COMMANDs: fix a double free in raylib 6.0's FLAC unload path, set the
 # Wayland app_id / X11 WM_CLASS so desktops can match the window to
-# cymaveil.desktop (icon + taskbar media controls), and fix HiDPI mouse scaling
-# being wrongly re-applied on resize under Wayland; see cmake/patch-raylib-*.
+# cymaveil.desktop (icon + taskbar media controls), fix HiDPI mouse scaling
+# being wrongly re-applied on resize under Wayland, and make fullscreen use the
+# window's current Wayland output instead of always the primary monitor; see
+# cmake/patch-raylib-*.
 FetchContent_Declare(
     raylib
     DOWNLOAD_EXTRACT_TIMESTAMP OFF
@@ -37,6 +39,7 @@ FetchContent_Declare(
     PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch-raylib-flac.cmake
     COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch-raylib-appid.cmake
     COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch-raylib-mousescale.cmake
+    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch-raylib-wayland-fullscreen.cmake
 )
 
 # ── TagLib (metadata + embedded artwork) ──
