@@ -1036,12 +1036,20 @@ void App::UpdatePacing() {
     //  - playing + unfocused: 30 fps (stream still needs feeding)
     //  - recent input / scan / pending art decodes: 60 fps
     //  - otherwise: block on OS events (near-zero usage until input arrives)
+    // Immersive transport fade still easing: keep drawing so it animates all the
+    // way to its resting opacity instead of stalling into event-waiting partway
+    // (or, at the start of a fade-out, before it has moved off full at all —
+    // which froze it visible and woke in jerky single-event steps). Compare to
+    // the same target DrawNowPlayingView eases toward, not a mid-range band.
+    const float ctrlTarget = (GetTime() - lastActivity_ < 2.5) ? 1.0f : 0.0f;
+    const bool ctrlFading =
+        fullscreen_ && view_ == View::NowPlaying && ctrlFade_ != ctrlTarget;
     const bool busy = library_.ScanActive() || art_.HasPendingWork() || seekDragging_ ||
                       volumeDragging_ || mosaic_.Animating() || depth_.Busy() ||
                       vinyl_.Animating() || brush_.open || ui::MarqueeActive() ||
                       queueAnim_ != (config_.queuePanel ? 1.0f : 0.0f) ||
                       !editPlaylistId_.empty() ||  // caret blink
-                      GetTime() < toastUntil_;
+                      ctrlFading || GetTime() < toastUntil_;
     const bool recentInput = GetTime() - lastActivity_ < 2.5;
 
     int fps;
@@ -1848,8 +1856,15 @@ void App::DrawNowPlayingView(Rectangle r) {
     // still transparent, so it reveals the controls instead of toggling one.
     if (fullscreen_) {
         const float target = (GetTime() - lastActivity_ < 2.5) ? 1.0f : 0.0f;
-        const float step = GetFrameTime() / 0.25f;  // ~quarter-second fade
-        ctrlFade_ = Clamp(ctrlFade_ + (ctrlFade_ < target ? step : -step), 0.0f, 1.0f);
+        // Clamp dt: waking from event-waiting reports the whole blocked span as
+        // one frame, which would snap the fade instead of easing it.
+        const float dt = std::min(GetFrameTime(), 1.0f / 30.0f);
+        const float step = dt / 0.25f;  // ~quarter-second fade
+        // Approach the target without overshooting: stepping past it (then
+        // correcting next frame) makes the opacity wobble ±step forever once
+        // "settled" — a per-frame flicker that scales with frame time.
+        if (ctrlFade_ < target) ctrlFade_ = std::min(target, ctrlFade_ + step);
+        else if (ctrlFade_ > target) ctrlFade_ = std::max(target, ctrlFade_ - step);
     } else {
         ctrlFade_ = 1.0f;
     }
