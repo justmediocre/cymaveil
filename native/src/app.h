@@ -249,6 +249,9 @@ private:
     // Borderless fullscreen; Now Playing hides the sidebar and fades the cursor.
     bool fullscreen_ = false;
     bool cursorHidden_ = false;
+    // Immersive Now Playing chrome (transport, seek, action buttons) fades out
+    // with the cursor after idle and back in on input; title/artist stay put.
+    float ctrlFade_ = 1.0f;
     bool autoplay_ = false;
     std::string screenshotPath_;
     std::string startView_;

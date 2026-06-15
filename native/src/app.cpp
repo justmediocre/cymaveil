@@ -84,15 +84,16 @@ int MonitorForWindow() {
 }
 
 // Slider with track + fill + knob visuals. Returns true while interacting.
-bool BarSlider(Rectangle r, float* value, bool* dragging, Color fill) {
-    DrawRectangleRounded(r, 1.0f, 4, Fade(ui::theme.text, 0.12f));
-    const bool interacting = ui::Slider(r, value, dragging);
+bool BarSlider(Rectangle r, float* value, bool* dragging, Color fill, float alpha = 1.0f,
+               bool interactive = true) {
+    DrawRectangleRounded(r, 1.0f, 4, Fade(ui::theme.text, 0.12f * alpha));
+    const bool interacting = interactive && ui::Slider(r, value, dragging);
     const float fillW = r.width * Clamp(*value, 0.0f, 1.0f);
     if (fillW > 1) {
-        DrawRectangleRounded(Rectangle{r.x, r.y, fillW, r.height}, 1.0f, 4, fill);
+        DrawRectangleRounded(Rectangle{r.x, r.y, fillW, r.height}, 1.0f, 4, Fade(fill, alpha));
     }
-    if (ui::Hover(Rectangle{r.x, r.y - 6, r.width, r.height + 12}) || *dragging) {
-        DrawCircleV(Vector2{r.x + fillW, r.y + r.height / 2}, 6, ui::theme.text);
+    if (interactive && (ui::Hover(Rectangle{r.x, r.y - 6, r.width, r.height + 12}) || *dragging)) {
+        DrawCircleV(Vector2{r.x + fillW, r.y + r.height / 2}, 6, Fade(ui::theme.text, alpha));
     }
     return interacting;
 }
@@ -1839,29 +1840,47 @@ void App::DrawNowPlayingView(Rectangle r) {
     ui::TextMarqueeCentered(sub, Vector2{cx, textY + 30}, colW, 15,
                             ui::theme.textSecondary);
 
+    // In fullscreen the chrome below the art (action buttons, seek bar and
+    // transport) fades out alongside the cursor after a short idle, leaving just
+    // the art, title and artist for an uncluttered immersive view; any input
+    // fades it back. Easing the alpha (rather than snapping on the idle
+    // threshold) also gates clicks: a wake-up click lands while the chrome is
+    // still transparent, so it reveals the controls instead of toggling one.
+    if (fullscreen_) {
+        const float target = (GetTime() - lastActivity_ < 2.5) ? 1.0f : 0.0f;
+        const float step = GetFrameTime() / 0.25f;  // ~quarter-second fade
+        ctrlFade_ = Clamp(ctrlFade_ + (ctrlFade_ < target ? step : -step), 0.0f, 1.0f);
+    } else {
+        ctrlFade_ = 1.0f;
+    }
+    const float cf = ctrlFade_;
+    const bool ctrlOn = cf > 0.5f;  // only react once mostly faded in
+
     // Paint-mask button: opens the brush editor for the album on screen, so the
     // user can hand-correct (or hand-draw) the depth mask behind the visualizer.
     if (shownAlbum != nullptr && !shownAlbum->artPath.empty()) {
         const Rectangle brushR{colX + colW - 92, textY - 12, 24, 24};
         ui::IconBrush(Vector2{brushR.x + 12, brushR.y + 12}, 17,
-                      ui::Hover(brushR) ? ui::theme.text : ui::theme.textSecondary);
-        if (ui::Clicked(brushR)) OpenBrushEditor(*shownAlbum);
+                      Fade(ctrlOn && ui::Hover(brushR) ? ui::theme.text : ui::theme.textSecondary,
+                           cf));
+        if (ctrlOn && ui::Clicked(brushR)) OpenBrushEditor(*shownAlbum);
     }
 
     // Favorite + add-to-playlist, level with the title at the column's right.
     const Rectangle heartR{colX + colW - 58, textY - 12, 24, 24};
     const bool fav = playlists_.IsFavorite(cur->id);
     ui::IconHeart(Vector2{heartR.x + 12, heartR.y + 12}, 18,
-                  fav            ? ui::theme.accent
-                  : ui::Hover(heartR) ? ui::theme.text
-                                      : ui::theme.textSecondary,
+                  Fade(fav                       ? ui::theme.accent
+                       : ctrlOn && ui::Hover(heartR) ? ui::theme.text
+                                                     : ui::theme.textSecondary,
+                       cf),
                   fav);
-    if (ui::Clicked(heartR)) playlists_.ToggleFavorite(cur->id);
+    if (ctrlOn && ui::Clicked(heartR)) playlists_.ToggleFavorite(cur->id);
 
     const Rectangle plusR{colX + colW - 24, textY - 12, 24, 24};
     ui::IconPlus(Vector2{plusR.x + 12, plusR.y + 12}, 18,
-                 ui::Hover(plusR) ? ui::theme.text : ui::theme.textSecondary);
-    if (ui::Clicked(plusR)) OpenTrackMenu(cur->id);
+                 Fade(ctrlOn && ui::Hover(plusR) ? ui::theme.text : ui::theme.textSecondary, cf));
+    if (ctrlOn && ui::Clicked(plusR)) OpenTrackMenu(cur->id);
 
     // Seek bar and transport sit directly beneath the track text so the art,
     // title, buttons and controls all read as one panel under the album, like
@@ -1889,74 +1908,77 @@ void App::DrawNowPlayingView(Rectangle r) {
     if (!seekDragging_) seekValue_ = length > 0 ? played / length : 0;
     const Rectangle seekR{colX, seekTop, colW, 4};
     const bool wasDragging = seekDragging_;
-    BarSlider(seekR, &seekValue_, &seekDragging_, ui::theme.accent);
+    BarSlider(seekR, &seekValue_, &seekDragging_, ui::theme.accent, cf, ctrlOn);
     if (wasDragging && !seekDragging_) player_.SeekTo(seekValue_ * length);
     const float shownTime = seekDragging_ ? seekValue_ * length : played;
-    ui::Text(ui::FormatTime(shownTime), Vector2{seekR.x, seekTop + 12}, 12, ui::theme.textSecondary);
+    ui::Text(ui::FormatTime(shownTime), Vector2{seekR.x, seekTop + 12}, 12,
+             Fade(ui::theme.textSecondary, cf));
     ui::TextRight(ui::FormatTime(length), Vector2{seekR.x + seekR.width, seekTop + 12}, 12,
-                  ui::theme.textSecondary);
+                  Fade(ui::theme.textSecondary, cf));
 
     const auto iconButton = [&](float x, float halfSize) {
         return Rectangle{x - halfSize, ctrlY - halfSize, halfSize * 2, halfSize * 2};
     };
 
     const Rectangle shuffleR = iconButton(cx - 110, 14);
-    const Color shuffleCol = player_.Shuffle() ? ui::theme.accent
-                             : ui::Hover(shuffleR) ? ui::theme.text
-                                                   : ui::theme.textSecondary;
-    ui::IconShuffle(Vector2{cx - 110, ctrlY}, 16, shuffleCol);
-    if (ui::Clicked(shuffleR)) player_.ToggleShuffle();
+    const Color shuffleCol = player_.Shuffle()         ? ui::theme.accent
+                             : ctrlOn && ui::Hover(shuffleR) ? ui::theme.text
+                                                            : ui::theme.textSecondary;
+    ui::IconShuffle(Vector2{cx - 110, ctrlY}, 16, Fade(shuffleCol, cf));
+    if (ctrlOn && ui::Clicked(shuffleR)) player_.ToggleShuffle();
 
     const Rectangle prevR = iconButton(cx - 60, 14);
     ui::IconPrev(Vector2{cx - 60, ctrlY}, 18,
-                 ui::Hover(prevR) ? ui::theme.text : ui::theme.textSecondary);
-    if (ui::Clicked(prevR)) {
+                 Fade(ctrlOn && ui::Hover(prevR) ? ui::theme.text : ui::theme.textSecondary, cf));
+    if (ctrlOn && ui::Clicked(prevR)) {
         player_.Prev();
         manualSkip_ = true;
     }
 
     const Rectangle playR = iconButton(cx, 22);
     DrawCircleV(Vector2{cx, ctrlY}, 22,
-                ui::Hover(playR) ? Brighten(ui::theme.accent, 0.15f) : ui::theme.accent);
+                Fade(ctrlOn && ui::Hover(playR) ? Brighten(ui::theme.accent, 0.15f) : ui::theme.accent,
+                     cf));
     if (player_.IsPlaying()) {
-        ui::IconPause(Vector2{cx, ctrlY}, 16, ui::theme.bg);
+        ui::IconPause(Vector2{cx, ctrlY}, 16, Fade(ui::theme.bg, cf));
     } else {
-        ui::IconPlay(Vector2{cx + 1, ctrlY}, 18, ui::theme.bg);
+        ui::IconPlay(Vector2{cx + 1, ctrlY}, 18, Fade(ui::theme.bg, cf));
     }
-    if (ui::Clicked(playR)) player_.TogglePause();
+    if (ctrlOn && ui::Clicked(playR)) player_.TogglePause();
 
     const Rectangle nextR = iconButton(cx + 60, 14);
     ui::IconNext(Vector2{cx + 60, ctrlY}, 18,
-                 ui::Hover(nextR) ? ui::theme.text : ui::theme.textSecondary);
-    if (ui::Clicked(nextR)) {
+                 Fade(ctrlOn && ui::Hover(nextR) ? ui::theme.text : ui::theme.textSecondary, cf));
+    if (ctrlOn && ui::Clicked(nextR)) {
         player_.Next();
         manualSkip_ = true;
     }
 
     const Rectangle repeatR = iconButton(cx + 110, 14);
     const bool repeatOn = player_.Repeat() != RepeatMode::Off;
-    const Color repeatCol = repeatOn ? ui::theme.accent
-                            : ui::Hover(repeatR) ? ui::theme.text
-                                                 : ui::theme.textSecondary;
-    ui::IconRepeat(Vector2{cx + 110, ctrlY}, 15, repeatCol, player_.Repeat() == RepeatMode::One);
-    if (ui::Clicked(repeatR)) player_.CycleRepeat();
+    const Color repeatCol = repeatOn                  ? ui::theme.accent
+                            : ctrlOn && ui::Hover(repeatR) ? ui::theme.text
+                                                           : ui::theme.textSecondary;
+    ui::IconRepeat(Vector2{cx + 110, ctrlY}, 15, Fade(repeatCol, cf),
+                   player_.Repeat() == RepeatMode::One);
+    if (ctrlOn && ui::Clicked(repeatR)) player_.CycleRepeat();
 
     // Volume on the column's left edge, queue toggle on its right.
     float vol = player_.Volume();
     const Vector2 volIcon{colX + 9, ctrlY};
-    ui::IconVolume(volIcon, 17, ui::theme.textSecondary, vol);
+    ui::IconVolume(volIcon, 17, Fade(ui::theme.textSecondary, cf), vol);
     const Rectangle volR{colX + 32, ctrlY - 2, 72, 4};
-    if (BarSlider(volR, &vol, &volumeDragging_, ui::theme.text)) player_.SetVolume(vol);
+    if (BarSlider(volR, &vol, &volumeDragging_, ui::theme.text, cf, ctrlOn)) player_.SetVolume(vol);
     const Rectangle volIconR{volIcon.x - 12, volIcon.y - 12, 24, 24};
-    if (ui::Clicked(volIconR)) player_.SetVolume(vol > 0.01f ? 0.0f : 0.8f);
+    if (ctrlOn && ui::Clicked(volIconR)) player_.SetVolume(vol > 0.01f ? 0.0f : 0.8f);
 
     const Vector2 queueIcon{colX + colW - 12, ctrlY};
     const Rectangle queueR{queueIcon.x - 12, queueIcon.y - 12, 24, 24};
-    const Color queueCol = config_.queuePanel ? ui::theme.accent
-                           : ui::Hover(queueR) ? ui::theme.text
-                                               : ui::theme.textSecondary;
-    ui::IconQueue(queueIcon, 16, queueCol);
-    if (ui::Clicked(queueR)) ToggleQueuePanel();
+    const Color queueCol = config_.queuePanel        ? ui::theme.accent
+                           : ctrlOn && ui::Hover(queueR) ? ui::theme.text
+                                                         : ui::theme.textSecondary;
+    ui::IconQueue(queueIcon, 16, Fade(queueCol, cf));
+    if (ctrlOn && ui::Clicked(queueR)) ToggleQueuePanel();
 }
 
 void App::DrawSettingsView(Rectangle r) {
