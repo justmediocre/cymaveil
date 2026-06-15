@@ -14,7 +14,6 @@ constexpr float kThick = 0.03f;     // sleeve thickness (edge reads even in a qu
 constexpr float kGloss = 0.95f;     // gloss highlight strength
 constexpr float kFovy = 20.0f;      // camera field of view (mild perspective)
 constexpr float kPop = 0.24f;       // forward lift toward the viewer mid-turn
-constexpr float kWear = 0.42f;      // worn-sleeve patina strength on the covers
 
 // Light from the upper-left front; flat per-face diffuse is baked into vertex
 // colour, so only the cover's gloss sweep needs the shader.
@@ -44,87 +43,12 @@ uniform vec4 colDiffuse;
 uniform float uTurn;
 uniform float uFacing;
 uniform float uGloss;
-uniform float uWear;
 out vec4 finalColor;
-
-float hash(vec2 p) {
-    p = fract(p*vec2(123.34, 456.21));
-    p += dot(p, p + 45.32);
-    return fract(p.x*p.y);
-}
-// Smooth value noise + fractal Brownian motion: the self-similar, cloudy detail
-// that mimics how real sleeve wear breaks up at every scale.
-float vnoise(vec2 p) {
-    vec2 i = floor(p), f = fract(p);
-    f = f*f*(3.0 - 2.0*f);
-    float a = hash(i), b = hash(i + vec2(1, 0));
-    float c = hash(i + vec2(0, 1)), d = hash(i + vec2(1, 1));
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
-float fbm(vec2 p) {
-    float s = 0.0, amp = 0.5;
-    for (int i = 0; i < 5; i++) { s += amp*vnoise(p); p = p*2.0 + 7.3; amp *= 0.5; }
-    return s;
-}
 
 void main() {
     vec4 tex = texture(texture0, fragTexCoord);
     vec3 col = tex.rgb*fragColor.rgb;
     vec2 p = fragTexCoord;
-
-    // Worn-sleeve patina (covers only). Real ring wear is sharp paper abrasion:
-    // hard, high-contrast white flecks clustered in patches, plus thin cracks —
-    // not a soft haze. A low-frequency field decides WHERE wear concentrates
-    // (edges, the disc ring, random patches); hard-thresholded high-frequency
-    // noise supplies the crisp flecks and cracks within it.
-    if (uWear > 0.0) {
-        vec2 q = p - 0.5;
-        float r = length(q), ang = atan(q.y, q.x);
-        float edge = clamp(1.0 - 2.0*min(min(p.x, 1.0 - p.x), min(p.y, 1.0 - p.y)), 0.0, 1.0);
-
-        // Where a record wears into its sleeve: a defined ring at the disc's
-        // outer edge (heaviest), a small worn spot at the centre spindle, and
-        // the sleeve's own edges. Angular noise wobbles the ring radius and
-        // lightly breaks it so it isn't a perfect circle.
-        float aN = fbm(vec2(ang*3.0, 5.0));
-        float aBreak = fbm(vec2(ang*5.0 + 20.0, 9.0));
-        float rOuter = 0.45 + 0.01*(aN - 0.5)*2.0;
-        float ringCore = smoothstep(0.015, 0.0, abs(r - rOuter));   // tight band
-        float outer = ringCore*(0.7 + 0.5*aBreak);
-        float spindle = smoothstep(0.05, 0.0, r);                   // centre spot only
-        float edgeW = pow(edge, 2.0)*0.55;
-
-        float field = clamp(outer + spindle*0.8 + edgeW + fbm(p*5.0)*0.08, 0.0, 1.0);
-        float gate = smoothstep(0.4, 0.8, field);
-
-        // Crisp flecks at two scales (paper worn through, catching light); the
-        // high thresholds keep them sparse so the ring reads, not a snowfield.
-        float fleck = smoothstep(0.84, 0.89, vnoise(p*250.0))*0.9 +
-                      smoothstep(0.80, 0.86, vnoise(p*95.0 + 11.0))*0.5;
-        // Thin cracks: a narrow band straddling a noise level set.
-        float cn = fbm(p*70.0);
-        float crack = (smoothstep(0.47, 0.50, cn) - smoothstep(0.50, 0.53, cn));
-
-        // A faint continuous line along the disc edge so the ring reads as a
-        // defined outline, with the flecks scattered on top of it.
-        float ringLine = ringCore*(0.35 + 0.55*aBreak);
-        float light = (fleck + clamp(crack, 0.0, 1.0)*0.6)*gate*uWear + ringLine*0.22*uWear;
-        float dull = field*0.12*uWear;                // faint grime in the worn zones
-        col = mix(col, vec3(0.5), clamp(dull, 0.0, 0.15)) + light;
-
-        // Record relief: the disc inside the sleeve presses a shallow dome and a
-        // raised label into the laminate. Bump-light the height field (via
-        // screen-space derivatives) so the turning cover catches light with real
-        // surface depth instead of reading dead flat.
-        float disc = smoothstep(0.485, 0.45, r);
-        float labelBump = smoothstep(0.155, 0.135, r);
-        float hgt = disc*0.5 + labelBump*0.4;
-        vec3 nrm = normalize(vec3(-dFdx(hgt)*5.0, -dFdy(hgt)*5.0, 1.0));
-        vec3 Lr = normalize(vec3(-0.45, 0.5, 0.8));
-        col += (dot(nrm, Lr) - Lr.z)*0.38;            // relief shading, zero on flats
-        vec3 Hr = normalize(Lr + vec3(0.0, 0.0, 1.0));
-        col += pow(max(dot(nrm, Hr), 0.0), 18.0)*0.18*clamp(uFacing, 0.0, 1.0);  // groove glints
-    }
 
     float facing = clamp(uFacing, 0.0, 1.0);
     // A bright diagonal light streak sweeping across the cover as it turns,
@@ -210,7 +134,6 @@ void Sleeve3D::Ensure() {
         locTurn_ = GetShaderLocation(shader_, "uTurn");
         locFacing_ = GetShaderLocation(shader_, "uFacing");
         locGloss_ = GetShaderLocation(shader_, "uGloss");
-        locWear_ = GetShaderLocation(shader_, "uWear");
     }
     if (patina_.id == 0) patina_ = GenPatina();
 }
@@ -252,10 +175,8 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
     rlDisableBackfaceCulling();
     BeginShaderMode(shader_);
     const float gloss = kGloss;
-    const float wear = kWear;
     SetShaderValue(shader_, locTurn_, &flip, SHADER_UNIFORM_FLOAT);
     SetShaderValue(shader_, locGloss_, &gloss, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader_, locWear_, &wear, SHADER_UNIFORM_FLOAT);  // covers; 0 on edges
 
     rlPushMatrix();
     rlTranslatef(0, 0, kPop * st);  // lift toward the viewer, peaking edge-on
@@ -291,10 +212,9 @@ void Sleeve3D::Render(const Texture2D* front, const Texture2D* back, Color edgeF
         Face(*back, Shade(WHITE, nBack, 0.62f), c, uv);
     }
 
-    // Patina edges: no gloss, no face wear, darker ambient, cardboard grain.
+    // Patina edges: no gloss, darker ambient, cardboard grain.
     const float zero = 0.0f;
     SetShaderValue(shader_, locFacing_, &zero, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader_, locWear_, &zero, SHADER_UNIFORM_FLOAT);
     const Vector2 euv[4] = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
     const Vector3 right[4] = {
         {kHalf, -kHalf, h}, {kHalf, -kHalf, -h}, {kHalf, kHalf, -h}, {kHalf, kHalf, h}};
