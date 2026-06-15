@@ -66,6 +66,8 @@ private:
     // Idle-aware pacing: 60 fps only when it matters, event-waiting when idle.
     void UpdatePacing();
     void MarkActivity() { lastActivity_ = GetTime(); }
+    // Borderless-fullscreen toggle (F11). Now Playing goes immersive in it.
+    void ToggleFullscreenMode();
 
     void DrawSidebar(Rectangle r);
     // Compact bar shown while browsing; click to expand into Now Playing.
@@ -244,6 +246,9 @@ private:
     int targetFps_ = 60;
     bool eventWaiting_ = false;
     bool showDebug_ = false;
+    // Borderless fullscreen; Now Playing hides the sidebar and fades the cursor.
+    bool fullscreen_ = false;
+    bool cursorHidden_ = false;
     bool autoplay_ = false;
     std::string screenshotPath_;
     std::string startView_;

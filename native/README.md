@@ -96,7 +96,9 @@ Right-click the app → **Open** (then confirm), or clear the quarantine bit:
   Playing list with Play/Clear when nothing is queued.
 - **Space** play/pause · **←/→** seek ±5s · **Ctrl+←/→** prev/next · **↑/↓** volume ·
   **S** shuffle · **R** repeat cycle · **Q** queue panel · **,** settings ·
-  **B** animate a mosaic tile · **Esc** back · **F3** debug overlay.
+  **F11** fullscreen (Now Playing goes immersive — sidebar hidden, cursor fades
+  after a brief idle; **Esc** exits) · **B** animate a mosaic tile · **Esc** back ·
+  **F3** debug overlay.
 
 Library cache, settings, playlists, and extracted album art live in
 `~/.local/share/cymaveil/` (`%APPDATA%\cymaveil\` on Windows,

@@ -324,8 +324,25 @@ void App::Frame() {
     const float qe = queueAnim_ * queueAnim_ * (3.0f - 2.0f * queueAnim_);
     const float qw = kQueueW * qe;
 
-    const Rectangle sidebar{0, 0, kSidebarW, H - barH};
-    const Rectangle content{kSidebarW, 0, W - kSidebarW - qw, H - barH};
+    // Immersive Now Playing: in fullscreen the art goes full-bleed with the nav
+    // sidebar tucked away, and the cursor fades out after a short idle — like the
+    // web app's fullscreen mode. The queue panel still works (its toggle lives in
+    // the transport). Other views keep their chrome even when fullscreen.
+    const bool immersive = fullscreen_ && view_ == View::NowPlaying;
+    const float sidebarW = immersive ? 0.0f : kSidebarW;
+    if (!brush_.open) {
+        const bool hide = immersive && GetTime() - lastActivity_ > 2.5;
+        if (hide && !cursorHidden_) {
+            HideCursor();
+            cursorHidden_ = true;
+        } else if (!hide && cursorHidden_) {
+            ShowCursor();
+            cursorHidden_ = false;
+        }
+    }
+
+    const Rectangle sidebar{0, 0, sidebarW, H - barH};
+    const Rectangle content{sidebarW, 0, W - sidebarW - qw, H - barH};
     const Rectangle queuePanel{W - qw, 0, qw, H - barH};
     const Rectangle bar{0, H - barH, W, barH};
 
@@ -383,7 +400,7 @@ void App::Frame() {
         case View::NowPlaying: DrawNowPlayingView(content); break;
         case View::Settings: DrawSettingsView(content); break;
     }
-    DrawSidebar(sidebar);
+    if (!immersive) DrawSidebar(sidebar);
     if (qw > 0.5f) DrawQueuePanel(queuePanel);
     if (miniBar) DrawMiniPlayer(bar);
     if (brush_.open) DrawBrushEditor(Rectangle{0, 0, W, H});
@@ -513,6 +530,18 @@ void App::HandleInput() {
     if (menu_.open && IsKeyPressed(KEY_ESCAPE)) {
         menu_.open = false;
         ui::ConsumeKey(KEY_ESCAPE);  // don't let the Search input re-read this press
+        return;
+    }
+
+    // F11 toggles fullscreen anywhere; Esc backs out of it first (before the
+    // per-view "back" handlers below), mirroring the web app's shortcuts.
+    if (IsKeyPressed(KEY_F11)) {
+        ToggleFullscreenMode();
+        return;
+    }
+    if (fullscreen_ && IsKeyPressed(KEY_ESCAPE)) {
+        ToggleFullscreenMode();
+        ui::ConsumeKey(KEY_ESCAPE);
         return;
     }
 
@@ -1006,6 +1035,25 @@ void App::UpdatePacing() {
         SetTargetFPS(fps);
         targetFps_ = fps;
     }
+}
+
+void App::ToggleFullscreenMode() {
+    // Use raylib's fullscreen toggle rather than borderless-windowed: on X11 the
+    // borderless path re-decorates the window *before* detaching it from the
+    // monitor, so the title bar / min-max-close buttons never come back on exit.
+    // ToggleFullscreen() re-parents to a windowed state first and then restores
+    // GLFW_DECORATED, which is the order X11 actually honours. It targets the
+    // monitor's current video mode (GLFW_DONT_CARE refresh), so there's no
+    // resolution switch — it stays at the desktop resolution.
+    ToggleFullscreen();
+    fullscreen_ = IsWindowFullscreen();
+    // Reveal the cursor immediately on the way out (and reset the idle timer so
+    // it lingers for a moment on the way in).
+    if (cursorHidden_) {
+        ShowCursor();
+        cursorHidden_ = false;
+    }
+    MarkActivity();
 }
 
 void App::DrawSidebar(Rectangle r) {
@@ -1649,8 +1697,12 @@ void App::DrawNowPlayingView(Rectangle r) {
 
     // Art sits above the track text and the inline transport; reserve room at
     // the bottom for that control cluster so everything stacks like the web app.
-    const float artSize = hasFg ? std::min({440.0f, r.height - 290, r.width - 200})
-                                : std::min({360.0f, r.height - 290, r.width - 160});
+    // Let the cover grow larger in fullscreen so the immersive view fills the
+    // extra space rather than floating a small square in the middle.
+    const float capFg = fullscreen_ ? 620.0f : 440.0f;
+    const float capNoFg = fullscreen_ ? 520.0f : 360.0f;
+    const float artSize = hasFg ? std::min({capFg, r.height - 290, r.width - 200})
+                                : std::min({capNoFg, r.height - 290, r.width - 160});
     const float artX = r.x + (r.width - artSize) / 2;
     // Without depth layers the bars fill the bottom, so the art stays up top.
     // With them the visualizer lives inside the art and there are no bottom
