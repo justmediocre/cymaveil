@@ -16,18 +16,18 @@ const BASS_HIT_DEBOUNCE_MS = 60
 
 /**
  * Whether two album snapshots show the same artwork. Tracks can override the
- * album cover, so the art string is part of the display identity — a track
- * change within one album may still require a full art transition.
+ * album cover, so the art string is part of the display identity.
  */
 function sameArtIdentity(a: Album, b: Album): boolean {
   return a.id === b.id && a.art === b.art
 }
 
-/** Short React key for an album's artwork (art may be a huge data URI) */
-function artKey(album: Album): string {
-  const art = album.art
-  if (!art) return `${album.id}:none`
-  return `${album.id}:${art.length > 128 ? `${art.length}:${art.slice(-64)}` : art}`
+/**
+ * Whether the only change is the cover within one album — a per-track art
+ * override, rather than a move to a different album.
+ */
+function isArtOnlyChange(next: Album, current: Album): boolean {
+  return next.id === current.id && next.art !== current.art
 }
 
 interface AlbumArtProps {
@@ -92,9 +92,14 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
     }
   }, [segmentation, album.id, album.art, displayedAlbum.id, displayedAlbum.art])
 
-  // When displayedAlbum actually swaps, sync to whatever segmentation is current
+  // When displayedAlbum actually swaps, sync to whatever segmentation is current.
+  // On a same-album cover swap the new segmentation may not have resolved yet —
+  // keep showing the previous mask rather than blinking the depth layer off.
+  const segAlbumIdRef = useRef(displayedAlbum.id)
   useEffect(() => {
-    setDisplayedSeg(segmentation)
+    const sameAlbum = segAlbumIdRef.current === displayedAlbum.id
+    segAlbumIdRef.current = displayedAlbum.id
+    setDisplayedSeg(prev => segmentation ?? (sameAlbum ? prev : null))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedAlbum.id, displayedAlbum.art])
   const pendingAlbumRef = useRef<Album | null>(null)
@@ -115,20 +120,46 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
 
   // Detect album/art change → begin vinyl-retract sequence
   useEffect(() => {
-    if (!sameArtIdentity(album, displayedAlbum)) {
-      pendingAlbumRef.current = album
-      if (vinylOut) {
-        // Vinyl is showing — retract first, then swap art on completion
-        setTransitioning(true)
-        setVinylOut(false)
-      } else {
-        // Vinyl already retracted (paused or initial) — swap art directly
-        setArtEntered(false)
-        setImageLoaded(false)
-        setArtBlurring(true)
+    if (sameArtIdentity(album, displayedAlbum)) return
+
+    // A cover change *within* one album is a per-track art override, not an
+    // album change. Taggers routinely re-encode the same cover per track, so
+    // running the full retract/blur-scale sequence there would be visual noise
+    // for art that usually looks identical — swap in place instead, leaving the
+    // vinyl extended. (A transition already in flight still plays out normally.)
+    if (isArtOnlyChange(album, displayedAlbum) && !transitioning) {
+      let done = false
+      const swap = () => {
+        if (done) return
+        done = true
         setDisplayedAlbum(album)
-        pendingAlbumRef.current = null
       }
+      // Decode the new cover before swapping so the <img> can't flash a blank
+      // frame between releasing the old bitmap and painting the new one.
+      if (album.art) {
+        const preload = new Image()
+        preload.onload = swap
+        preload.onerror = swap
+        preload.src = album.art
+        if (preload.complete) swap()
+      } else {
+        swap()
+      }
+      return () => { done = true }
+    }
+
+    pendingAlbumRef.current = album
+    if (vinylOut) {
+      // Vinyl is showing — retract first, then swap art on completion
+      setTransitioning(true)
+      setVinylOut(false)
+    } else {
+      // Vinyl already retracted (paused or initial) — swap art directly
+      setArtEntered(false)
+      setImageLoaded(false)
+      setArtBlurring(true)
+      setDisplayedAlbum(album)
+      pendingAlbumRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [album.id, album.art])
@@ -344,7 +375,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
         {/* Album art */}
         <AnimatePresence mode="wait">
           <motion.div
-            key={artKey(displayedAlbum)}
+            key={displayedAlbum.id}
             className="relative rounded-2xl overflow-hidden"
             onClick={onCycleVisualizer}
             style={{
@@ -393,7 +424,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
                   during skip transitions instead of popping off early. */}
               {displayedSeg && artEntered && imageLoaded && displayedAlbum.art && (
                 <ForegroundMask
-                  key={artKey(displayedAlbum)}
+                  key={displayedAlbum.id}
                   segmentation={displayedSeg}
                   artSrc={displayedAlbum.art}
                   style={{ opacity: debugLayers.mask ? 1 : 0 }}
