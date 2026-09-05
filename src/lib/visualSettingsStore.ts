@@ -20,7 +20,7 @@ const DEFAULTS: VisualSettings = {
   mosaicFlat: false,
   glassBlur: true,
   disableVisualsOnBattery: false,
-  depthLayerEnabled: false,
+  depthLayerEnabled: true,
   segmentationBackend: 'depth-anything',
   visualizerStyle: 'full-surface',
   visualizerIntensity: 65,
