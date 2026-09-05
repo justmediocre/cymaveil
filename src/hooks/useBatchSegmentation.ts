@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Album, MaskModelParams, MaskPostProcessParams } from '../types'
+import type { Album, Track, MaskModelParams, MaskPostProcessParams } from '../types'
 import { segmentationCache, hashArtSrc } from '../lib/segmentation/cache'
 import { maskOverrideStore } from '../lib/segmentation/maskOverrideStore'
 import { withBackend } from '../lib/segmentation/registry'
@@ -12,7 +12,7 @@ export interface BatchProgress {
   total: number
 }
 
-export default function useBatchSegmentation(albums: Album[]): {
+export default function useBatchSegmentation(albums: Album[], tracks: Track[] = []): {
   processing: boolean
   progress: BatchProgress | null
   processAll: () => void
@@ -27,24 +27,32 @@ export default function useBatchSegmentation(albums: Album[]): {
   const backendId = settings.segmentationBackend
 
   useEffect(() => {
-    if (!enabled || backendId === 'none' || backendId === 'manual' || albums.length === 0) return
+    if (!enabled || backendId === 'none' || backendId === 'manual') return
 
     cancelledRef.current = false
 
-    const albumsWithArt = albums.filter(a => a.art != null && !a.art.startsWith('data:image/svg+xml')) as (Album & { art: string })[]
-    if (albumsWithArt.length === 0) return
+    // Unique art sources: album covers plus per-track overrides
+    const artSources: string[] = []
+    const seen = new Set<string>()
+    for (const src of [...albums.map(a => a.art), ...tracks.map(t => t.art ?? null)]) {
+      if (src && !src.startsWith('data:image/svg+xml') && !seen.has(src)) {
+        seen.add(src)
+        artSources.push(src)
+      }
+    }
+    if (artSources.length === 0) return
 
     let active = true
 
     ;(async () => {
-      // Find uncached albums
+      // Find uncached art sources
       const uncached: { art: string; hash: string }[] = []
-      for (const album of albumsWithArt) {
+      for (const art of artSources) {
         if (cancelledRef.current) return
-        const cached = await segmentationCache.get(album.art, backendId)
+        const cached = await segmentationCache.get(art, backendId)
         if (!cached) {
-          const hash = await hashArtSrc(album.art)
-          uncached.push({ art: album.art, hash })
+          const hash = await hashArtSrc(art)
+          uncached.push({ art, hash })
         }
       }
 
@@ -113,12 +121,12 @@ export default function useBatchSegmentation(albums: Album[]): {
       setProcessing(false)
       setProgress(null)
     }
-  }, [enabled, backendId, albums, settings.maskDefaults, runId])
+  }, [enabled, backendId, albums, tracks, settings.maskDefaults, runId])
 
   const processAll = useCallback(() => {
-    if (!enabled || backendId === 'none' || backendId === 'manual' || albums.length === 0) return
+    if (!enabled || backendId === 'none' || backendId === 'manual' || (albums.length === 0 && tracks.length === 0)) return
     setRunId(n => n + 1)
-  }, [enabled, backendId, albums.length])
+  }, [enabled, backendId, albums.length, tracks.length])
 
   return { processing, progress, processAll }
 }

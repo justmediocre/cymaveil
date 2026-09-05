@@ -14,6 +14,22 @@ const BASS_HIT_THRESHOLD = 0.6
 /** Minimum ms between consecutive bass-hit triggers (avoids multi-fire on one transient). */
 const BASS_HIT_DEBOUNCE_MS = 60
 
+/**
+ * Whether two album snapshots show the same artwork. Tracks can override the
+ * album cover, so the art string is part of the display identity — a track
+ * change within one album may still require a full art transition.
+ */
+function sameArtIdentity(a: Album, b: Album): boolean {
+  return a.id === b.id && a.art === b.art
+}
+
+/** Short React key for an album's artwork (art may be a huge data URI) */
+function artKey(album: Album): string {
+  const art = album.art
+  if (!art) return `${album.id}:none`
+  return `${album.id}:${art.length > 128 ? `${art.length}:${art.slice(-64)}` : art}`
+}
+
 interface AlbumArtProps {
   album: Album
   isPlaying: boolean
@@ -71,16 +87,16 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
   const [displayedSeg, setDisplayedSeg] = useState(segmentation)
 
   useEffect(() => {
-    if (album.id === displayedAlbum.id) {
+    if (sameArtIdentity(album, displayedAlbum)) {
       setDisplayedSeg(segmentation)
     }
-  }, [segmentation, album.id, displayedAlbum.id])
+  }, [segmentation, album.id, album.art, displayedAlbum.id, displayedAlbum.art])
 
   // When displayedAlbum actually swaps, sync to whatever segmentation is current
   useEffect(() => {
     setDisplayedSeg(segmentation)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayedAlbum.id])
+  }, [displayedAlbum.id, displayedAlbum.art])
   const pendingAlbumRef = useRef<Album | null>(null)
   const isPlayingRef = useRef(isPlaying)
   isPlayingRef.current = isPlaying
@@ -90,16 +106,16 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
   const vinylDuration = isSkip ? 0.3 : 0.8
   const artDuration = isSkip ? 0.25 : 0.6
 
-  // Keep displayedAlbum in sync for same-album updates (e.g. color changes)
+  // Keep displayedAlbum in sync for same-art updates (e.g. color changes)
   useEffect(() => {
-    if (album.id === displayedAlbum.id) {
+    if (sameArtIdentity(album, displayedAlbum)) {
       setDisplayedAlbum(album)
     }
-  }, [album, displayedAlbum.id])
+  }, [album, displayedAlbum.id, displayedAlbum.art])
 
-  // Detect album change → begin vinyl-retract sequence
+  // Detect album/art change → begin vinyl-retract sequence
   useEffect(() => {
-    if (album.id !== displayedAlbum.id) {
+    if (!sameArtIdentity(album, displayedAlbum)) {
       pendingAlbumRef.current = album
       if (vinylOut) {
         // Vinyl is showing — retract first, then swap art on completion
@@ -115,7 +131,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [album.id])
+  }, [album.id, album.art])
 
   // Play/pause → extend/retract vinyl during steady state
   useEffect(() => {
@@ -132,15 +148,15 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
     }
   }, [transitionIntent, vinylOut, transitioning])
 
-  // Same-album skip/prefire: no art change needed — clear intent immediately
+  // Same-art skip/prefire: no art change needed — clear intent immediately
   useEffect(() => {
-    if (transitionIntent && album.id === displayedAlbum.id && !pendingAlbumRef.current) {
+    if (transitionIntent && sameArtIdentity(album, displayedAlbum) && !pendingAlbumRef.current) {
       // Only clear if intent is 'skip' (prefire might be waiting for the track to end)
       if (transitionIntent === 'skip') {
         onTransitionDone?.()
       }
     }
-  }, [transitionIntent, album.id, displayedAlbum.id, onTransitionDone])
+  }, [transitionIntent, album.id, album.art, displayedAlbum.id, displayedAlbum.art, onTransitionDone])
 
   // Vinyl retract animation completed → swap the buffered album art
   const handleVinylAnimComplete = () => {
@@ -328,7 +344,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
         {/* Album art */}
         <AnimatePresence mode="wait">
           <motion.div
-            key={displayedAlbum.id}
+            key={artKey(displayedAlbum)}
             className="relative rounded-2xl overflow-hidden"
             onClick={onCycleVisualizer}
             style={{
@@ -377,7 +393,7 @@ export default memo(function AlbumArt({ album, isPlaying, trackIndex, bassEnergy
                   during skip transitions instead of popping off early. */}
               {displayedSeg && artEntered && imageLoaded && displayedAlbum.art && (
                 <ForegroundMask
-                  key={displayedAlbum.id}
+                  key={artKey(displayedAlbum)}
                   segmentation={displayedSeg}
                   artSrc={displayedAlbum.art}
                   style={{ opacity: debugLayers.mask ? 1 : 0 }}

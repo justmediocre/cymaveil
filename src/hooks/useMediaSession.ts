@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { playbackTimeStore } from '../lib/playbackTimeStore'
+import { resolveTrackArt } from '../lib/trackArt'
 import type { Track, Album } from '../types'
 
 interface MediaSessionOptions {
@@ -107,9 +108,10 @@ export default function useMediaSession({
 
       const artwork: MediaImage[] = []
 
-      if (album?.art && !album.art.startsWith('data:image/svg')) {
+      const artSrc = resolveTrackArt(currentTrack, album)
+      if (artSrc && !artSrc.startsWith('data:image/svg')) {
         try {
-          const response = await fetch(album.art)
+          const response = await fetch(artSrc)
           const blob = await response.blob()
           if (cancelled) return
           const blobUrl = URL.createObjectURL(blob)
@@ -139,7 +141,7 @@ export default function useMediaSession({
     return () => {
       cancelled = true
     }
-  }, [track?.id, album?.id, album?.art])
+  }, [track?.id, track?.art, album?.id, album?.art])
 
   // Clean up blob URL on unmount
   useEffect(() => {

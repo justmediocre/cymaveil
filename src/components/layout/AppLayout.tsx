@@ -24,7 +24,7 @@ export default function AppLayout() {
 
   const { albums, tracks } = useLibraryCtx()
   const { state, currentTrack, currentAlbum, upNextTracks, isPlaying, handlePlayPause, handleNext, handlePrev } = usePlayback()
-  const batchSeg = useBatchSegmentation(albums)
+  const batchSeg = useBatchSegmentation(albums, tracks)
   const { updateInfo, dismiss: dismissUpdate, openRelease } = useUpdateChecker()
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -158,7 +158,7 @@ export default function AppLayout() {
   return (
     <div className="h-screen overflow-hidden relative">
       {/* Album art mosaic background */}
-      <AlbumArtBackground albums={albums} isPlaying={isPlaying} />
+      <AlbumArtBackground albums={albums} tracks={tracks} isPlaying={isPlaying} />
 
       {/* App UI layer */}
       <div className="flex h-full relative" style={{ zIndex: 10 }}>

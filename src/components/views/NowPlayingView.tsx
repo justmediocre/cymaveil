@@ -34,22 +34,31 @@ export default memo(function NowPlayingView({ onCollapse, immersive, isVisible }
   } = usePlayback()
   const { isTrackFavorited, toggleFavorite, addTrackToPlaylist, createPlaylist, playlists } = usePlaylistCtx()
 
-  // Track which album AlbumArt is actually displaying (lags behind currentAlbum
+  // Album shape for display, with the current track's own art (if any)
+  // overriding the album cover — everything downstream (art, colors,
+  // contours, segmentation) follows the per-track art.
+  const displayAlbum = useMemo(() => {
+    if (!currentAlbum) return null
+    if (!currentTrack?.art) return currentAlbum
+    return { ...currentAlbum, art: currentTrack.art }
+  }, [currentAlbum, currentTrack?.art])
+
+  // Track which album AlbumArt is actually displaying (lags behind displayAlbum
   // during vinyl/art transitions) so colors stay in sync with the visible art.
-  const [displayedAlbum, setDisplayedAlbum] = useState(currentAlbum)
+  const [displayedAlbum, setDisplayedAlbum] = useState(displayAlbum)
   const handleDisplayedAlbumChange = useCallback((a: typeof displayedAlbum) => setDisplayedAlbum(a), [])
 
   // Visual hooks — only mounted when NowPlaying is visible
   const albumColors = useAlbumColors(displayedAlbum)
   const currentAlbumWithColors = useMemo(() => {
-    if (!currentAlbum) return null
+    if (!displayAlbum) return null
     return {
-      ...currentAlbum,
+      ...displayAlbum,
       dominantColor: albumColors.dominant,
       accentColor: albumColors.accent,
       accentSecondary: albumColors.accentSecondary,
     }
-  }, [currentAlbum, albumColors.dominant, albumColors.accent, albumColors.accentSecondary])
+  }, [displayAlbum, albumColors.dominant, albumColors.accent, albumColors.accentSecondary])
 
   const { contourData } = useContourPath(currentAlbumWithColors?.art ?? null)
   const {

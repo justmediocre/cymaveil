@@ -20,6 +20,8 @@ export interface Track {
   duration: number
   trackNum: number
   filePath: string
+  /** Per-track artwork override — only set when it differs from the album art */
+  art?: string | null
 }
 
 /** A playlist (including the built-in Favorites) */
@@ -83,6 +85,8 @@ export interface ParsedAudioFile {
   trackNum: number | null
   duration: number
   artDataUri: string | null
+  /** Content hash of the embedded picture (null when no picture) */
+  artHash: string | null
 }
 
 /** Intermediate track shape during album assembly */
@@ -92,6 +96,7 @@ export interface AlbumBuildTrack {
   duration: number
   trackNum: number | null
   filePath: string
+  art: string | null
 }
 
 /** Intermediate album shape during assembly (artists is a Set) */
@@ -101,6 +106,7 @@ export interface AlbumBuildEntry {
   artists: Set<string>
   year: number | null
   art: string
+  artHash: string | null
   dominantColor: string
   accentColor: string
   hasRealArt: boolean
@@ -119,12 +125,30 @@ export interface PersistedAlbum {
   artSvg?: string
 }
 
+/** Track shape stored on disk (artFile instead of art) */
+export interface PersistedTrack {
+  id: string
+  title: string
+  artist: string
+  albumId: string
+  duration: number
+  trackNum: number
+  filePath: string
+  artFile?: string
+}
+
+/** artwork:// URL replacements returned by saveLibrary, keyed by album/track id */
+export interface ArtUrlUpdates {
+  albums: Record<string, string>
+  tracks: Record<string, string>
+}
+
 /** electron-store schema */
 export interface StoreSchema {
   schemaVersion: number
   folders: string[]
   albums: PersistedAlbum[]
-  tracks: Track[]
+  tracks: PersistedTrack[]
   playlists: Playlist[]
   playbackState?: PlaybackState
 }

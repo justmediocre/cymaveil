@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react'
 import useVisualSettings from '../hooks/useVisualSettings'
 import useShortcut from '../hooks/useShortcut'
 import { ANIMATE_TILE } from '../lib/shortcuts'
-import type { Album, MosaicTransition } from '../types'
+import type { Album, Track, MosaicTransition } from '../types'
 
 interface AlbumArtBackgroundProps {
   albums: Album[]
+  tracks?: Track[]
   isPlaying: boolean
 }
 
@@ -131,7 +132,7 @@ const AnimatedTile = memo(function AnimatedTile({
   )
 })
 
-export default function AlbumArtBackground({ albums, isPlaying }: AlbumArtBackgroundProps) {
+export default function AlbumArtBackground({ albums, tracks, isPlaying }: AlbumArtBackgroundProps) {
   const { settings } = useVisualSettings()
   const columns = settings.mosaicDensity
   const maxTiles = settings.mosaicMaxTiles
@@ -143,11 +144,22 @@ export default function AlbumArtBackground({ albums, isPlaying }: AlbumArtBackgr
 
   const allArts = useMemo(() => {
     const result: string[] = []
+    const seen = new Set<string>()
     for (const a of albums) {
-      if (a.art && !a.art.startsWith('data:image/svg')) result.push(a.art)
+      if (a.art && !a.art.startsWith('data:image/svg') && !seen.has(a.art)) {
+        seen.add(a.art)
+        result.push(a.art)
+      }
+    }
+    // Per-track covers that differ from their album's art
+    for (const t of tracks ?? []) {
+      if (t.art && !t.art.startsWith('data:image/svg') && !seen.has(t.art)) {
+        seen.add(t.art)
+        result.push(t.art)
+      }
     }
     return result
-  }, [albums])
+  }, [albums, tracks])
 
   const [tiles, setTiles] = useState<TileData[]>([])
 

@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { formatTime } from '../lib/formatTime'
+import { resolveTrackArt } from '../lib/trackArt'
 import { HeartIcon } from './Icons'
 
 export const ROW_HEIGHT = 44
@@ -84,14 +85,14 @@ const TrackRow = memo(function TrackRow({
         )}
       </span>
 
-      {/* Mini album art */}
+      {/* Mini album art — per-track art wins over the album cover */}
       <div
         className="w-8 h-8 rounded shrink-0 overflow-hidden"
         style={{ background: 'var(--bg-elevated)' }}
       >
-        {album && (
+        {(track.art || album) && (
           <img
-            src={album.art ?? undefined}
+            src={resolveTrackArt(track, album) ?? undefined}
             alt=""
             className="w-full h-full object-cover"
             draggable={false}
