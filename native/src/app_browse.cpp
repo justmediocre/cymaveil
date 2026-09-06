@@ -1024,7 +1024,7 @@ void App::DrawSettingsView(Rectangle r) {
             y += 28;
             ui::Text(TextFormat("Version %s (native)", CYMAVEIL_VERSION), Vector2{x0, y + 2}, 12, ui::theme.textSecondary);
             y += 24;
-            ui::Text("A music player that lets the visualizer live inside your album art.", Vector2{x0, y}, 14, ui::theme.textSecondary);
+            ui::Text("Your music player deserves a glow up.", Vector2{x0, y}, 14, ui::theme.textSecondary);
             y += 24;
             ui::Text("MIT licensed. Fonts: Outfit, Bricolage Grotesque, JetBrains Mono (SIL OFL 1.1).", Vector2{x0, y}, 12,
                      ui::theme.textTertiary);
