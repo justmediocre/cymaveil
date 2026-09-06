@@ -234,10 +234,10 @@ void App::DrawNowPlayingView(Rectangle r, bool immersive) {
             spans.push_back({album->title, Fade(ui::theme.textTertiary, cf)});
         }
         // Clip the artist line to the same width as the title.
-        BeginScissorMode(static_cast<int>(cx - textW / 2 - 6), static_cast<int>(y + 28),
-                         static_cast<int>(textW + 12), 24);
+        ui::BeginClip(static_cast<int>(cx - textW / 2 - 6), static_cast<int>(y + 28),
+                      static_cast<int>(textW + 12), 24);
         ui::TextSpansCentered(spans, Vector2{cx, y + 28 + 2 + 10}, 14);
-        EndScissorMode();
+        ui::EndClip();
 
         // Heart + add-to-playlist (gap-1), vertically centred in the block
         const float ay = y + 25;

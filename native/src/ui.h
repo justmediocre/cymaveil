@@ -124,6 +124,13 @@ void ScrollArea(Rectangle view, float contentHeight, float* scroll);
 // otherwise. Draws only the text + caret; the caller draws the field chrome.
 int TextInput(Rectangle r, std::string* text, float size, Face face = Face::Sans,
               Color color = theme.text);
+// Clip drawing to r (screen units). Use instead of BeginScissorMode: raylib
+// scales the scissor rect by GetWindowScaleDPI(), which reports 1.0 in
+// fullscreen, so on a HiDPI display the clip lands in the wrong place and
+// clipped text (the Now Playing artist line, marquees) vanishes on F11.
+void BeginClip(int x, int y, int width, int height);
+void BeginClip(Rectangle r);
+void EndClip();
 // Grow a rectangle about its centre (for hover/tap scale effects).
 Rectangle Scaled(Rectangle r, float scale);
 Rectangle Inset(Rectangle r, float dx, float dy);

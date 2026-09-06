@@ -26,8 +26,8 @@ void App::DrawSidebar(Rectangle r) {
     backdrop_.DrawGlass(r, ui::theme.glassSurface, config_.glassBlur);
     DrawLineEx(Vector2{r.x + r.width, r.y}, Vector2{r.x + r.width, r.y + r.height}, 1,
                ui::theme.borderSubtle);
-    BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
-                     static_cast<int>(r.height));
+    ui::BeginClip(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
+                  static_cast<int>(r.height));
 
     // ── Brand: font-display 28px black, 0.35em tracking, uppercase, scaleX 1.15,
     // letterpress emboss (fill = surface, highlight below, shadow above) ──
@@ -149,7 +149,7 @@ void App::DrawSidebar(Rectangle r) {
             ry += rowH + 8;
         }
     }
-    EndScissorMode();
+    ui::EndClip();
 
     // Scan status floats above the Up Next section while a scan runs.
     if (library_.ScanActive()) {
@@ -205,6 +205,11 @@ void App::DrawTitleBar(Rectangle r) {
             if (fullscreen_) ui::IconShrink(c, 15, col);
             else ui::IconExpand(c, 15, col);
         })) {
+        // Entering fullscreen from the toolbar lands on the immersive Now
+        // Playing view; F11 stays a plain toggle for whatever is on screen.
+        if (!fullscreen_ && player_.Current() != nullptr && view_ != View::NowPlaying) {
+            Navigate(View::NowPlaying);
+        }
         ToggleFullscreenMode();
     }
     rx -= 36;
@@ -276,8 +281,8 @@ void App::DrawQueuePanel(Rectangle r) {
     DrawLineEx(Vector2{r.x, r.y}, Vector2{r.x, r.y + r.height}, 1, ui::theme.borderSubtle);
     const Rectangle full{r.x, r.y, kQueueW, r.height};
     (void)alpha;
-    BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
-                     static_cast<int>(r.height));
+    ui::BeginClip(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
+                  static_cast<int>(r.height));
 
     enum class Mode { Queue, NowPlayingList, Empty };
     Mode mode = Mode::Empty;
@@ -336,7 +341,7 @@ void App::DrawQueuePanel(Rectangle r) {
                 playlists_.Save();
             }
             player_.ClearQueue();
-            EndScissorMode();
+            ui::EndClip();
             return;
         }
         rightX = cR.x - 4;
@@ -357,7 +362,7 @@ void App::DrawQueuePanel(Rectangle r) {
     if (rows.empty()) {
         ui::TextCentered("Queue is empty", Vector2{full.x + kQueueW / 2, list.y + 60}, 14,
                          ui::theme.textTertiary);
-        EndScissorMode();
+        ui::EndClip();
         return;
     }
     const TableResult res = DrawTrackList(list, rows, &queueScroll_, mode == Mode::NowPlayingList, true);
@@ -376,7 +381,7 @@ void App::DrawQueuePanel(Rectangle r) {
         if (nowPlayingSource) player_.RemoveTrackId(tid);
         MarkActivity();
     }
-    EndScissorMode();
+    ui::EndClip();
 }
 
 // ── Popup menus ──

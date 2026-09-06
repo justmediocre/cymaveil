@@ -180,8 +180,8 @@ App::TableResult App::DrawTrackList(Rectangle r, const std::vector<const Track*>
     }
 
     ui::ScrollArea(r, total, scroll);
-    BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
-                     static_cast<int>(r.height));
+    ui::BeginClip(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
+                  static_cast<int>(r.height));
     const bool listHover = ui::Hover(r);
     for (int i = 0; i < n; i++) {
         const float y0 = r.y + starts[i] - *scroll;
@@ -278,7 +278,7 @@ App::TableResult App::DrawTrackList(Rectangle r, const std::vector<const Track*>
             }
         }
     }
-    EndScissorMode();
+    ui::EndClip();
     return out;
 }
 
@@ -293,8 +293,8 @@ void App::DrawAlbumGrid(Rectangle r, const std::vector<const Album*>& albums, fl
     const int rows = (static_cast<int>(albums.size()) + cols - 1) / cols;
     const float contentH = rows * (cardH + gap) - gap + 24;
     ui::ScrollArea(r, contentH, scroll);
-    BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
-                     static_cast<int>(r.height));
+    ui::BeginClip(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
+                  static_cast<int>(r.height));
     const bool gridHover = ui::Hover(r);
     for (size_t i = 0; i < albums.size(); i++) {
         const int row = static_cast<int>(i) / cols, col = static_cast<int>(i) % cols;
@@ -327,7 +327,7 @@ void App::DrawAlbumGrid(Rectangle r, const std::vector<const Album*>& albums, fl
             else OpenAlbum(a.id);
         }
     }
-    EndScissorMode();
+    ui::EndClip();
 }
 
 // ── Views ──
@@ -518,8 +518,8 @@ void App::DrawPlaylistsView(Rectangle r) {
     const float rowH = 40 + 24, stride = rowH + 4;
     const Rectangle area{r.x + kPageX, y, r.width - 2 * kPageX, r.y + r.height - y};
     ui::ScrollArea(area, order.size() * stride + 24, &playlistsScroll_);
-    BeginScissorMode(static_cast<int>(area.x), static_cast<int>(area.y), static_cast<int>(std::ceil(area.width)),
-                     static_cast<int>(area.height));
+    ui::BeginClip(static_cast<int>(area.x), static_cast<int>(area.y), static_cast<int>(std::ceil(area.width)),
+                  static_cast<int>(area.height));
     for (size_t i = 0; i < order.size(); i++) {
         const Playlist& p = *order[i];
         const float ry = area.y + i * stride - playlistsScroll_;
@@ -548,7 +548,7 @@ void App::DrawPlaylistsView(Rectangle r) {
                          Vector2{area.x + area.width / 2, area.y + order.size() * stride + 64}, 14,
                          ui::theme.textTertiary);
     }
-    EndScissorMode();
+    ui::EndClip();
 }
 
 void App::DrawPlaylistDetailView(Rectangle r) {
@@ -741,8 +741,8 @@ void App::DrawSettingsView(Rectangle r) {
 
     const Rectangle area{r.x + kPageX, ty + 41 + 24, r.width - 2 * kPageX, r.y + r.height - (ty + 41 + 24)};
     ui::ScrollArea(area, settingsContentH_, &settingsScroll_);
-    BeginScissorMode(static_cast<int>(area.x), static_cast<int>(area.y - 8), static_cast<int>(std::ceil(area.width)),
-                     static_cast<int>(area.height + 8));
+    ui::BeginClip(static_cast<int>(area.x), static_cast<int>(area.y - 8), static_cast<int>(std::ceil(area.width)),
+                  static_cast<int>(area.height + 8));
     const float sectionW = std::min(512.0f, area.width);
     float y = area.y - settingsScroll_;
     const float x0 = area.x;
@@ -1038,6 +1038,6 @@ void App::DrawSettingsView(Rectangle r) {
             break;
         }
     }
-    EndScissorMode();
+    ui::EndClip();
     settingsContentH_ = (y + settingsScroll_) - area.y + 24;
 }

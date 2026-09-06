@@ -123,8 +123,8 @@ void App::DrawBrushEditor(Rectangle r) {
         ui::RoundedTexture(brush_.artTex, ui::CoverSrc(brush_.artTex), artRect, 16, WHITE);
     }
     // ── Layer 1: visualizer, between the art and the mask (same insets as NP) ──
-    BeginScissorMode(static_cast<int>(artRect.x), static_cast<int>(artRect.y), static_cast<int>(artRect.width),
-                     static_cast<int>(artRect.height));
+    ui::BeginClip(static_cast<int>(artRect.x), static_cast<int>(artRect.y), static_cast<int>(artRect.width),
+                  static_cast<int>(artRect.height));
     if (config_.canvasVisualizer && player_.IsPlaying()) {
         const Visualizer::FrameStyle fs = Visualizer::ComputeFrameStyle(
             config_.visualizerIntensity / 100.0f, accent, brush_.art.hasSecondary ? &brush_.art.accentSecondary : nullptr,
@@ -132,7 +132,7 @@ void App::DrawBrushEditor(Rectangle r) {
         const Visualizer::Style style = ResolvedStyle();
         visualizer_.Draw(style, artRect, fs, style == Visualizer::Style::ContourBars ? &contour_.data : nullptr);
     }
-    EndScissorMode();
+    ui::EndClip();
     // ── Layer 2: mask preview composite ──
     if (brush_.overlayTex.id != 0) {
         ui::RoundedTexture(brush_.overlayTex,

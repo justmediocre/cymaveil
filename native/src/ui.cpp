@@ -226,6 +226,30 @@ bool g_marqueeActive = false;
 
 }  // namespace
 
+void BeginClip(int x, int y, int width, int height) {
+    rlDrawRenderBatchActive();
+    rlEnableScissorTest();
+    // Screen drawing only (never inside BeginTextureMode; rlgl's framebuffer
+    // size is stale after EndTextureMode so it cannot be used to detect that).
+    // Convert logical units to framebuffer pixels with the render/screen
+    // ratio, which is right in window mode, fullscreen and screenshot mode
+    // alike, and flip to GL's bottom-left origin.
+    const float s = DpiScale();
+    const int fboH = GetRenderHeight();
+    const int px = static_cast<int>(std::floor(x * s));
+    const int py = static_cast<int>(std::floor(y * s));
+    const int pw = static_cast<int>(std::ceil((x + width) * s)) - px;
+    const int ph = static_cast<int>(std::ceil((y + height) * s)) - py;
+    rlScissor(px, fboH - (py + ph), pw, ph);
+}
+
+void BeginClip(Rectangle r) {
+    BeginClip(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(std::ceil(r.width)),
+              static_cast<int>(std::ceil(r.height)));
+}
+
+void EndClip() { EndScissorMode(); }
+
 void Init() {
     g_cps = Codepoints();
     const FaceData faces[8] = {
@@ -368,10 +392,10 @@ void TextMarqueeCentered(const std::string& s, Vector2 center, float maxWidth, f
         if (x1 <= x0) return;
         Color col = c;
         col.a = static_cast<unsigned char>(std::clamp(c.a * a, 0.0f, 255.0f));
-        BeginScissorMode(x0, static_cast<int>(std::floor(top)) - 2, x1 - x0,
-                         static_cast<int>(std::ceil(m.y)) + 4);
+        ui::BeginClip(x0, static_cast<int>(std::floor(top)) - 2, x1 - x0,
+                      static_cast<int>(std::ceil(m.y)) + 4);
         Text(s, Vector2{textX, top}, size, col, face);
-        EndScissorMode();
+        ui::EndClip();
     };
 
     // 12px edge fades (FADE_WIDTH), only on the side that still hides text.
@@ -546,8 +570,8 @@ int TextInput(Rectangle r, std::string* text, float size, Face face, Color color
     }
 
     const Vector2 m = Measure(*text, size, face);
-    BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(r.width),
-                     static_cast<int>(r.height));
+    ui::BeginClip(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(r.width),
+                  static_cast<int>(r.height));
     // Keep the caret in view when the text outgrows the box
     const float shift = std::max(0.0f, m.x - (r.width - 4));
     const Vector2 pos{r.x - shift, r.y + (r.height - m.y) / 2};
@@ -556,7 +580,7 @@ int TextInput(Rectangle r, std::string* text, float size, Face face, Color color
         DrawRectangleRec(Rectangle{pos.x + m.x + 1, r.y + (r.height - size) / 2 - 1, 1.5f, size + 2},
                          color);
     }
-    EndScissorMode();
+    ui::EndClip();
 
     if (g_inputBlocked) return 0;
     if (KeyPressed(KEY_ENTER) || KeyPressed(KEY_KP_ENTER)) return 1;

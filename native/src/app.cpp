@@ -122,10 +122,15 @@ int App::Run() {
     // Fixed-size in screenshot mode so tiling WMs float the window at the
     // requested resolution instead of fitting it into the layout, and no
     // HIGHDPI so shots come out at the exact requested pixel size on any
-    // display. Interactively, HIGHDPI keeps layout in logical units.
+    // display. Interactively, HIGHDPI keeps layout in logical units. A
+    // fullscreen shot keeps HIGHDPI too: the window fills the display either
+    // way, and it is the only way to capture the fullscreen HiDPI layout on
+    // Wayland, where nothing can inject F11 and desktop screenshot tools need
+    // an interactive portal prompt.
+    const bool hidpi = screenshotPath_.empty() || startFullscreen_;
     SetConfigFlags(screenshotPath_.empty()
                        ? (FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI)
-                       : FLAG_MSAA_4X_HINT);
+                       : (hidpi ? (FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI) : FLAG_MSAA_4X_HINT));
     InitWindow(startW_, startH_, "Cymaveil");
     Image icon = LoadImageFromMemory(".png", kIconPng, kIconPngSize);
     if (icon.data != nullptr) {
@@ -386,8 +391,8 @@ void App::Frame() {
     if (nowPlaying) {
         DrawNowPlayingView(content, immersive);
     } else {
-        BeginScissorMode(static_cast<int>(content.x), static_cast<int>(content.y),
-                         static_cast<int>(std::ceil(content.width)), static_cast<int>(content.height));
+        ui::BeginClip(static_cast<int>(content.x), static_cast<int>(content.y),
+                      static_cast<int>(std::ceil(content.width)), static_cast<int>(content.height));
         switch (view_) {
             case View::Search: DrawSearchView(content); break;
             case View::Library: DrawLibraryView(content); break;
@@ -402,7 +407,7 @@ void App::Frame() {
             case View::Settings: DrawSettingsView(content); break;
             case View::NowPlaying: DrawEmptyState(content, "disc", "Nothing playing", "Pick a track to start"); break;
         }
-        EndScissorMode();
+        ui::EndClip();
         if (miniBar) DrawMiniPlayer(bar);
     }
     if (queueW > 0.5f) DrawQueuePanel(queuePanel);
