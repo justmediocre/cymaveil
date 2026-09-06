@@ -34,8 +34,10 @@ void App::DrawSidebar(Rectangle r) {
     {
         const std::string brand = "CYMAVEIL";
         const float size = 28.0f, tracking = 0.35f * size;
-        const Vector2 m = ui::Measure(brand, size, ui::Face::DisplayBlack, tracking);
-        const float w = m.x - tracking;  // no trailing letter-space
+        // raylib's measure already excludes the trailing letter-space; CSS
+        // includes it in the box, which is what pulls the glyphs back left
+        // against the asymmetric pl-6 pr-4 padding. Emulate that box.
+        const float w = ui::Measure(brand, size, ui::Face::DisplayBlack, tracking).x + tracking;
         // pt-6 pb-3 pl-6 pr-4, text centred in the remaining width
         const float cx = full.x + 24 + (kSidebarW - 24 - 16) / 2;
         const float top = full.y + 24;
@@ -44,11 +46,15 @@ void App::DrawSidebar(Rectangle r) {
         rlScalef(1.15f, 1.0f, 1.0f);
         rlTranslatef(-cx, 0, 0);
         const Vector2 pos{cx - w / 2, top};
-        const Color hi = ui::theme.light ? Fade(WHITE, 0.9f * alpha) : Fade(WHITE, 0.07f * alpha);
-        const Color lo = ui::theme.light ? Fade(BLACK, 0.06f * alpha) : Fade(BLACK, 0.6f * alpha);
+        // Fill sits a touch above the surface (the CSS 0.3px text-stroke) and
+        // the emboss is a little stronger than the web's so it reads on glass.
+        const Color hi = ui::theme.light ? Fade(WHITE, 0.9f * alpha) : Fade(WHITE, 0.14f * alpha);
+        const Color lo = ui::theme.light ? Fade(BLACK, 0.10f * alpha) : Fade(BLACK, 0.75f * alpha);
+        const Color fill = ui::theme.light ? ui::Mix(ui::theme.surface, BLACK, 0.03f)
+                                           : ui::Mix(ui::theme.surface, WHITE, 0.05f);
         ui::Text(brand, Vector2{pos.x, pos.y + 1}, size, hi, ui::Face::DisplayBlack, tracking);
         ui::Text(brand, Vector2{pos.x, pos.y - 1}, size, lo, ui::Face::DisplayBlack, tracking);
-        ui::Text(brand, pos, size, Fade(ui::theme.surface, alpha), ui::Face::DisplayBlack, tracking);
+        ui::Text(brand, pos, size, Fade(fill, alpha), ui::Face::DisplayBlack, tracking);
         rlPopMatrix();
     }
 
