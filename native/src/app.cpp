@@ -206,6 +206,7 @@ int App::Run() {
     else if (startView_ == "album" && !library_.Albums().empty()) OpenAlbum(library_.Albums().front().id);
     for (const auto& f : startupImports_) ImportM3uFile(f);
     MarkActivity();
+    if (startFullscreen_) ToggleFullscreenMode();
 
     while (!WindowShouldClose() && !quitRequested_) Frame();
 

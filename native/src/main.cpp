@@ -17,6 +17,8 @@ int main(int argc, char** argv) {
         const std::string arg = argv[i];
         if (arg == "--play") {
             app.SetAutoplay(true);
+        } else if (arg == "--fullscreen") {
+            app.SetStartFullscreen(true);
         } else if (arg == "--shot" && i + 1 < argc) {
             app.SetScreenshotPath(argv[++i]);
         } else if (arg == "--view" && i + 1 < argc) {

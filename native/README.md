@@ -122,9 +122,10 @@ it ever compares PIDs.
 Dev/testing flags: `--play` (autoplay the library on launch),
 `--view search|library|albums|album|favorites|playlists|now|settings[:visuals|:depth|:about]|brush`
 (start on a view; `album` opens the first album's detail), `--import <file.m3u8>`
-(import a playlist on launch), `--shot <path>` (capture a screenshot ~2s in, with
-debug overlay). Point `XDG_DATA_HOME` at a scratch directory to keep test runs
-out of your real library cache.
+(import a playlist on launch), `--fullscreen` (enter fullscreen on launch, as F11
+would), `--shot <path>` (capture a screenshot ~2s in, with debug overlay). Point
+`XDG_DATA_HOME` at a scratch directory to keep test runs out of your real library
+cache.
 
 The library cache format is versioned (`"version": 2` in `library.json`, since
 artwork moved to content-hashed files with per-track covers); an older cache is

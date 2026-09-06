@@ -51,6 +51,8 @@ public:
     void AddStartupImport(const std::string& path) { startupImports_.push_back(path); }
     // --play: start playing the library on launch (handy for testing)
     void SetAutoplay(bool on) { autoplay_ = on; }
+    // --fullscreen: enter fullscreen on launch (testing; F11 does this interactively)
+    void SetStartFullscreen(bool on) { startFullscreen_ = on; }
     // --shot <path>: capture the window to <path> ~2s after launch
     void SetScreenshotPath(const std::string& path) { screenshotPath_ = path; }
     // --view <search|library|albums|now>: start on a specific view (testing)
@@ -295,6 +297,7 @@ private:
     bool cursorHidden_ = false;
     float ctrlFade_ = 1.0f;
     bool autoplay_ = false;
+    bool startFullscreen_ = false;
     std::string screenshotPath_;
     std::string startView_;
     int frameCount_ = 0;

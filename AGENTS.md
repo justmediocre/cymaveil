@@ -99,7 +99,11 @@ change visually, launch with `XDG_DATA_HOME=/tmp/some-dir` (fresh cache, keeps y
 real one untouched), a music folder as the argument, and `--play --view now --shot
 /tmp/shot.png` to capture a screenshot ~2 s in; `--view` also takes
 `library|albums|album|playlists|settings:visuals` etc. The first run scans the
-folder, so let one run finish (or `timeout 30`) before taking shots.
+folder, so let one run finish (or `timeout 30`) before taking shots. `--shot`
+disables HiDPI, so to check fullscreen or scaling on a HiDPI desktop run without
+it, pass `--fullscreen` (there is no way to inject F11 on Wayland), and grab the
+screen with `spectacle -b -n -f -o shot.png`. Stop it with `pkill -x cymaveil`;
+a `pkill -f` pattern also matches the shell that launched it.
 
 ## Settings defaults
 
