@@ -18,6 +18,8 @@ export interface Track {
   duration: number
   trackNum: number
   filePath: string
+  /** Per-track artwork override — only set when it differs from the album art */
+  art?: string | null
 }
 
 /** A playlist (including the built-in Favorites) */
@@ -45,6 +47,12 @@ export interface LibraryData {
   albums: Album[]
   tracks: Track[]
   folders: string[]
+}
+
+/** artwork:// URL replacements returned by saveLibrary, keyed by album/track id */
+export interface ArtUrlUpdates {
+  albums: Record<string, string>
+  tracks: Record<string, string>
 }
 
 /** Scan progress event from main process */
@@ -212,7 +220,7 @@ export interface ElectronAPI {
   selectFolder: () => Promise<string | null>
   scanMusicFolder: (folderPath: string) => Promise<ScanResult>
   loadLibrary: () => Promise<LibraryData>
-  saveLibrary: (data: LibraryData) => Promise<Record<string, string>>
+  saveLibrary: (data: LibraryData) => Promise<ArtUrlUpdates | undefined>
   clearLibrary: () => Promise<void>
   loadPlaybackState: () => Promise<PlaybackState>
   savePlaybackState: (data: PlaybackState) => Promise<void>

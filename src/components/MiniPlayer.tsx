@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import { usePlayback } from '../contexts/playback/PlaybackContext'
 import { PlayIcon, PauseIcon, SkipForwardIcon } from './Icons'
 import { playbackTimeStore } from '../lib/playbackTimeStore'
+import { resolveTrackArt } from '../lib/trackArt'
 import { perfCountRender } from '../lib/perf'
 
 interface MiniPlayerProps {
@@ -93,10 +94,10 @@ export default function MiniPlayer({ onExpand }: MiniPlayerProps) {
       </div>
 
       <div className="flex items-center h-full px-4 gap-3 cursor-pointer" onClick={onExpand}>
-        {/* Album art */}
+        {/* Album art — per-track art wins over the album cover */}
         <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0" style={{ background: 'var(--bg-elevated)' }}>
-          {album.art && (
-            <img src={album.art} alt="" className="w-full h-full object-cover" draggable={false} />
+          {resolveTrackArt(track, album) && (
+            <img src={resolveTrackArt(track, album)!} alt="" className="w-full h-full object-cover" draggable={false} />
           )}
         </div>
 

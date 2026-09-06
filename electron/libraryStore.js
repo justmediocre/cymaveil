@@ -6,11 +6,14 @@
 /** @typedef {import('./types').PlaybackState} PlaybackState */
 /** @typedef {import('./types').LibraryData} LibraryData */
 /** @typedef {import('./types').PersistedAlbum} PersistedAlbum */
+/** @typedef {import('./types').PersistedTrack} PersistedTrack */
+/** @typedef {import('./types').ArtUrlUpdates} ArtUrlUpdates */
 /** @typedef {import('./types').StoreSchema} StoreSchema */
 
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import { createHash } from 'crypto'
 import Store from 'electron-store'
 
 const store = new Store({
@@ -44,12 +47,13 @@ function isBase64DataUri(art) {
 }
 
 /**
- * Save base64 data URI as an image file. Returns the filename (relative).
- * @param {string} albumId
+ * Save base64 data URI as an image file named by content hash, so identical
+ * covers (e.g. album art and a track's own art) share one file on disk.
+ * Returns the filename (relative).
  * @param {string} dataUri
  * @returns {string | null}
  */
-function saveArtwork(albumId, dataUri) {
+function saveArtwork(dataUri) {
   ensureArtworkDir()
 
   const match = dataUri.match(/^data:image\/(\w+);base64,(.+)$/)
@@ -57,11 +61,29 @@ function saveArtwork(albumId, dataUri) {
 
   const ext = match[1] === 'jpeg' ? 'jpg' : match[1]
   const buffer = Buffer.from(match[2], 'base64')
-  const filename = `${albumId}.${ext}`
+  const hash = createHash('sha256').update(buffer).digest('hex').slice(0, 16)
+  const filename = `art-${hash}.${ext}`
   const filePath = path.join(artworkDir, filename)
 
-  fs.writeFileSync(filePath, buffer)
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, buffer)
+  }
   return filename
+}
+
+/**
+ * Extract the artwork filename back out of an artwork:// URL
+ * @param {string | null | undefined} art
+ * @returns {string | null}
+ */
+function artFileFromUrl(art) {
+  const prefix = 'artwork://file/'
+  if (!art || !art.startsWith(prefix)) return null
+  try {
+    return decodeURIComponent(art.slice(prefix.length))
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -81,11 +103,11 @@ export function getArtworkPath(filename) {
 /**
  * Save library data to disk, externalizing base64 artwork to files
  * @param {LibraryData} data
- * @returns {void}
+ * @returns {ArtUrlUpdates}
  */
 export function saveLibrary({ albums, tracks, folders }) {
-  /** @type {Record<string, string>} */
-  const artUpdates = {}
+  /** @type {ArtUrlUpdates} */
+  const artUpdates = { albums: {}, tracks: {} }
 
   try {
     ensureArtworkDir()
@@ -95,10 +117,10 @@ export function saveLibrary({ albums, tracks, folders }) {
 
       // Base64 image data → externalize to file
       if (isBase64DataUri(art)) {
-        const artFile = saveArtwork(album.id, /** @type {string} */ (art))
+        const artFile = saveArtwork(/** @type {string} */ (art))
         if (artFile) {
           // Tell the renderer the new artwork:// URL so it can update in-memory
-          artUpdates[album.id] = `artwork://file/${encodeURIComponent(artFile)}`
+          artUpdates.albums[album.id] = `artwork://file/${encodeURIComponent(artFile)}`
           return { ...rest, artFile }
         }
       }
@@ -108,20 +130,36 @@ export function saveLibrary({ albums, tracks, folders }) {
         return { ...rest, artSvg: art }
       }
 
-      // artwork:// URL or no art — check if file already exists on disk
-      if (art && art.startsWith('artwork://')) {
-        // Already persisted — find existing artFile
-        const existingAlbum = store.get('albums', []).find((a) => a.id === album.id)
-        if (existingAlbum?.artFile) {
-          return { ...rest, artFile: existingAlbum.artFile }
+      // artwork:// URL — already persisted, keep referencing the same file
+      const existingFile = artFileFromUrl(art)
+      if (existingFile) {
+        return { ...rest, artFile: existingFile }
+      }
+
+      return rest
+    })
+
+    const persistedTracks = tracks.map((track) => {
+      const { art, ...rest } = track
+
+      if (isBase64DataUri(art)) {
+        const artFile = saveArtwork(/** @type {string} */ (art))
+        if (artFile) {
+          artUpdates.tracks[track.id] = `artwork://file/${encodeURIComponent(artFile)}`
+          return { ...rest, artFile }
         }
+      }
+
+      const existingFile = artFileFromUrl(art)
+      if (existingFile) {
+        return { ...rest, artFile: existingFile }
       }
 
       return rest
     })
 
     store.set('albums', /** @type {PersistedAlbum[]} */ (persistedAlbums))
-    store.set('tracks', tracks)
+    store.set('tracks', /** @type {PersistedTrack[]} */ (persistedTracks))
     store.set('folders', folders || [])
   } catch (err) {
     console.error('Failed to save library:', err)
@@ -158,7 +196,17 @@ export function loadLibrary() {
       return { ...rest, art: null }
     })
 
-    return { albums: /** @type {Album[]} */ (hydratedAlbums), tracks, folders }
+    const hydratedTracks = tracks.map((track) => {
+      const { artFile, ...rest } = track
+
+      if (artFile && fs.existsSync(path.join(artworkDir, artFile))) {
+        return { ...rest, art: `artwork://file/${encodeURIComponent(artFile)}` }
+      }
+
+      return { ...rest, art: null }
+    })
+
+    return { albums: /** @type {Album[]} */ (hydratedAlbums), tracks: /** @type {Track[]} */ (hydratedTracks), folders }
   } catch (err) {
     console.error('Failed to load library:', err)
     return { albums: [], tracks: [], folders: [] }

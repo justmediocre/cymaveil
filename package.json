@@ -1,6 +1,6 @@
 {
   "name": "cymaveil",
-  "version": "0.1.2",
+  "version": "0.2.0-beta.1",
   "license": "MIT",
   "author": {
     "name": "justmediocre",
@@ -61,11 +61,17 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "build/icon.png"
@@ -88,7 +94,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "build/icon.png",

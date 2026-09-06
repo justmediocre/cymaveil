@@ -135,8 +135,13 @@ async function parseAudioFile(filePath) {
 
     // Extract embedded picture
     let artDataUri = null
+    let artHash = null
     if (common.picture && common.picture.length > 0) {
-      artDataUri = pictureToDataUri(common.picture[0])
+      const picture = common.picture[0]
+      artDataUri = pictureToDataUri(picture)
+      if (artDataUri && picture?.data) {
+        artHash = createHash('sha256').update(picture.data).digest('hex').slice(0, 16)
+      }
     }
 
     return {
@@ -148,6 +153,7 @@ async function parseAudioFile(filePath) {
       trackNum,
       duration,
       artDataUri,
+      artHash,
     }
   } catch {
     // Gracefully handle files that can't be parsed
@@ -160,6 +166,7 @@ async function parseAudioFile(filePath) {
       trackNum: null,
       duration: 0,
       artDataUri: null,
+      artHash: null,
     }
   }
 }
@@ -173,9 +180,22 @@ async function parseAudioFile(filePath) {
 async function parseBatch(files, onProgress) {
   /** @type {ParsedAudioFile[]} */
   const results = []
+  // Identical pictures across files share one data URI string reference
+  /** @type {Map<string, string>} */
+  const uriByHash = new Map()
   for (let i = 0; i < files.length; i += BATCH_SIZE) {
     const batch = files.slice(i, i + BATCH_SIZE)
     const batchResults = await Promise.all(batch.map(parseAudioFile))
+    for (const result of batchResults) {
+      if (result.artHash && result.artDataUri) {
+        const canonical = uriByHash.get(result.artHash)
+        if (canonical) {
+          result.artDataUri = canonical
+        } else {
+          uriByHash.set(result.artHash, result.artDataUri)
+        }
+      }
+    }
     results.push(...batchResults)
     onProgress?.(Math.min(i + BATCH_SIZE, files.length))
   }
@@ -218,6 +238,7 @@ export async function scanMusicFolder(folderPath, onProgress) {
         artists: new Set([file.artist]),
         year: file.year,
         art: file.artDataUri || generateFallbackArt(file.album, file.artist),
+        artHash: file.artDataUri ? file.artHash : null,
         dominantColor: colors.dominantColor,
         accentColor: colors.accentColor,
         hasRealArt: !!file.artDataUri,
@@ -233,6 +254,7 @@ export async function scanMusicFolder(folderPath, onProgress) {
     // Update album art if this track has art and the album doesn't yet
     if (file.artDataUri && !albumEntry.hasRealArt) {
       albumEntry.art = file.artDataUri
+      albumEntry.artHash = file.artHash
       albumEntry.hasRealArt = true
     }
 
@@ -247,6 +269,8 @@ export async function scanMusicFolder(folderPath, onProgress) {
       duration: file.duration,
       trackNum: file.trackNum,
       filePath: file.filePath,
+      // Per-track art only when it differs from the album cover
+      art: file.artDataUri && file.artHash !== albumEntry.artHash ? file.artDataUri : null,
     })
   }
 
@@ -292,6 +316,7 @@ export async function scanMusicFolder(folderPath, onProgress) {
         duration: t.duration,
         trackNum: t.trackNum || i + 1,
         filePath: t.filePath,
+        art: t.art,
       })
     }
   }
@@ -345,6 +370,9 @@ export async function scanSingleFile(filePath) {
     duration: parsed.duration,
     trackNum: parsed.trackNum || 0,
     filePath,
+    // The returned album carries this same art; the renderer drops track.art
+    // when it adds the album, and keeps it when merging into an existing album.
+    art: parsed.artDataUri,
   }
 
   return { album, track }

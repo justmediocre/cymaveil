@@ -17,6 +17,8 @@ export default function useLibrary() {
   const isScanningRef = useRef<boolean>(false)
   const tracksRef = useRef(tracks)
   tracksRef.current = tracks
+  const albumsRef = useRef(albums)
+  albumsRef.current = albums
 
   // Load persisted library on mount, then reconcile with filesystem
   useEffect(() => {
@@ -49,11 +51,14 @@ export default function useLibrary() {
               const existingTrackIds = new Set(tracks.map((t) => t.id))
               const existingAlbumIds = new Set(albums.map((a) => a.id))
               for (const result of added) {
+                // When the album from the same scan is also added, it already
+                // carries this track's art — drop the per-track copy.
+                const albumIsNew = !existingAlbumIds.has(result.album.id)
                 if (!existingTrackIds.has(result.track.id)) {
-                  tracks.push(result.track)
+                  tracks.push(albumIsNew ? { ...result.track, art: null } : result.track)
                   existingTrackIds.add(result.track.id)
                 }
-                if (!existingAlbumIds.has(result.album.id)) {
+                if (albumIsNew) {
                   albums.push(result.album)
                   existingAlbumIds.add(result.album.id)
                 }
@@ -94,13 +99,22 @@ export default function useLibrary() {
     saveTimerRef.current = setTimeout(() => {
       window.electronAPI!.saveLibrary({ albums, tracks, folders }).then((artUpdates) => {
         // When base64 data URIs are externalized to artwork:// URLs on disk,
-        // update in-memory albums so caches (e.g. segmentation) use stable keys
-        // that will match on the next app launch.
-        if (artUpdates && Object.keys(artUpdates).length > 0) {
+        // update in-memory albums/tracks so caches (e.g. segmentation) use
+        // stable keys that will match on the next app launch.
+        if (!artUpdates) return
+        if (Object.keys(artUpdates.albums).length > 0) {
           setAlbums((prev) =>
             prev.map((a) => {
-              const newArt = artUpdates[a.id]
+              const newArt = artUpdates.albums[a.id]
               return newArt ? { ...a, art: newArt } : a
+            })
+          )
+        }
+        if (Object.keys(artUpdates.tracks).length > 0) {
+          setTracks((prev) =>
+            prev.map((t) => {
+              const newArt = artUpdates.tracks[t.id]
+              return newArt ? { ...t, art: newArt } : t
             })
           )
         }
@@ -209,10 +223,12 @@ export default function useLibrary() {
     const unsubscribe = window.electronAPI.onWatcherEvent((event: WatcherEvent) => {
       if (event.type === 'add') {
         window.electronAPI!.scanSingleFile(event.filePath).then((result) => {
-          // Merge new track into library
+          // Merge new track into library. If the album is also new it already
+          // carries this track's art, so drop the per-track copy.
+          const albumIsNew = !albumsRef.current.some((a) => a.id === result.album.id)
           setTracks((prev) => {
             if (prev.some((t) => t.id === result.track.id)) return prev
-            return [...prev, result.track]
+            return [...prev, albumIsNew ? { ...result.track, art: null } : result.track]
           })
           setAlbums((prev) => {
             if (prev.some((a) => a.id === result.album.id)) return prev

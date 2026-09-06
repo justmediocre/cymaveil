@@ -6,6 +6,7 @@ import { usePlaybackCrossfade } from './usePlaybackCrossfade'
 import { usePlaybackPersistence } from './usePlaybackPersistence'
 import { usePlaybackActions } from './usePlaybackActions'
 import useMediaSession from '../../hooks/useMediaSession'
+import { resolveTrackArt } from '../../lib/trackArt'
 import type { Track, Album, Playlist } from '../../types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
               id: track.id,
               title: track.title,
               artist: track.artist || 'Unknown Artist',
-              art: album?.art || null,
+              art: resolveTrackArt(track, album),
             })
           }
         }
@@ -126,7 +127,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
             id: track.id,
             title: track.title,
             artist: track.artist || 'Unknown Artist',
-            art: album?.art || null,
+            art: resolveTrackArt(track, album),
           })
         }
       }
