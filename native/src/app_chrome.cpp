@@ -436,6 +436,10 @@ void App::DrawMenu() {
     const float H = static_cast<float>(GetScreenHeight());
     const float w = 200, ih = 32, headerH = menu_.header.empty() ? 0 : 27;
     const bool addToPlaylist = !menu_.trackId.empty() && !menu_.header.empty();
+    // Menus with checkable rows (playlist membership, settings dropdowns) indent
+    // every label past the check column so the mark never overlaps the text.
+    const bool hasChecks = addToPlaylist || std::any_of(menu_.items.begin(), menu_.items.end(),
+                                                         [](const MenuItem& it) { return it.checked; });
     float h = 8 + headerH;
     for (const auto& it : menu_.items) h += ih + (it.separatorAbove ? 9 : 0);
     if (addToPlaylist) h += 9 + ih;  // divider + "+ New Playlist"
@@ -480,7 +484,7 @@ void App::DrawMenu() {
             DrawRectangleRec(Rectangle{d.x + 12, y + 4, d.width - 24, 1}, Fade(ui::theme.borderSubtle, open));
             y += 9;
         }
-        if (row(it.label, it.checked, it.secondary, addToPlaylist && !it.checked)) {
+        if (row(it.label, it.checked, it.secondary, hasChecks)) {
             it.fn();
             clickedItem = true;
         }
