@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "ui.h"
+
 namespace {
 
 // The blur runs at 1/kDownscale resolution: bilinear downsampling already
@@ -114,8 +116,8 @@ void Backdrop::DrawScene() const {
                    Vector2{0, 0}, 0, WHITE);
 }
 
-void Backdrop::DrawGlass(Rectangle r, Color tint) const {
-    if (!ready_) {
+void Backdrop::DrawGlass(Rectangle r, Color tint, bool blur) const {
+    if (!ready_ || !blur) {
         DrawRectangleRec(r, tint);
         return;
     }
@@ -124,6 +126,16 @@ void Backdrop::DrawGlass(Rectangle r, Color tint) const {
     const Rectangle src = FlipSrc(r, tw, th, static_cast<float>(w_), static_cast<float>(h_));
     DrawTexturePro(blur_.texture, src, r, Vector2{0, 0}, 0, WHITE);
     DrawRectangleRec(r, tint);
+}
+
+void Backdrop::DrawGlassRounded(Rectangle r, Color tint, float radius, bool blur) const {
+    if (ready_ && blur) {
+        const float tw = static_cast<float>(blur_.texture.width);
+        const float th = static_cast<float>(blur_.texture.height);
+        const Rectangle src = FlipSrc(r, tw, th, static_cast<float>(w_), static_cast<float>(h_));
+        ui::RoundedTexture(blur_.texture, src, r, radius, WHITE);
+    }
+    ui::RoundedRect(r, radius, tint);
 }
 
 void Backdrop::Unload() {

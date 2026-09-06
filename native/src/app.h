@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -7,27 +8,28 @@
 
 #include "raylib.h"
 
-#include "albumglow.h"
+#include "artview.h"
 #include "backdrop.h"
 #include "brush.h"
 #include "config.h"
+#include "contour.h"
 #include "depth.h"
 #include "library.h"
 #include "mosaic.h"
 #include "mpris.h"
 #include "player.h"
 #include "playlist.h"
-#include "sleeve3d.h"
-#include "vinyl.h"
 #include "visualizer.h"
 #include "watcher.h"
 
-// Lazy GPU cache for album artwork. Views request textures while drawing;
-// at most a couple of images are decoded+uploaded per frame to avoid hitches.
+// Lazy GPU cache for album artwork, keyed by artwork file path. Views request
+// textures while drawing; at most a couple of images are decoded+uploaded per
+// frame to avoid hitches.
 class ArtCache {
 public:
     // Returns the texture if resident, otherwise queues it and returns nullptr.
-    const Texture2D* Get(const Album& album);
+    const Texture2D* Get(const std::string& artPath);
+    const Texture2D* Get(const Art* art) { return art != nullptr ? Get(art->path) : nullptr; }
     void ProcessQueue(int budget);
     bool HasPendingWork() const { return !wanted_.empty(); }
     void Clear();
@@ -35,9 +37,13 @@ public:
 private:
     std::unordered_map<std::string, Texture2D> textures_;
     std::unordered_set<std::string> failed_;
-    std::unordered_map<std::string, std::string> wanted_;  // albumId -> artPath
+    std::unordered_set<std::string> wanted_;
 };
 
+// The application: window, frame loop, and every view. Drawing is split over
+// app_chrome.cpp (sidebar, title bar, mini player, queue, menus), app_browse.cpp
+// (library/albums/playlists/search/settings), app_nowplaying.cpp and
+// app_brush.cpp (mask painting); app.cpp owns the loop, input and state.
 class App {
 public:
     void AddStartupFolder(const std::string& path) { startupFolders_.push_back(path); }
@@ -52,7 +58,11 @@ public:
     int Run();
 
 private:
-    enum class View { Search, Library, Albums, AlbumDetail, Playlists, PlaylistDetail, NowPlaying, Settings };
+    enum class View {
+        Search, Library, Albums, AlbumDetail, Favorites, Playlists, PlaylistDetail, NowPlaying,
+        Settings
+    };
+    enum class SettingsTab { Library, Playback, Visuals, DepthLayers, About };
 
     void Frame();
     void HandleInput();
@@ -68,81 +78,96 @@ private:
     void MarkActivity() { lastActivity_ = GetTime(); }
     // Borderless-fullscreen toggle (F11). Now Playing goes immersive in it.
     void ToggleFullscreenMode();
+    // Navigation with the web app's "previous view" memory for Now Playing.
+    void Navigate(View v);
+    void OpenAlbum(const std::string& albumId);
+    void OpenPlaylist(const std::string& playlistId);
+    void ToggleSidebar();
+    void ToggleQueuePanel();
+    void RebuildMosaic();
 
+    // ── Chrome (app_chrome.cpp) ──
     void DrawSidebar(Rectangle r);
+    void DrawTitleBar(Rectangle r);
     // Compact bar shown while browsing; click to expand into Now Playing.
     void DrawMiniPlayer(Rectangle r);
+    // Collapsible queue panel on the right edge; r is the revealed strip.
+    void DrawQueuePanel(Rectangle r);
+    // Popup menus (add-to-playlist / right-click track menu / settings selects).
+    struct MenuItem {
+        std::string label;
+        std::function<void()> fn;
+        bool checked = false;
+        bool separatorAbove = false;
+        bool secondary = false;  // dimmer text (e.g. "+ New Playlist")
+    };
+    void OpenMenu(Rectangle anchor, std::vector<MenuItem> items, const std::string& header = "",
+                  bool preferAbove = true);
+    void OpenTrackMenu(const std::string& trackId, Rectangle anchor, bool preferAbove);
+    void DrawMenu();
+    // chromeH is the bottom chrome height the toast floats clear of.
+    void DrawToast(float chromeH);
+    void Toast(const std::string& msg);
+    void DrawDebugOverlay(float chromeH);
+
+    // ── Browse views (app_browse.cpp) ──
     void DrawSearchView(Rectangle r);
     void DrawLibraryView(Rectangle r);
     void DrawAlbumsView(Rectangle r);
     void DrawAlbumDetailView(Rectangle r);
     void DrawPlaylistsView(Rectangle r);
     void DrawPlaylistDetailView(Rectangle r);
-    void DrawNowPlayingView(Rectangle r);
     void DrawSettingsView(Rectangle r);
-    // Music-folder list + add-by-path field, rendered inside the Settings view.
-    void DrawFolderSettings(Rectangle anchor);
-    void DrawEmptyState(Rectangle r);
-    // chromeH is the bottom chrome height (mini player bar) the overlay clears.
-    void DrawDebugOverlay(float chromeH);
-    // Collapsible queue panel on the right edge; r is the revealed strip.
-    void DrawQueuePanel(Rectangle r);
-    // Right-click menu on track rows: favorites / Now Playing / playlists.
-    void DrawTrackMenu();
-    void OpenTrackMenu(const std::string& trackId);
-    // chromeH is the bottom chrome height the toast floats clear of.
-    void DrawToast(float chromeH);
-
-    void DrawAlbumArt(Rectangle r, const Album* album, float iconScale, float alpha = 1.0f);
-    // Placeholder "cover" for playlists (rounded tile + glyph).
-    void DrawPlaylistIcon(Rectangle r, const Playlist& p, float iconScale);
+    void DrawEmptyState(Rectangle r, const char* icon, const char* title, const char* subtitle);
+    // Page header: font-display 24px title, count, right-aligned actions.
+    // Returns the y just below the header block.
+    float DrawPageHeader(Rectangle r, const std::string& title, const std::string& count);
+    // Back link ("‹ Albums"); returns true when clicked.
+    bool BackLink(Vector2 pos, const std::string& label, const std::string& key);
     struct TableResult {
         int clicked = -1;       // row to play
-        int rightClicked = -1;  // row to open the context menu for
         int removed = -1;       // row whose remove button was clicked
     };
-    TableResult DrawTrackTable(Rectangle r, const std::vector<const Track*>& tracks, float* scroll,
-                               bool showAlbum, bool removable = false);
-    // Scrollable grid of album cards inside r. Each card is cardW wide with a
-    // square cover artH tall plus a two-line caption; cards are spaced by gap.
-    // Clicking a card opens its AlbumDetail view. showYear appends "· year" to
-    // the subtitle (Albums view); Search omits it. Caller has already drawn the
-    // section header and set up r; this owns scrolling, scissoring, and hit-test.
-    void DrawAlbumGrid(Rectangle r, const std::vector<const Album*>& albums, float cardW,
-                       float artH, float gap, float titleSize, float subSize, bool showYear,
-                       float* scroll);
+    // TrackList/TrackRow port: 44px rows with number/eq, 32px art, title,
+    // artist, hover actions (heart, add-to-playlist, optional remove) and
+    // duration. Owns scrolling and clipping.
+    TableResult DrawTrackList(Rectangle r, const std::vector<const Track*>& tracks, float* scroll,
+                              bool removable, bool autoScroll = false,
+                              const std::vector<std::string>* letters = nullptr);
+    // Scrollable auto-fill grid of AlbumCards inside r.
+    void DrawAlbumGrid(Rectangle r, const std::vector<const Album*>& albums, float* scroll);
+    void DrawAlbumArt(Rectangle r, const Art* art, float radius, float placeholderIcon = 0);
     void PlayFromTrackList(const std::vector<const Track*>& list, int index,
                            QueueSource source = QueueSource::Library, std::string sourceId = "");
     // Enables shuffle and plays the list starting from a random track.
     void ShufflePlay(const std::vector<const Track*>& list,
                      QueueSource source = QueueSource::Library, std::string sourceId = "");
-    // Outlined "Shuffle" pill (30 tall) at (*x, y); advances *x past it.
-    bool ShuffleButton(float* x, float y);
-    // Accent "Shuffle All" pill at a view header's top-right corner.
-    bool ShuffleAllButton(Rectangle r);
+    void PlayAlbum(const std::string& albumId);
     std::vector<const Track*> ResolveTracks(const std::vector<std::string>& ids) const;
+    std::vector<const Track*> AllTracksSorted() const;
     void ImportM3uFile(const std::string& path);
     void ExportPlaylist(const Playlist& p);
-    void ToggleQueuePanel();
-    void Toast(const std::string& msg);
+    void ShowNewPlaylistInput();
+
+    // ── Now Playing (app_nowplaying.cpp) ──
+    void DrawNowPlayingView(Rectangle r, bool immersive);
+    // Keeps the masked-foreground texture in sync with the shown art.
+    void UpdateForeground();
+    void BuildForeground(const Art& art);
+    void UpdateContour();
+    Visualizer::Style ResolvedStyle();
+    void CycleVisualizer();
+
+    // ── Manual mask painting (app_brush.cpp) ──
+    void OpenBrushEditor(const Art& art);
+    void CloseBrushEditor();
+    void DrawBrushEditor(Rectangle r);
+    void RebuildBrushOverlay();
+    void SaveBrushMask();
 
     MosaicSettings MosaicCfg() const;
     // Resolves config_.theme ("system"/"light"/"dark") and applies the palette.
     void ApplyTheme();
-    // Keeps the masked-foreground texture in sync with the playing album.
-    void UpdateForeground();
-    void BuildForeground(const Album& album);
-
-    // ── Manual mask painting (brush editor) ──
-    // Fullscreen overlay to paint/erase the foreground mask for an album.
-    void OpenBrushEditor(const Album& album);
-    void CloseBrushEditor();
-    void DrawBrushEditor(Rectangle r);
-    // Recomposites the alpha map + art into the preview texture (fg opaque,
-    // bg dim + translucent so the visualizer shows through).
-    void RebuildBrushOverlay();
-    // Writes the painted mask to disk and rebuilds the live foreground.
-    void SaveBrushMask();
 
     Config config_;
     Library library_;
@@ -153,26 +178,28 @@ private:
     Mosaic mosaic_;
     Backdrop backdrop_;
     DepthEngine depth_;
-    Vinyl vinyl_;
-    Sleeve3D sleeve3d_;
-    AlbumGlow albumGlow_;
+    ArtView artView_;
     Mpris mpris_;
     FolderWatcher watcher_;
-    bool manualSkip_ = false;   // user-initiated track change this frame
-    bool flip3dReady_ = false;  // the 3D sleeve target is rendered for this frame
+    bool manualSkip_ = false;  // user-initiated track change this frame
 
     // Album art with the segmentation mask baked into its alpha channel
     struct Foreground {
-        std::string albumId;       // album the texture belongs to
-        std::string checkedAlbum;  // album we last looked for a mask for
+        std::string artKey;     // art the texture belongs to
+        std::string checkedKey; // art we last looked for a mask for
         Texture2D tex{};
     } fg_;
+    // Contour for the contour-bars style, keyed by art path.
+    struct Contour {
+        std::string artPath;
+        ContourData data;
+    } contour_;
 
     // Manual mask painting overlay; opened from Now Playing.
     struct Brush {
         bool open = false;
         BrushCanvas canvas;
-        std::string albumId;
+        Art art;
         Texture2D artTex{};      // album art base layer
         Texture2D overlayTex{};  // mask preview composite
         std::vector<unsigned char> overlayBuf;  // scratch for texture updates
@@ -185,18 +212,15 @@ private:
     std::vector<std::string> startupImports_;
 
     View view_ = View::Library;
+    View previousView_ = View::Library;  // where "Back" from Now Playing returns
     std::string detailAlbumId_;
     std::string detailPlaylistId_;
-    // Search filters across track titles, artists, and album titles/artists.
+    SettingsTab settingsTab_ = SettingsTab::Library;
+    // Search filters across track titles, albums, and artists.
     std::string searchQuery_;
     float searchAlbumsScroll_ = 0;
     float searchTracksScroll_ = 0;
-    // Bumped whenever the library contents change (scan lands / watcher rescan),
-    // so DrawSearchView can invalidate its cached results without re-filtering
-    // every string every frame.
     unsigned libGeneration_ = 0;
-    // Cached search results, recomputed only when the query (trimmed/lowercased)
-    // or libGeneration_ changes. searchCacheValid_ guards the empty-query case.
     std::string searchCacheKey_;
     unsigned searchCacheGen_ = 0;
     bool searchCacheValid_ = false;
@@ -205,32 +229,40 @@ private:
     float libScroll_ = 0;
     float albumsScroll_ = 0;
     float detailScroll_ = 0;
+    float favScroll_ = 0;
     float playlistsScroll_ = 0;
     float plDetailScroll_ = 0;
-
-    // Queue panel slide: 0 closed → 1 open; width follows the eased value.
-    float queueAnim_ = 0;
+    float settingsScroll_ = 0;
     float queueScroll_ = 0;
-    // Identity of the track the queue panel last auto-scrolled to follow; lets
-    // us react to the playing track changing without fighting the user's manual
-    // scrolling, and without recentering when the playing row's index merely
-    // shifts (e.g. a row above it is removed).
     std::string queueFollowId_;
+    float queueScrollTarget_ = 0;
+    int queueScrollFollow_ = 0;  // 0 idle, 1 easing, 2 jump
+    float settingsContentH_ = 0;
+    std::string deleteArmId_;    // two-step playlist delete
 
-    // Inline playlist rename (also entered right after New Playlist)
+    // Panel open/close progress (0..1), eased like the web's width animations.
+    float sidebarAnim_ = 1;
+    float queueAnim_ = 0;
+
+    // Inline playlist rename / creation
     std::string editPlaylistId_;
     std::string editText_;
-    // Two-step delete: first click arms, second click deletes.
-    std::string deleteArmId_;
-
+    bool newPlaylistInput_ = false;
+    std::string newPlaylistText_;
     // Settings → Music Folders: typed-path add field and its focus state.
     std::string folderInput_;
     bool folderInputActive_ = false;
 
-    struct TrackMenu {
+    struct Menu {
         bool open = false;
-        bool justOpened = false;  // skip the opening click this frame
-        Vector2 pos{};
+        bool justOpened = false;
+        Rectangle anchor{};
+        bool preferAbove = true;
+        std::string header;
+        std::vector<MenuItem> items;
+        // Inline "+ New Playlist" text field inside the add-to-playlist menu
+        bool newInput = false;
+        std::string newText;
         std::string trackId;
     } menu_;
 
@@ -240,17 +272,27 @@ private:
     bool seekDragging_ = false;
     float seekValue_ = 0;
     bool volumeDragging_ = false;
+    bool volumeOpen_ = false;
+    double volumeCloseAt_ = 0;
+    float prevVolume_ = 0.75f;
+    bool rangeDragging_ = false;
+    int rangeDragId_ = -1;
+
+    // Visualizer style: 'random' is resolved per track; clicking the art
+    // cycles styles for the current track.
+    Visualizer::Style randomPick_ = Visualizer::Style::FullSurface;
+    bool hasRandomPick_ = false;
+    std::string randomPickTrack_;
+    int manualPick_ = -1;
+    std::string manualPickTrack_;
 
     double lastActivity_ = 0;
     double sessionSaveAt_ = 0;  // last playback-session checkpoint
     int targetFps_ = 60;
     bool eventWaiting_ = false;
     bool showDebug_ = false;
-    // Borderless fullscreen; Now Playing hides the sidebar and fades the cursor.
     bool fullscreen_ = false;
     bool cursorHidden_ = false;
-    // Immersive Now Playing chrome (transport, seek, action buttons) fades out
-    // with the cursor after idle and back in on input; title/artist stay put.
     float ctrlFade_ = 1.0f;
     bool autoplay_ = false;
     std::string screenshotPath_;

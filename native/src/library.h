@@ -18,6 +18,22 @@ std::string Lower(std::string s);
 // is one of the audio formats the scanner imports.
 bool IsSupportedAudio(const std::string& ext);
 
+// Artwork plus the palette extracted from it (see colorextract.h). Shared by
+// albums and, for tracks whose embedded picture differs from the album cover,
+// by tracks (per-track art, as in the web app's Track.art).
+struct Art {
+    std::string path;  // extracted artwork file (art-<hash>.<ext>); empty if none
+    Color dominant{110, 110, 122, 255};        // darkened, for background washes
+    Color accent{212, 165, 116, 255};          // vivid, for visualizer glow
+    Color accentSecondary{0, 0, 0, 255};       // distinct hue, for two-tone bar cores
+    bool hasSecondary = false;
+    bool Valid() const { return !path.empty(); }
+};
+
+// Stable identity of an artwork file (its hash-named stem), used to key the
+// depth masks, contour cache and GPU texture cache. Empty for no art.
+std::string ArtKey(const std::string& artPath);
+
 struct Track {
     std::string id;
     std::string title;
@@ -30,6 +46,8 @@ struct Track {
     // Filesystem mtime when last parsed (filesystem-clock ticks). Lets a rescan
     // skip files that haven't changed since the cache was written.
     long long mtime = 0;
+    // Per-track artwork override — only set when it differs from the album art.
+    Art art;
 };
 
 struct Album {
@@ -37,13 +55,11 @@ struct Album {
     std::string title;
     std::string artist;
     int year = 0;
-    std::string artPath;  // extracted artwork file; empty if none
-    // Palette extracted from the artwork (see colorextract.h)
-    Color dominant{110, 110, 122, 255};        // darkened, for background washes
-    Color accent{212, 165, 116, 255};          // vivid, for visualizer glow
-    Color accentSecondary{0, 0, 0, 255};       // distinct hue, for two-tone bar cores
-    bool hasSecondary = false;
+    Art art;
 };
+
+// resolveTrackArt(): the track's own art wins, then the album cover.
+const Art* ResolveArt(const Track* track, const Album* album);
 
 struct ScanStatus {
     int current = 0;
@@ -80,6 +96,9 @@ public:
     const Track* TrackById(const std::string& id) const;
     const Album* AlbumById(const std::string& id) const;
     std::vector<const Track*> AlbumTracks(const std::string& albumId) const;
+    // Every distinct artwork in the library: album covers first, then the
+    // per-track covers that differ from their album's (mosaic pool).
+    std::vector<const Art*> AllArt() const;
 
 private:
     void SortAndIndex();

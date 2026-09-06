@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <unordered_set>
 
 #include <nlohmann/json.hpp>
 
@@ -38,6 +39,50 @@ std::string HashId(const std::string& s) {
     char buf[17];
     std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(h));
     return buf;
+}
+
+// Bumped when the on-disk cache shape changes incompatibly. v2: hash-named
+// art files + per-track art; older caches are discarded and rebuilt by a
+// full rescan (the art directory is re-populated from the files' tags).
+constexpr int kSchemaVersion = 2;
+
+// Content hash of the artwork bytes: identical covers across an album's
+// tracks (or across albums) share one file on disk, and a track only gets
+// its own art when this differs from the album's.
+std::string ArtHash(const unsigned char* bytes, int size) {
+    uint64_t h = 1469598103934665603ull;
+    for (int i = 0; i < size; i++) {
+        h ^= bytes[i];
+        h *= 1099511628211ull;
+    }
+    char buf[17];
+    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(h));
+    return buf;
+}
+
+json ArtToJson(const Art& a) {
+    json j{{"path", a.path},
+           {"dominant", {a.dominant.r, a.dominant.g, a.dominant.b}},
+           {"accent", {a.accent.r, a.accent.g, a.accent.b}}};
+    if (a.hasSecondary) j["accent2"] = {a.accentSecondary.r, a.accentSecondary.g, a.accentSecondary.b};
+    return j;
+}
+
+Art ArtFromJson(const json& j) {
+    Art a;
+    if (!j.is_object()) return a;
+    a.path = j.value("path", "");
+    const auto readColor = [&j](const char* key, Color fallback) {
+        const auto c = j.value(key, std::vector<int>{});
+        if (c.size() != 3) return fallback;
+        return Color{static_cast<unsigned char>(c[0]), static_cast<unsigned char>(c[1]),
+                     static_cast<unsigned char>(c[2]), 255};
+    };
+    a.dominant = readColor("dominant", a.dominant);
+    a.accent = readColor("accent", a.dominant);
+    a.accentSecondary = readColor("accent2", Color{0, 0, 0, 255});
+    a.hasSecondary = j.contains("accent2");
+    return a;
 }
 
 bool IsKnownUnsupported(const std::string& ext) {
@@ -110,6 +155,17 @@ AlbumColors ColorsFromArt(const unsigned char* bytes, int size, const char* ext)
 
 }  // namespace
 
+std::string ArtKey(const std::string& artPath) {
+    if (artPath.empty()) return "";
+    return fs::path(artPath).stem().string();
+}
+
+const Art* ResolveArt(const Track* track, const Album* album) {
+    if (track != nullptr && track->art.Valid()) return &track->art;
+    if (album != nullptr && album->art.Valid()) return &album->art;
+    return nullptr;
+}
+
 std::string Lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
     return s;
@@ -129,6 +185,12 @@ void Library::Load() {
     try {
         json j = json::parse(in);
         folders_ = j.value("folders", std::vector<std::string>{});
+        if (j.value("version", 1) != kSchemaVersion) {
+            // Old cache: keep the folder list so the rescan below rebuilds
+            // everything, but don't load tracks/albums shaped for the old art model.
+            TraceLog(LOG_INFO, "LIBRARY: cache schema is outdated, rebuilding on next scan");
+            return;
+        }
         for (const auto& jt : j.value("tracks", json::array())) {
             Track t;
             t.id = jt.value("id", "");
@@ -140,6 +202,7 @@ void Library::Load() {
             t.discNum = jt.value("discNum", 0);
             t.duration = jt.value("duration", 0.0f);
             t.mtime = jt.value("mtime", 0LL);
+            if (jt.contains("art")) t.art = ArtFromJson(jt["art"]);
             tracks_.push_back(std::move(t));
         }
         for (const auto& ja : j.value("albums", json::array())) {
@@ -148,18 +211,7 @@ void Library::Load() {
             a.title = ja.value("title", "");
             a.artist = ja.value("artist", "");
             a.year = ja.value("year", 0);
-            a.artPath = ja.value("artPath", "");
-            const auto readColor = [&ja](const char* key, Color fallback) {
-                const auto c = ja.value(key, std::vector<int>{});
-                if (c.size() != 3) return fallback;
-                return Color{static_cast<unsigned char>(c[0]), static_cast<unsigned char>(c[1]),
-                             static_cast<unsigned char>(c[2]), 255};
-            };
-            a.dominant = readColor("dominant", a.dominant);
-            // Caches written before accent extraction fall back to dominant
-            a.accent = readColor("accent", a.dominant);
-            a.accentSecondary = readColor("accent2", Color{0, 0, 0, 255});
-            a.hasSecondary = ja.contains("accent2");
+            if (ja.contains("art")) a.art = ArtFromJson(ja["art"]);
             albums_.push_back(std::move(a));
         }
         SortAndIndex();
@@ -172,31 +224,28 @@ void Library::Load() {
 void Library::Save() const {
     json jt = json::array();
     for (const auto& t : tracks_) {
-        jt.push_back({{"id", t.id},
-                      {"title", t.title},
-                      {"artist", t.artist},
-                      {"albumId", t.albumId},
-                      {"filePath", t.filePath},
-                      {"trackNum", t.trackNum},
-                      {"discNum", t.discNum},
-                      {"duration", t.duration},
-                      {"mtime", t.mtime}});
+        json entry{{"id", t.id},
+                   {"title", t.title},
+                   {"artist", t.artist},
+                   {"albumId", t.albumId},
+                   {"filePath", t.filePath},
+                   {"trackNum", t.trackNum},
+                   {"discNum", t.discNum},
+                   {"duration", t.duration},
+                   {"mtime", t.mtime}};
+        if (t.art.Valid()) entry["art"] = ArtToJson(t.art);
+        jt.push_back(std::move(entry));
     }
     json ja = json::array();
     for (const auto& a : albums_) {
-        json entry{{"id", a.id},
-                   {"title", a.title},
-                   {"artist", a.artist},
-                   {"year", a.year},
-                   {"artPath", a.artPath},
-                   {"dominant", {a.dominant.r, a.dominant.g, a.dominant.b}},
-                   {"accent", {a.accent.r, a.accent.g, a.accent.b}}};
-        if (a.hasSecondary) {
-            entry["accent2"] = {a.accentSecondary.r, a.accentSecondary.g, a.accentSecondary.b};
-        }
+        json entry{{"id", a.id}, {"title", a.title}, {"artist", a.artist}, {"year", a.year}};
+        if (a.art.Valid()) entry["art"] = ArtToJson(a.art);
         ja.push_back(std::move(entry));
     }
-    json j{{"folders", folders_}, {"tracks", std::move(jt)}, {"albums", std::move(ja)}};
+    json j{{"version", kSchemaVersion},
+           {"folders", folders_},
+           {"tracks", std::move(jt)},
+           {"albums", std::move(ja)}};
     std::ofstream out(paths::LibraryFile());
     // error_handler::replace: never throw on a stray non-UTF-8 byte (e.g. a path
     // from a codepage we didn't normalize) — substitute U+FFFD instead. An
@@ -320,6 +369,18 @@ std::vector<const Track*> Library::AlbumTracks(const std::string& albumId) const
     return out;
 }
 
+std::vector<const Art*> Library::AllArt() const {
+    std::vector<const Art*> out;
+    std::unordered_set<std::string> seen;
+    for (const auto& a : albums_) {
+        if (a.art.Valid() && seen.insert(a.art.path).second) out.push_back(&a.art);
+    }
+    for (const auto& t : tracks_) {
+        if (t.art.Valid() && seen.insert(t.art.path).second) out.push_back(&t.art);
+    }
+    return out;
+}
+
 void Library::SortAndIndex() {
     std::sort(tracks_.begin(), tracks_.end(), [](const Track& a, const Track& b) {
         if (a.title != b.title) return Lower(a.title) < Lower(b.title);
@@ -381,6 +442,7 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
 
     std::vector<Track> tracks;
     std::unordered_map<std::string, Album> albums;
+    std::unordered_map<std::string, Art> palettes;  // artPath -> palette, per scan
     const std::string artDir = paths::ArtDir();
 
     for (const auto& found : files) {
@@ -407,7 +469,8 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
                 }
                 std::error_code artEc;
                 const bool artMissing =
-                    oldAlbum && !oldAlbum->artPath.empty() && !fs::exists(oldAlbum->artPath, artEc);
+                    (oldAlbum && oldAlbum->art.Valid() && !fs::exists(oldAlbum->art.path, artEc)) ||
+                    (old.art.Valid() && !fs::exists(old.art.path, artEc));
                 if (!artMissing) {
                     if (oldAlbum && !albums.count(old.albumId)) {
                         albums[old.albumId] = *oldAlbum;
@@ -457,34 +520,55 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
                 }
                 if (album.year == 0 && tag->year() > 0) album.year = static_cast<int>(tag->year());
 
-                if (album.artPath.empty()) {
-                    const auto pictures = f.file()->complexProperties("PICTURE");
-                    if (!pictures.isEmpty()) {
-                        const auto& pic = pictures.front();
-                        const auto data = pic.value("data").value<TagLib::ByteVector>();
-                        const auto* artBytes = reinterpret_cast<const unsigned char*>(data.data());
-                        const int artSize = static_cast<int>(data.size());
-                        if (data.isEmpty() || !ArtDimensionsSafe(artBytes, artSize)) {
-                            if (!data.isEmpty()) {
-                                TraceLog(LOG_WARNING,
-                                         "LIBRARY: skipping oversized/unreadable art in %s",
-                                         path.string().c_str());
+                // Extract the embedded picture for every file: the first one
+                // becomes the album cover, and a track whose picture differs
+                // from the album's keeps it as its own art. Files are named by
+                // content hash so identical covers share one file.
+                const auto pictures = f.file()->complexProperties("PICTURE");
+                if (!pictures.isEmpty()) {
+                    const auto& pic = pictures.front();
+                    const auto data = pic.value("data").value<TagLib::ByteVector>();
+                    const auto* artBytes = reinterpret_cast<const unsigned char*>(data.data());
+                    const int artSize = static_cast<int>(data.size());
+                    if (data.isEmpty() || !ArtDimensionsSafe(artBytes, artSize)) {
+                        if (!data.isEmpty()) {
+                            TraceLog(LOG_WARNING,
+                                     "LIBRARY: skipping oversized/unreadable art in %s",
+                                     path.string().c_str());
+                        }
+                    } else {
+                        const std::string hash = ArtHash(artBytes, artSize);
+                        const std::string mime =
+                            pic.value("mimeType").value<TagLib::String>().to8Bit(true);
+                        const char* ext = (mime.find("png") != std::string::npos) ? ".png" : ".jpg";
+                        const std::string artPath = artDir + "/art-" + hash + ext;
+                        const bool albumHasArt = album.art.Valid();
+                        const bool sameAsAlbum = albumHasArt && album.art.path == artPath;
+                        if (!sameAsAlbum) {
+                            Art art;
+                            std::error_code exEc;
+                            bool ok = fs::exists(artPath, exEc);
+                            if (!ok) {
+                                std::ofstream out(artPath, std::ios::binary);
+                                ok = static_cast<bool>(
+                                    out.write(data.data(), static_cast<std::streamsize>(data.size())));
                             }
-                        } else {
-                            const std::string mime =
-                                pic.value("mimeType").value<TagLib::String>().to8Bit(true);
-                            const char* ext = (mime.find("png") != std::string::npos) ? ".png" : ".jpg";
-                            const std::string artPath = artDir + "/" + album.id + ext;
-                            std::ofstream out(artPath, std::ios::binary);
-                            if (out.write(data.data(), static_cast<std::streamsize>(data.size()))) {
-                                album.artPath = artPath;
-                                const AlbumColors colors = ColorsFromArt(
-                                    reinterpret_cast<const unsigned char*>(data.data()),
-                                    static_cast<int>(data.size()), ext);
-                                album.dominant = colors.dominant;
-                                album.accent = colors.accent;
-                                album.accentSecondary = colors.accentSecondary;
-                                album.hasSecondary = colors.hasSecondary;
+                            if (ok) {
+                                art.path = artPath;
+                                // Reuse a palette already computed for this file this scan.
+                                auto pal = palettes.find(artPath);
+                                if (pal == palettes.end()) {
+                                    const AlbumColors colors = ColorsFromArt(artBytes, artSize, ext);
+                                    art.dominant = colors.dominant;
+                                    art.accent = colors.accent;
+                                    art.accentSecondary = colors.accentSecondary;
+                                    art.hasSecondary = colors.hasSecondary;
+                                    palettes.emplace(artPath, art);
+                                } else {
+                                    art = pal->second;
+                                }
+                                if (!albumHasArt) album.art = art;
+                                else t.art = art;
                             }
                         }
                     }
@@ -516,18 +600,21 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
     // without art — e.g. its only art-bearing track was reused (so never
     // re-extracted) but the album entry was first created by a different track.
     for (auto& [id, album] : albums) {
-        if (!album.artPath.empty()) continue;
+        if (album.art.Valid()) continue;
         const auto oa = oldAlbumById.find(id);
-        if (oa == oldAlbumById.end() || oa->second->artPath.empty()) continue;
+        if (oa == oldAlbumById.end() || !oa->second->art.Valid()) continue;
         // Don't resurrect a deleted art cache — its file must still exist.
         std::error_code artEc;
-        if (!fs::exists(oa->second->artPath, artEc)) continue;
-        album.artPath = oa->second->artPath;
-        album.dominant = oa->second->dominant;
-        album.accent = oa->second->accent;
-        album.accentSecondary = oa->second->accentSecondary;
-        album.hasSecondary = oa->second->hasSecondary;
+        if (!fs::exists(oa->second->art.path, artEc)) continue;
+        album.art = oa->second->art;
         if (album.year == 0) album.year = oa->second->year;
+    }
+    // A track whose own art turned out to be the album cover after all (the
+    // album picked its cover from a later file) drops the redundant copy.
+    for (auto& t : tracks) {
+        if (!t.art.Valid()) continue;
+        const auto it = albums.find(t.albumId);
+        if (it != albums.end() && it->second.art.path == t.art.path) t.art = Art{};
     }
 
     TraceLog(LOG_INFO, "LIBRARY: scan complete — %zu tracks, %zu albums", tracks.size(),

@@ -31,7 +31,11 @@ public:
     // Draws the sharp scene texture filling the whole screen (the base layer).
     void DrawScene() const;
     // Draws the blurred scene clipped to r, then a translucent tint on top.
-    void DrawGlass(Rectangle r, Color tint) const;
+    // With blur=false only the tint is drawn over the sharp scene (the web's
+    // data-no-glass-blur mode).
+    void DrawGlass(Rectangle r, Color tint, bool blur = true) const;
+    // Same, clipped to a rounded rectangle (glass cards / popups).
+    void DrawGlassRounded(Rectangle r, Color tint, float radius, bool blur = true) const;
 
     void Unload();
     bool Ready() const { return ready_; }

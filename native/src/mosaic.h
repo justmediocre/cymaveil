@@ -6,8 +6,7 @@
 #include "raylib.h"
 
 class ArtCache;
-class Library;
-struct Album;
+struct Art;
 
 struct MosaicSettings {
     bool enabled = true;
@@ -23,10 +22,10 @@ struct MosaicSettings {
 class Mosaic {
 public:
     // Reassigns artwork to the tile grid. Call on startup and after scans.
-    void Rebuild(const std::vector<Album>& albums, const MosaicSettings& s);
+    // `arts` is the pool of distinct covers (albums plus per-track art).
+    void Rebuild(const std::vector<const Art*>& arts, const MosaicSettings& s);
     void Update(float dt, bool playing, const MosaicSettings& s);
-    void Draw(Rectangle screen, ArtCache& art, const Library& lib, const MosaicSettings& s,
-              Color bg);
+    void Draw(Rectangle screen, ArtCache& art, const MosaicSettings& s, Color bg);
     // Manually animate one tile (hotkey/testing).
     void Trigger(const MosaicSettings& s);
     bool Animating() const;
@@ -44,11 +43,10 @@ private:
     };
 
     static float Duration(Tr tr);
-    void DrawTile(const Tile& tile, Rectangle rc, ArtCache& art, const Library& lib,
-                  float opacity) const;
-    const Texture2D* Tex(int artIdx, ArtCache& art, const Library& lib) const;
+    void DrawTile(const Tile& tile, Rectangle rc, ArtCache& art, float opacity) const;
+    const Texture2D* Tex(int artIdx, ArtCache& art) const;
 
-    std::vector<std::string> artIds_;  // album ids that have artwork
+    std::vector<std::string> artIds_;  // artwork file paths
     std::vector<Tile> tiles_;
     int columns_ = 0;
     int rows_ = 0;

@@ -87,6 +87,20 @@ first use and cached under `transformers-cache` in Cache Storage.
   the bracket, since an unbracketed `pkill -f` pattern also matches your own shell's
   command line and kills it.
 
+## Native (raylib) rewrite
+
+`native/` is a C++20/raylib reimplementation on the `raylib-rewrite` branch; see
+`native/README.md` for the build (the `.devcontainer/` image is the intended
+toolchain — on a host without cmake/dev headers, build inside it with podman:
+`podman build -t cymaveil-native-dev -f .devcontainer/Dockerfile .devcontainer`
+then `podman run --rm --userns=keep-id -v "$PWD":/work:Z -w /work cymaveil-native-dev
+cmake --build native/build`). The resulting binary runs on the host. To verify a
+change visually, launch with `XDG_DATA_HOME=/tmp/some-dir` (fresh cache, keeps your
+real one untouched), a music folder as the argument, and `--play --view now --shot
+/tmp/shot.png` to capture a screenshot ~2 s in; `--view` also takes
+`library|albums|album|playlists|settings:visuals` etc. The first run scans the
+folder, so let one run finish (or `timeout 30`) before taking shots.
+
 ## Settings defaults
 
 Renderer visual defaults live in `DEFAULTS` in `src/lib/visualSettingsStore.ts` and

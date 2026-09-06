@@ -4,23 +4,11 @@
 #include <cmath>
 #include <vector>
 
+#include "ui.h"
+
 namespace {
 
 constexpr int kTexSize = 512;
-constexpr float kSpinSecondsPerRev = 1.8f;
-// The disc sits slightly smaller than the artwork so it reads as a record
-// inside its sleeve — it never pokes above or below the art, only out the
-// side while playing. kSlideFrac is the disc center's travel as a fraction of
-// art width; this slides it out until just under half the disc clears the
-// art's edge ((kSlideFrac - (1 - kDiscScale) / 2) / kDiscScale of it shows).
-constexpr float kSlideFrac = 0.47f;
-constexpr float kDiscScale = 0.96f;
-
-// cubic-bezier(0.22, 1, 0.36, 1) approximation
-float EaseOut(float t) {
-    const float inv = 1.0f - std::clamp(t, 0.0f, 1.0f);
-    return 1.0f - inv * inv * inv * inv;
-}
 
 float Smoothstep(float a, float b, float x) {
     const float t = std::clamp((x - a) / (b - a), 0.0f, 1.0f);
@@ -63,9 +51,11 @@ Texture2D GenBodyTexture() {
             const float r = std::sqrt(dx * dx + dy * dy) / R;
             if (r > 1.0f) continue;
             float v = InterpStops(stops, r);
-            // inset box-shadow (30px black 0.6 at the web's 340px card)
+            // inset 0 0 30px rgba(0,0,0,0.6) at the web's ~367px disc
             v *= 1.0f - 0.6f * Smoothstep(0.84f, 1.0f, r);
-            const auto g = static_cast<unsigned char>(v);
+            // rim highlight: inset 0 0 1px 1px rgba(255,255,255,0.08)
+            v += 255.0f * 0.08f * Smoothstep(0.985f, 1.0f, r);
+            const auto g = static_cast<unsigned char>(std::clamp(v, 0.0f, 255.0f));
             const auto a = static_cast<unsigned char>(255 * std::clamp((1.0f - r) * R / 1.5f, 0.0f, 1.0f));
             px[y * kTexSize + x] = Color{g, g, g, a};
         }
@@ -106,94 +96,30 @@ Texture2D GenSheenTexture() {
 
 }  // namespace
 
-void Vinyl::Update(float dt, const std::string& targetAlbumId, bool playing, bool skipIntent,
-                   bool enabled) {
-    if (skipIntent) fast_ = true;
-
-    // A different album wants the stage: buffer it and tuck the current record
-    // into its sleeve first. The art only flips over once the disc is hidden;
-    // if it's already away (paused, vinyl disabled) the flip begins at once.
-    if (targetAlbumId != displayed_ && targetAlbumId != pending_) {
-        pending_ = targetAlbumId;
-        out_ = false;
-        if (slide_ <= 0.001f && !flipping_) {
-            flipping_ = true;
-            flip_ = 0;
-            flipFrom_ = displayed_;
-            flipTo_ = pending_;
-        }
-    } else if (!flipping_ && !pending_.empty() && targetAlbumId == displayed_) {
-        // A pre-fired target backed out before the flip began (paused at the
-        // brink, or the predicted next track changed): abandon the retract and
-        // let the current record slide back out.
-        pending_.clear();
-    }
-
-    const float slideDur = fast_ ? 0.3f : 0.8f;
-    slide_ = std::clamp(slide_ + (out_ ? 1.0f : -1.0f) * dt / slideDur, 0.0f, 1.0f);
-
-    // Disc fully retracted with an album buffered: begin the sleeve flip.
-    if (slide_ <= 0.0f && !pending_.empty() && !flipping_) {
-        flipping_ = true;
-        flip_ = 0;
-        flipFrom_ = displayed_;
-        flipTo_ = pending_;
-    }
-
-    if (flipping_) {
-        const float flipDur = fast_ ? 0.42f : 0.72f;
-        flip_ = std::min(1.0f, flip_ + dt / flipDur);
-        // Edge-on (the turn's halfway point): the new cover now faces us, so
-        // swap which album the art draws.
-        if (flip_ >= 0.5f && !pending_.empty()) {
-            displayed_ = pending_;
-            pending_.clear();
-        }
-        if (flip_ >= 1.0f) flipping_ = false;
-    }
-
-    // Steady state (settled, nothing buffered): disc follows playback
-    if (!flipping_ && pending_.empty()) {
-        out_ = enabled && playing;
-        if (slide_ == (out_ ? 1.0f : 0.0f)) fast_ = false;  // sequence settled
-    }
-
-    if (playing) spinDeg_ = std::fmod(spinDeg_ + dt / kSpinSecondsPerRev * 360.0f, 360.0f);
-}
-
-bool Vinyl::Animating() const {
-    return flipping_ || !pending_.empty() || slide_ != (out_ ? 1.0f : 0.0f);
-}
-
 void Vinyl::EnsureTextures() {
     if (body_.id == 0) body_ = GenBodyTexture();
     if (sheen_.id == 0) sheen_ = GenSheenTexture();
 }
 
-void Vinyl::Draw(Rectangle artRect, Color labelAccent, Color labelDominant) {
-    // Hidden entirely while the sleeve flips — the record is tucked away inside
-    // it, so only the turning cover shows.
-    if (flipping_) return;
-    const float e = EaseOut(slide_);
-    // While retracting for an album change the disc stays opaque as it slides
-    // under the art; plain pause-retracts fade out with the slide.
-    const float alpha = !pending_.empty() ? 1.0f : e;
+void Vinyl::Draw(Vector2 c, float d, float spinDeg, float alpha, Color labelAccent,
+                 Color labelDominant) {
     if (alpha <= 0.004f) return;
     EnsureTextures();
-
-    const float d = artRect.width * kDiscScale;
-    const Vector2 c{artRect.x + artRect.width / 2 + artRect.width * kSlideFrac * e,
-                    artRect.y + artRect.height / 2};
     const Rectangle src{0, 0, kTexSize, kTexSize};
+    const Rectangle disc{c.x - d / 2, c.y - d / 2, d, d};
 
-    DrawTexturePro(body_, src, Rectangle{c.x - d / 2, c.y - d / 2, d, d}, Vector2{0, 0}, 0,
-                   Fade(WHITE, alpha));
-    DrawTexturePro(sheen_, src, Rectangle{c.x, c.y, d, d}, Vector2{d / 2, d / 2}, spinDeg_,
+    // box-shadow: 0 2px 20px rgba(0,0,0,0.5)
+    ui::Shadow(disc, d / 2, 0, 2, 20, 0, Fade(BLACK, 0.5f * alpha));
+    DrawTexturePro(body_, src, disc, Vector2{0, 0}, 0, Fade(WHITE, alpha));
+    DrawTexturePro(sheen_, src, Rectangle{c.x, c.y, d, d}, Vector2{d / 2, d / 2}, spinDeg,
                    Fade(WHITE, alpha));
 
-    // Center label: accent -> dominant radial, 20% of the disc, spindle hole
+    // Center label: accent -> dominant radial, 20% of the disc, spindle hole 14%
     const float labelR = d * 0.10f;
-    DrawCircleGradient(c, labelR, Fade(labelAccent, alpha), Fade(labelDominant, alpha));
+    ui::Shadow(Rectangle{c.x - labelR, c.y - labelR, labelR * 2, labelR * 2}, labelR, 0, 0, 8, 0,
+               Fade(BLACK, 0.5f * alpha));
+    DrawCircleGradient(c, labelR, Fade(labelAccent, alpha),
+                       Fade(labelDominant, alpha));
     DrawCircleV(c, labelR * 0.14f, Fade(Color{17, 17, 17, 255}, alpha));
 }
 

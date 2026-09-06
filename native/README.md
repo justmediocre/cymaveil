@@ -85,20 +85,25 @@ Right-click the app → **Open** (then confirm), or clear the quarantine bit:
   the library updates on its own when files are added, changed, or removed on disk.
   Dropping a `.m3u`/`.m3u8` file imports it as a playlist instead (entries are matched
   against the library by path).
-- Library / Albums / Playlists / Now Playing views via the sidebar or keys **1 / 2 / 3 / 4**;
-  the sidebar **Settings** entry (or **,**) opens the theme picker and the music-folder manager.
+- The layout mirrors the Electron app: a collapsible sidebar (Now Playing /
+  Search / Library / Albums / Favorites / Playlists / Settings), a title bar
+  with the sidebar, queue, fullscreen and theme toggles, the mini player while
+  browsing, and the collapsible queue panel on the right. Keys **1 / 2 / 3 / 4**
+  jump to Library / Albums / Playlists / Now Playing, **,** opens Settings.
 - **Ctrl+F** (or the sidebar **Search** entry) filters across tracks, albums, and artists;
   **Esc** clears the query, then exits back to the Library.
-- **Right-click any track row** for the context menu: play, toggle Favorites, add/remove
-  Now Playing, add to a playlist (or start a new one from the track).
-- **Q** (or the list button in either player bar) toggles the queue panel: the active
-  queue in play order — click to jump, hover for per-row remove — or the parked Now
-  Playing list with Play/Clear when nothing is queued.
+- Track rows show hover actions like the web app: a heart (Favorites), **+**
+  (add-to-playlist menu) and, in playlists, **×** (remove). Right-clicking a row
+  opens the same menu.
+- **Ctrl+T** (or **Q**, or the title-bar list button) toggles the queue panel: the
+  active queue in play order — click to jump — or the parked Now Playing list
+  with Play/Clear when nothing is queued.
 - **Space** play/pause · **←/→** seek ±5s · **Ctrl+←/→** prev/next · **↑/↓** volume ·
-  **S** shuffle · **R** repeat cycle · **Q** queue panel · **,** settings ·
-  **F11** fullscreen (Now Playing goes immersive — sidebar hidden, cursor fades
-  after a brief idle; **Esc** exits) · **B** animate a mosaic tile · **Esc** back ·
-  **F3** debug overlay.
+  **S** shuffle · **R** repeat cycle · **Ctrl+T** queue panel · **,** settings ·
+  **B** paint the depth mask by hand · **F11** fullscreen (Now Playing goes
+  immersive — sidebar hidden, cursor and controls fade after a brief idle;
+  **Esc** exits) · **Ctrl+Shift+B** animate a mosaic tile · **Esc** back ·
+  **F3** debug overlay. Clicking the Now Playing cover cycles the visualizer style.
 
 Library cache, settings, playlists, and extracted album art live in
 `~/.local/share/cymaveil/` (`%APPDATA%\cymaveil\` on Windows,
@@ -115,8 +120,15 @@ media controls, because the matcher bails on tasks with no launcher URL before
 it ever compares PIDs.
 
 Dev/testing flags: `--play` (autoplay the library on launch),
-`--view library|albums|playlists|now` (start on a view), `--import <file.m3u8>` (import a
-playlist on launch), `--shot <path>` (capture a screenshot ~2s in, with debug overlay).
+`--view search|library|albums|album|favorites|playlists|now|settings[:visuals|:depth|:about]|brush`
+(start on a view; `album` opens the first album's detail), `--import <file.m3u8>`
+(import a playlist on launch), `--shot <path>` (capture a screenshot ~2s in, with
+debug overlay). Point `XDG_DATA_HOME` at a scratch directory to keep test runs
+out of your real library cache.
+
+The library cache format is versioned (`"version": 2` in `library.json`, since
+artwork moved to content-hashed files with per-track covers); an older cache is
+discarded and rebuilt from the same folders on the next launch.
 
 ## Status
 
@@ -135,12 +147,26 @@ Done in this first slice:
 - [x] JSON persistence of library, folders, and settings
 - [x] Playback: queue, play/pause/next/prev, seek, volume, shuffle, repeat off/all/one,
       auto-advance (raylib music streaming; FLAC enabled in the raylib build)
-- [x] FFT visualizer (Hann window, log-spaced bands, dB scaling, peak caps) fed from the
-      mixed-audio tap, with bass-reactive ambient glow on Now Playing
-- [x] Views: track list (virtualized), album grid, album detail, now playing
+- [x] Visualizer: an emulation of the web app's Web Audio analyser (fftSize 512,
+      smoothingTimeConstant 0.4, byte frequency data over −100..−30 dB) fed from
+      the mixed-audio tap, driving faithful ports of all five styles — full
+      surface (default), mirrored bars, radial burst, waveform and contour bars
+      (edge-contour extraction ported from `edgeDetector.ts` / `contourPath.ts`).
+      Style, intensity and 'random' live in Settings → Visuals; clicking the
+      cover cycles styles.
+- [x] The Electron app's look and feel, ported view by view from the React
+      components and `index.css`: the same design tokens, the same three
+      typefaces embedded at build time (Outfit body, Bricolage Grotesque display,
+      JetBrains Mono numerals), the same icon set, frosted-glass panels, hover
+      and tap transitions (CSS-transition / Motion-spring stand-ins in `ui.cpp`),
+      the sidebar with the letterpress wordmark and Up Next, the title bar, the
+      alphabetised Library with its letter rail, album cards with the hover play
+      button, playlist rows, the tabbed Settings, and the Now Playing glass
+      controls panel with marquee title, hover-revealed seek thumb and the
+      hover volume popover.
 - [x] Lazy album-art texture cache with per-frame upload budget
 - [x] Idle-aware frame pacing (the point of the exercise)
-- [x] Dark theme ported from the web app's design tokens
+- [x] Dark and light themes ported from the web app's design tokens
 - [x] **Depth layers** (the headline feature): Depth Anything v2 small (q8 ONNX, the
       same model the web app uses) runs via ONNX Runtime on a worker thread, followed
       by a faithful port of the `depthToMask` post-processing chain (median, bilateral,
@@ -153,17 +179,20 @@ Done in this first slice:
 - [x] Mini player while browsing (ported from `MiniPlayer.tsx`): compact bar with
       scrubbable hairline progress, play/pause + next, click to expand into Now
       Playing; the full transport lives on the Now Playing view
-- [x] Vinyl disc behind the Now Playing art (groove rings, rotating light-catch
-      sheen at 1.8s/rev, accent-colored center label): slides out while playing,
-      retracts on pause, and album changes sequence retract → art fade/scale
-      entrance → extend, with faster timings on manual skips — ported from
-      `AlbumArt.tsx`. Disable with `vinylDisc: false` in config.json.
+- [x] Now Playing art stack (`artview.cpp`, ported from `AlbumArt.tsx`): the
+      cover with rounded corners, resting drop shadow, accent underglow while
+      playing, reflection blob and hover inner glow; the vinyl disc that slides
+      out while playing; album changes sequenced as retract → old cover fades,
+      shrinks and blurs out → new cover blurs in → extend (faster on manual
+      skips, pre-fired before a track ends on a different album); per-track
+      cover changes within an album swap in place; and the bass-hit zoom. The
+      art, visualizer and depth foreground composite into one offscreen target
+      so the corner clipping, blur and zoom apply to them together.
 - [x] Background mosaic: isometric drifting grid of album art with flip /
       shrink-grow / cross-fade / fade / iris tile transitions and the radial
       vignette, ported from `AlbumArtBackground.tsx`. Drift and tile swaps only
-      run during playback, so the idle state stays at zero cost. Tunables live
-      in `config.json` (`mosaicEnabled`, `mosaicOpacity`, `mosaicDensity`,
-      `mosaicTransition`, `mosaicFlat`) until there's a settings UI.
+      run during playback, so the idle state stays at zero cost. The pool
+      includes per-track covers, and every tunable is in Settings → Visuals.
 - [x] Playlists: Favorites and Now Playing system playlists plus user playlists
       (inline rename, two-step delete), persisted to `playlists.json`; M3U8 import
       via file drop or `--import` and export to `~/Music`; a right-click track menu
@@ -198,14 +227,21 @@ Done in this first slice:
       reusing the libdbus dependency), falling back to dark where no portal is
       present.
 
+- [x] Per-track album art (ported from the Electron app's `61ebb63` / `58ed0cd`):
+      every file's embedded picture is extracted and stored under a content
+      hash, so identical covers share one file; a track whose picture differs
+      from its album's keeps it as its own art, and everything that shows a
+      track — lists, mini player, Up Next, MPRIS, the mosaic pool, the depth
+      masks and Now Playing — resolves the track's art before the album's.
+- [x] Manual mask painting (brush editor), opened with **B** or the button that
+      appears over the cover; masks are keyed by the artwork file so they follow
+      per-track covers too.
+- [x] Settings view with the web app's tabs: Library (folders), Playback (MPRIS),
+      Visuals (theme, effects, mosaic, visualizer), Depth Layers, About.
+
 Not yet ported from the Electron app:
 
-- [ ] Manual mask painting (brush editor), mask import/export, batch pre-generation
-- [ ] Alternative visualizer styles (contour bars, radial burst, waveform, mirrored)
-      — full-surface (the default) is in
-- [ ] Fuller settings UI: the Settings view now holds the theme picker and the
-      music-folder manager; the remaining `config.json` tunables (mosaic, depth
-      layers) still need surfacing
+- [ ] Mask import/export and batch pre-generation of depth masks
 - [ ] Gapless playback / crossfade
 - [ ] Copy and paste text in inputs
 

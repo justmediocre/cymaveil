@@ -8,6 +8,7 @@
 
 #include "app.h"
 #include "library.h"
+#include "ui.h"
 
 namespace {
 
@@ -25,14 +26,18 @@ Rectangle CoverSrc(const Texture2D& tex) {
     return Rectangle{(tex.width - side) / 2.0f, (tex.height - side) / 2.0f, side, side};
 }
 
+// Tiles carry the web's 8px border-radius (at the tile's own scale — the
+// grid is 2.6x the screen wide, so keep the radius proportional).
+float TileRadius(Rectangle rc) { return rc.width * (8.0f / 150.0f); }
+
 void DrawFace(const Texture2D* tex, Rectangle rc, float alpha) {
     if (alpha <= 0.003f) return;
     if (tex == nullptr) {
         // Art not resident yet: hold the slot so the grid doesn't flicker
-        DrawRectangleRec(rc, Fade(WHITE, alpha * 0.15f));
+        ui::RoundedRect(rc, TileRadius(rc), Fade(WHITE, alpha * 0.15f));
         return;
     }
-    DrawTexturePro(*tex, CoverSrc(*tex), rc, Vector2{0, 0}, 0, Fade(WHITE, alpha));
+    ui::RoundedTexture(*tex, CoverSrc(*tex), rc, TileRadius(rc), Fade(WHITE, alpha));
 }
 
 // Expanding circular reveal, vertices clamped to the tile rect so the circle
@@ -118,10 +123,10 @@ float Mosaic::Duration(Tr tr) {
     return 1.0f;
 }
 
-void Mosaic::Rebuild(const std::vector<Album>& albums, const MosaicSettings& s) {
+void Mosaic::Rebuild(const std::vector<const Art*>& arts, const MosaicSettings& s) {
     artIds_.clear();
-    for (const auto& a : albums) {
-        if (!a.artPath.empty()) artIds_.push_back(a.id);
+    for (const Art* a : arts) {
+        if (a != nullptr && a->Valid()) artIds_.push_back(a->path);
     }
     columns_ = std::max(2, s.density);
     rows_ = static_cast<int>(std::ceil(columns_ * 1.5f));
@@ -184,20 +189,18 @@ void Mosaic::Update(float dt, bool playing, const MosaicSettings& s) {
     }
 }
 
-const Texture2D* Mosaic::Tex(int artIdx, ArtCache& art, const Library& lib) const {
+const Texture2D* Mosaic::Tex(int artIdx, ArtCache& art) const {
     if (artIdx < 0 || artIdx >= static_cast<int>(artIds_.size())) return nullptr;
-    const Album* album = lib.AlbumById(artIds_[artIdx]);
-    return album != nullptr ? art.Get(*album) : nullptr;
+    return art.Get(artIds_[artIdx]);
 }
 
-void Mosaic::DrawTile(const Tile& tile, Rectangle rc, ArtCache& art, const Library& lib,
-                      float opacity) const {
-    const Texture2D* front = Tex(tile.front, art, lib);
+void Mosaic::DrawTile(const Tile& tile, Rectangle rc, ArtCache& art, float opacity) const {
+    const Texture2D* front = Tex(tile.front, art);
     if (!tile.active) {
         DrawFace(front, rc, opacity);
         return;
     }
-    const Texture2D* back = Tex(tile.back, art, lib);
+    const Texture2D* back = Tex(tile.back, art);
     const float e = Smooth(Clamp(tile.t, 0.0f, 1.0f));
     switch (tile.tr) {
         case Tr::Flip: {
@@ -225,8 +228,7 @@ void Mosaic::DrawTile(const Tile& tile, Rectangle rc, ArtCache& art, const Libra
     }
 }
 
-void Mosaic::Draw(Rectangle screen, ArtCache& art, const Library& lib, const MosaicSettings& s,
-                  Color bg) {
+void Mosaic::Draw(Rectangle screen, ArtCache& art, const MosaicSettings& s, Color bg) {
     if (!s.enabled || tiles_.empty() || artIds_.empty()) return;
 
     const float W = screen.width, H = screen.height;
@@ -261,7 +263,7 @@ void Mosaic::Draw(Rectangle screen, ArtCache& art, const Library& lib, const Mos
                 sy < screen.y - cullMargin || sy > screen.y + H + cullMargin) {
                 continue;
             }
-            DrawTile(tiles_[static_cast<size_t>(row) * columns_ + col], rc, art, lib, s.opacity);
+            DrawTile(tiles_[static_cast<size_t>(row) * columns_ + col], rc, art, s.opacity);
         }
     }
     rlPopMatrix();

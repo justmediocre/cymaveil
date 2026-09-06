@@ -179,6 +179,29 @@ file(WRITE ${ICON_HEADER}.in
 execute_process(COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ICON_HEADER}.in ${ICON_HEADER})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
+# Embed the UI fonts the Electron renderer uses (Outfit body, Bricolage
+# Grotesque display, JetBrains Mono numerals) so the native app renders the
+# same typography everywhere without depending on system fonts. Same staging
+# pattern as the icon: one generated header, only rewritten when it changes.
+set(FONT_FILES
+    Outfit-Regular Outfit-Medium Outfit-SemiBold Outfit-Bold
+    BricolageGrotesque-SemiBold BricolageGrotesque-Bold BricolageGrotesque-ExtraBold
+    JetBrainsMono-Regular)
+set(FONTS_HEADER ${CMAKE_BINARY_DIR}/generated/fonts_data.h)
+set(FONTS_CONTENT "// Generated from native/fonts/*.ttf by CMake — do not edit.\n#pragma once\n\n")
+foreach(FONT ${FONT_FILES})
+    set(FONT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/fonts/${FONT}.ttf)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${FONT_PATH})
+    file(READ ${FONT_PATH} FONT_HEX HEX)
+    string(REGEX REPLACE "(..)" "0x\\1," FONT_BYTES ${FONT_HEX})
+    string(REPLACE "-" "_" FONT_IDENT ${FONT})
+    string(APPEND FONTS_CONTENT
+        "inline constexpr unsigned char kFont_${FONT_IDENT}[] = {${FONT_BYTES}};\n"
+        "inline constexpr int kFont_${FONT_IDENT}_Size = sizeof(kFont_${FONT_IDENT});\n\n")
+endforeach()
+file(WRITE ${FONTS_HEADER}.in "${FONTS_CONTENT}")
+execute_process(COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FONTS_HEADER}.in ${FONTS_HEADER})
+
 # TagLib's build tree doesn't export usable include dirs, so wire them up here.
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${taglib_SOURCE_DIR}/taglib
@@ -191,7 +214,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # dllimport-vs-static mismatch corrupts the heap around by-value, PIMPL-
 # refcounted ByteVector/String temporaries during scanning — a Windows-only
 # hard crash (ucrtbase, no exception). Harmless elsewhere.
-target_compile_definitions(${PROJECT_NAME} PRIVATE TAGLIB_STATIC)
+target_compile_definitions(${PROJECT_NAME} PRIVATE TAGLIB_STATIC
+    CYMAVEIL_VERSION="${PROJECT_VERSION}")
 
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
