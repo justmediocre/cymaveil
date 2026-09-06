@@ -10,7 +10,9 @@
 namespace {
 
 constexpr float kVinylTravel = 65.0f / 340.0f;  // x: 65px at the web's 340px art
-constexpr float kVinylScale = 1.08f;            // width: 108%
+constexpr float kVinylScale = 0.96f;            // web uses 108%, but that pokes past the
+                                                // art; stay inside it even at the bass-zoom
+                                                // minimum (0.97) so only the slide-out shows
 constexpr float kSpinSecondsPerRev = 1.8f;
 constexpr float kRadius = 16.0f;                // rounded-2xl
 constexpr float kBassHitThreshold = 0.6f;
