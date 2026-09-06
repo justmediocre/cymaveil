@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "rlgl.h"
+
 #include "ui.h"
 
 namespace {
@@ -14,7 +16,11 @@ constexpr float kSpread = 2.0f;
 
 // Separable 9-tap Gaussian. `direction` selects the axis (and folds in the
 // spread); `resolution` is the size of the sampled texture so the taps land on
-// pixel centers. Desktop GL: #version 330.
+// pixel centers. Desktop GL: #version 330. Alpha is forced to 1 so each pass
+// fully overwrites its (never cleared) target: with a translucent result the
+// alpha blend would keep a fraction of whatever the target held before — the
+// previous capture, or uninitialised memory after a resize — and the glass
+// would show the old mosaic ghosting through the new one.
 const char* kBlurFs = R"(#version 330
 in vec2 fragTexCoord;
 in vec4 fragColor;
@@ -33,7 +39,7 @@ void main() {
     c += texture(texture0, fragTexCoord - texel * 3.0) * 0.054054;
     c += texture(texture0, fragTexCoord + texel * 4.0) * 0.016216;
     c += texture(texture0, fragTexCoord - texel * 4.0) * 0.016216;
-    finalColor = c;
+    finalColor = vec4(c.rgb, 1.0);
 }
 )";
 
@@ -73,10 +79,21 @@ void Backdrop::EnsureSize(int w, int h) {
 void Backdrop::BeginScene() {
     if (!ready_) return;
     BeginTextureMode(scene_);
+    // Translucent draws (tiles at mosaic opacity, the vignette) must not eat
+    // into the target's alpha: blend colour normally but keep alpha at
+    // dst + src·(1-dst), so the capture stays opaque. With the default
+    // (src·a + dst·(1-a) on alpha too) a tile at opacity a leaves alpha
+    // 1-a+a², and everything that later draws scene_/blur_ alpha-blends
+    // instead of covering: the sharp mosaic bleeds through the frost and the
+    // blur passes keep part of the previous capture.
+    rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA,
+                              RL_FUNC_ADD, RL_FUNC_ADD);
+    BeginBlendMode(BLEND_CUSTOM_SEPARATE);
 }
 
 void Backdrop::EndScene() {
     if (!ready_) return;
+    EndBlendMode();
     EndTextureMode();
     Blur();
     dirty_ = false;  // scene_/blur_ now match the latest mosaic
