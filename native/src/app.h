@@ -57,6 +57,8 @@ public:
     void SetScreenshotPath(const std::string& path) { screenshotPath_ = path; }
     // --view <search|library|albums|now>: start on a specific view (testing)
     void SetStartView(const std::string& name) { startView_ = name; }
+    // --size <W>x<H>: initial window size in logical units (testing narrow layouts)
+    void SetStartSize(int w, int h) { startW_ = w; startH_ = h; }
     int Run();
 
 private:
@@ -300,6 +302,8 @@ private:
     bool startFullscreen_ = false;
     std::string screenshotPath_;
     std::string startView_;
+    int startW_ = 1200;
+    int startH_ = 800;
     int frameCount_ = 0;
     bool quitRequested_ = false;
 };

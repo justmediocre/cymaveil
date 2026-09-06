@@ -126,7 +126,7 @@ int App::Run() {
     SetConfigFlags(screenshotPath_.empty()
                        ? (FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI)
                        : FLAG_MSAA_4X_HINT);
-    InitWindow(1200, 800, "Cymaveil");
+    InitWindow(startW_, startH_, "Cymaveil");
     Image icon = LoadImageFromMemory(".png", kIconPng, kIconPngSize);
     if (icon.data != nullptr) {
         ImageFormat(&icon, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
@@ -317,6 +317,14 @@ void App::Frame() {
     const bool hasTrack = player_.Current() != nullptr;
     const bool nowPlaying = view_ == View::NowPlaying && hasTrack;
     const bool immersive = fullscreen_ && nowPlaying;
+
+    // Sidebar and queue are exclusive below the narrow threshold. The toggles
+    // enforce that on click; this covers a resize (AppLayout's resize
+    // listener) and a restored config with both flags set, since the window
+    // may open narrower than it was saved at.
+    if (W < kNarrowThreshold && config_.sidebarOpen && config_.queuePanel && hasTrack) {
+        config_.sidebarOpen = false;
+    }
 
     // Panels: width + opacity over 0.35s cubic-bezier(0.22, 1, 0.36, 1).
     const auto ease = [&](float& v, bool open) {

@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include <cstdio>
+
 #ifdef _WIN32
 #include <clocale>
 #endif
@@ -23,6 +25,9 @@ int main(int argc, char** argv) {
             app.SetScreenshotPath(argv[++i]);
         } else if (arg == "--view" && i + 1 < argc) {
             app.SetStartView(argv[++i]);
+        } else if (arg == "--size" && i + 1 < argc) {
+            int w = 0, h = 0;
+            if (std::sscanf(argv[++i], "%dx%d", &w, &h) == 2 && w > 0 && h > 0) app.SetStartSize(w, h);
         } else if (arg == "--import" && i + 1 < argc) {
             // Import an .m3u/.m3u8 playlist on launch (also available via drop)
             app.AddStartupImport(argv[++i]);

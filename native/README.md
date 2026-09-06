@@ -123,7 +123,8 @@ Dev/testing flags: `--play` (autoplay the library on launch),
 `--view search|library|albums|album|favorites|playlists|now|settings[:visuals|:depth|:about]|brush`
 (start on a view; `album` opens the first album's detail), `--import <file.m3u8>`
 (import a playlist on launch), `--fullscreen` (enter fullscreen on launch, as F11
-would), `--shot <path>` (capture a screenshot ~2s in, with debug overlay). Point
+would), `--size <W>x<H>` (initial window size, e.g. `--size 960x700` to check narrow
+layouts), `--shot <path>` (capture a screenshot ~2s in, with debug overlay). Point
 `XDG_DATA_HOME` at a scratch directory to keep test runs out of your real library
 cache.
 
