@@ -7,10 +7,15 @@ something is actually happening**:
 
 | State | Behavior |
 | --- | --- |
-| Playing, window focused | 60 fps (live visualizer) |
-| Playing, window unfocused | 24 fps (just keeps the stream fed) |
-| Paused, recent input / scanning | 60 fps |
+| Playing, window focused | Display refresh rate (live visualizer) |
+| Playing, window unfocused | Half the refresh rate, min 30 fps (just keeps the stream fed) |
+| Paused, recent input / scanning | Display refresh rate |
 | Idle | Blocks on OS events — near-zero CPU until you touch it |
+
+The full rate is the reported refresh rate of whichever monitor the window is on, so a
+120/144 Hz display gets smooth animation and a 60 Hz one is unchanged. It is re-read when
+the window moves to another display, and falls back to 60 when the platform reports no
+usable rate.
 
 Press **F3** for a debug overlay showing the current pacing mode.
 

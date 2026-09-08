@@ -163,6 +163,7 @@ int App::Run() {
     }
 #endif
     SetExitKey(KEY_NULL);  // ESC navigates, doesn't quit
+    targetFps_ = DisplayHz();
     SetTargetFPS(targetFps_);
     InitAudioDevice();
     ui::Init();
@@ -666,6 +667,19 @@ void App::HandleDroppedFolders() {
     MarkActivity();
 }
 
+int App::DisplayHz() {
+    const int monitor = MonitorForWindow();
+    if (monitor != hzMonitor_) {
+        const int hz = GetMonitorRefreshRate(monitor);
+        // 0 means "unknown" (some Wayland/headless setups); anything outside
+        // this range is a bad read rather than a real mode.
+        displayHz_ = (hz >= 24 && hz <= 480) ? hz : 60;
+        hzMonitor_ = monitor;
+        TraceLog(LOG_INFO, "PACING: monitor %d at %d Hz", monitor, displayHz_);
+    }
+    return displayHz_;
+}
+
 void App::UpdatePacing() {
     // The whole point of the rewrite: only burn CPU/GPU when something moves.
     const float ctrlTarget = (GetTime() - lastActivity_ < 2.5) ? 1.0f : 0.0f;
@@ -680,14 +694,20 @@ void App::UpdatePacing() {
                       ctrlFading || GetTime() < toastUntil_;
     const bool recentInput = GetTime() - lastActivity_ < 2.5;
 
+    // Full rate follows the display so animation lands one frame per refresh;
+    // the background rate is half of it, floored so a 30 Hz panel does not drop
+    // to a visibly choppy 15.
+    const int full = DisplayHz();
+    const int background = std::max(30, full / 2);
+
     int fps;
     bool wait = false;
     if (player_.IsPlaying()) {
-        fps = IsWindowFocused() ? 60 : 30;
+        fps = IsWindowFocused() ? full : background;
     } else if (busy || recentInput) {
-        fps = 60;
+        fps = full;
     } else {
-        fps = 30;
+        fps = background;
         wait = true;
     }
     if (wait != eventWaiting_) {

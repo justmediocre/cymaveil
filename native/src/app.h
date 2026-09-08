@@ -77,8 +77,13 @@ private:
     void HandleMprisRequests();
     // Pushes the current player state to the MPRIS worker (cheap when idle).
     void PublishMpris();
-    // Idle-aware pacing: 60 fps only when it matters, event-waiting when idle.
+    // Idle-aware pacing: the display's refresh rate only when it matters,
+    // event-waiting when idle.
     void UpdatePacing();
+    // Refresh rate of the monitor the window is on, clamped to something sane
+    // (raylib reports 0 when the platform will not say). Cached per monitor so
+    // the query only runs again after the window moves to another display.
+    int DisplayHz();
     void MarkActivity() { lastActivity_ = GetTime(); }
     // Borderless-fullscreen toggle (F11). Now Playing goes immersive in it.
     void ToggleFullscreenMode();
@@ -293,6 +298,8 @@ private:
     double lastActivity_ = 0;
     double sessionSaveAt_ = 0;  // last playback-session checkpoint
     int targetFps_ = 60;
+    int displayHz_ = 60;
+    int hzMonitor_ = -1;  // monitor displayHz_ was measured on; -1 = not yet
     bool eventWaiting_ = false;
     bool showDebug_ = false;
     bool fullscreen_ = false;
