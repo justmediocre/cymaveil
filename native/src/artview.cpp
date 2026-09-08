@@ -21,13 +21,21 @@ constexpr float kRadius = 16.0f;                // rounded-2xl
 // at h=1/120 gives w = 50.9, zeta = 0.47. Damping is then raised from there,
 // which is the one deliberate departure: 0.47 rings for several cycles and
 // successive hits pile onto each other.
+//
+// Note that bass energy is *logarithmic*: Visualizer::bass_ is getByteFrequency
+// data, (dB + 100) / 70 clamped to 0..1, so one unit is 70 dB and the useful
+// range on real music is narrow. Two consequences, both learned the hard way:
+// kBassHitRise is a dB figure (0.045 ≈ 3 dB over the running level), and the
+// web's quadratic impulse curve is far too steep here -- a perfectly ordinary
+// kick lands around e = 0.8, where t² gives 14% of the impulse and the art
+// moves a third of a pixel. Hence the gentler curve below.
 constexpr float kBassHitThreshold = 0.6f;   // absolute floor; below this, nothing
 constexpr float kBassHitDebounce = 0.15f;   // minimum rest between hits
 constexpr float kBassOmega = 50.0f;         // spring frequency, rad/s (~8 Hz)
 constexpr float kBassZeta = 0.78f;          // damping ratio (web's is 0.47)
-constexpr float kBassImpulse = 1.2f;        // web's 0.01/frame at 120 Hz, per second
+constexpr float kBassImpulse = 1.5f;        // per-second velocity for a full hit
 constexpr float kBassFloorTau = 0.4f;       // energy-envelope time constant
-constexpr float kBassHitRise = 0.10f;       // how far above that envelope counts as a hit
+constexpr float kBassHitRise = 0.045f;      // rise over that envelope to count (~3 dB)
 
 }  // namespace
 
@@ -170,7 +178,11 @@ void ArtView::Update(float dt, const Input& in) {
         if (in.bassEnergy > gate && now - lastBassHit_ > kBassHitDebounce) {
             lastBassHit_ = now;
             const float t = (in.bassEnergy - kBassHitThreshold) / (1 - kBassHitThreshold);
-            const float impulse = t * t * kBassImpulse;
+            // Web uses t², which on this log scale leaves everything but a
+            // near-maximum hit below the threshold of visibility. Half linear,
+            // half quadratic still ranks hits by strength but keeps a mid-strength
+            // one on screen (~0.7px of travel rather than ~0.4px).
+            const float impulse = t * (0.5f + 0.5f * t) * kBassImpulse;
             // Already zoomed in or heading there: reverse, so a quick follow-up
             // hit reads as a second beat instead of doubling the first.
             if (bassX_ > 0.003f || bassV_ > 0.24f) bassV_ = -impulse;
