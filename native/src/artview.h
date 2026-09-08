@@ -97,11 +97,13 @@ private:
     float phaseT_ = 0;          // exit/enter progress 0..1
     float phaseDur_ = 0.6f;
 
-    // Bass-hit zoom spring (AlbumArt.tsx onTick at ~30fps). `zoomShown_`
-    // trails `zoom_` to stand in for the wrapper's 100ms CSS transition.
-    float zoom_ = 1.0f, zoomVel_ = 0.0f, zoomShown_ = 1.0f;
+    // Bass-hit zoom. A damped spring in *displacement* units (0 = rest),
+    // integrated analytically so the feel is identical at any refresh rate.
+    // `zoomShown_` trails it, standing in for the wrapper's CSS transition.
+    float bassX_ = 0.0f, bassV_ = 0.0f;
+    float zoomShown_ = 1.0f;
+    float bassFloor_ = 0.0f;  // slow envelope of bass energy; the trigger's baseline
     double lastBassHit_ = 0;
-    float tickAccum_ = 0;
 
     Vinyl vinyl_;
     GaussianBlur blur_;

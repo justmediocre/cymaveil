@@ -13,14 +13,27 @@ constexpr float kVinylTravel = 65.0f / 340.0f;  // x: 65px at the web's 340px ar
 constexpr float kVinylScale = 1.08f;            // width: 108% of the art
 constexpr float kSpinSecondsPerRev = 1.8f;
 constexpr float kRadius = 16.0f;                // rounded-2xl
-constexpr float kBassHitThreshold = 0.6f;
-constexpr float kBassHitDebounce = 0.06f;
+// Bass-hit zoom. The web runs its spring on a requestAnimationFrame tick with
+// per-frame constants, so the whole feel follows the display: at 60 Hz a hit
+// wobbles for ~0.12s, at 120 Hz for ~0.07s and half as far. 120 Hz is the rate
+// it was tuned by eye at, so these reproduce that spring in continuous time --
+// solving w = sqrt(k*d)/h and zeta = (1-d)/(2*w*h) for the web's k=0.3, d=0.6
+// at h=1/120 gives w = 50.9, zeta = 0.47. Damping is then raised from there,
+// which is the one deliberate departure: 0.47 rings for several cycles and
+// successive hits pile onto each other.
+constexpr float kBassHitThreshold = 0.6f;   // absolute floor; below this, nothing
+constexpr float kBassHitDebounce = 0.15f;   // minimum rest between hits
+constexpr float kBassOmega = 50.0f;         // spring frequency, rad/s (~8 Hz)
+constexpr float kBassZeta = 0.78f;          // damping ratio (web's is 0.47)
+constexpr float kBassImpulse = 1.2f;        // web's 0.01/frame at 120 Hz, per second
+constexpr float kBassFloorTau = 0.4f;       // energy-envelope time constant
+constexpr float kBassHitRise = 0.10f;       // how far above that envelope counts as a hit
 
 }  // namespace
 
 bool ArtView::Animating() const {
     return phase_ != Phase::Steady || !slide_.Done() || !discAlpha_.Done() ||
-           std::fabs(zoom_ - 1.0f) > 0.0005f || std::fabs(zoomVel_) > 0.0005f ||
+           std::fabs(bassX_) > 0.0005f || std::fabs(bassV_) > 0.01f ||
            std::fabs(zoomShown_ - 1.0f) > 0.0005f;
 }
 
@@ -140,40 +153,53 @@ void ArtView::Update(float dt, const Input& in) {
 
     if (in.playing) spinDeg_ = std::fmod(spinDeg_ + dt / kSpinSecondsPerRev * 360.0f, 360.0f);
 
-    // Bass-hit zoom — spring physics tuned for a ~30 fps tick.
+    // ── Bass-hit zoom ──
     if (!in.playing || !in.bassShake) {
-        zoom_ = 1.0f;
-        zoomVel_ = 0.0f;
+        bassX_ = 0.0f;
+        bassV_ = 0.0f;
         zoomShown_ = 1.0f;
-        tickAccum_ = 0;
+        // bassFloor_ is left alone: on resume it is the right prior for the
+        // track that was playing, and zeroing it fires a hit on the first frame.
     } else {
-        tickAccum_ += dt;
-        while (tickAccum_ >= 1.0f / 30.0f) {
-            tickAccum_ -= 1.0f / 30.0f;
-            const double now = GetTime();
-            if (in.bassEnergy > kBassHitThreshold && now - lastBassHit_ > kBassHitDebounce) {
-                lastBassHit_ = now;
-                const float t = (in.bassEnergy - kBassHitThreshold) / (1 - kBassHitThreshold);
-                const float impulse = t * t * 0.01f;
-                if (zoom_ > 1.003f || zoomVel_ > 0.002f) zoomVel_ = -impulse;
-                else zoomVel_ = impulse;
-            }
-            const float displacement = zoom_ - 1;
-            zoomVel_ += -0.3f * displacement;
-            zoomVel_ *= 0.6f;
-            zoom_ += zoomVel_;
-            zoom_ = std::clamp(zoom_, 0.97f, 1.04f);
-            if (std::fabs(zoom_ - 1) < 0.0005f && std::fabs(zoomVel_) < 0.0005f) {
-                zoom_ = 1;
-                zoomVel_ = 0;
-            }
+        // Trigger on energy that rises above its own recent level, not just
+        // above a fixed threshold. On a track whose bassline already sits near
+        // the threshold, a fixed gate re-fires every debounce period for the
+        // whole song, which reads as constant mush rather than distinct hits.
+        const float gate = std::max(kBassHitThreshold, bassFloor_ + kBassHitRise);
+        const double now = GetTime();
+        if (in.bassEnergy > gate && now - lastBassHit_ > kBassHitDebounce) {
+            lastBassHit_ = now;
+            const float t = (in.bassEnergy - kBassHitThreshold) / (1 - kBassHitThreshold);
+            const float impulse = t * t * kBassImpulse;
+            // Already zoomed in or heading there: reverse, so a quick follow-up
+            // hit reads as a second beat instead of doubling the first.
+            if (bassX_ > 0.003f || bassV_ > 0.24f) bassV_ = -impulse;
+            else bassV_ = impulse;
         }
-        // The web applies the tick's value through `transition: transform
-        // 100ms ease-out`, which smooths the 30 fps steps out to the frame
-        // rate. Match that with an exponential approach over the same 100ms.
-        const float k = 1.0f - std::exp(-3.0f * dt / 0.1f);
-        zoomShown_ += (zoom_ - zoomShown_) * k;
-        if (std::fabs(zoom_ - zoomShown_) < 0.0002f) zoomShown_ = zoom_;
+        bassFloor_ += (in.bassEnergy - bassFloor_) * (1.0f - std::exp(-dt / kBassFloorTau));
+
+        // Exact solution of x'' = -w²x - 2ζw·x' over dt. Analytic rather than
+        // stepped because an explicit integrator at this stiffness is unstable
+        // below ~90 fps, and because it makes the motion genuinely independent
+        // of the frame rate rather than merely sampled at it.
+        const float wd = kBassOmega * std::sqrt(1.0f - kBassZeta * kBassZeta);
+        const float decay = std::exp(-kBassZeta * kBassOmega * dt);
+        const float c = std::cos(wd * dt), sn = std::sin(wd * dt);
+        const float x = bassX_, v = bassV_;
+        bassX_ = decay * (x * c + (v + kBassZeta * kBassOmega * x) / wd * sn);
+        bassV_ = decay * (v * c - (kBassOmega * kBassOmega * x + 2 * kBassZeta * kBassOmega * v) / wd * sn);
+        bassX_ = std::clamp(bassX_, -0.03f, 0.04f);
+        if (std::fabs(bassX_) < 0.0005f && std::fabs(bassV_) < 0.01f) {
+            bassX_ = 0.0f;
+            bassV_ = 0.0f;
+        }
+
+        // The web applies the spring through `transition: transform 100ms
+        // ease-out` on the wrapper, which low-passes it into a swell. That lag
+        // is a real part of the look, so keep it.
+        const float target = 1.0f + bassX_;
+        zoomShown_ += (target - zoomShown_) * (1.0f - std::exp(-3.0f * dt / 0.1f));
+        if (std::fabs(target - zoomShown_) < 0.0002f) zoomShown_ = target;
     }
 }
 
