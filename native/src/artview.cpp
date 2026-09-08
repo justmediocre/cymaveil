@@ -32,10 +32,23 @@ constexpr float kRadius = 16.0f;                // rounded-2xl
 constexpr float kBassHitThreshold = 0.6f;   // absolute floor; below this, nothing
 constexpr float kBassHitDebounce = 0.15f;   // minimum rest between hits
 constexpr float kBassOmega = 50.0f;         // spring frequency, rad/s (~8 Hz)
-constexpr float kBassZeta = 0.78f;          // damping ratio (web's is 0.47)
-constexpr float kBassImpulse = 1.5f;        // per-second velocity for a full hit
 constexpr float kBassFloorTau = 0.4f;       // energy-envelope time constant
-constexpr float kBassHitRise = 0.045f;      // rise over that envelope to count (~3 dB)
+
+// The three settings sliders map onto the spring here rather than in the
+// settings UI, so the physics stays in one place. Each default sits where the
+// hand-tuned constants used to: impulse 1.5, rise 0.045, zeta 0.775.
+constexpr float kBassImpulseAt100 = 1.5f;   // per-second velocity for a full hit
+// Sensitivity -> how far over the running bass level counts as a hit. In
+// dB-normalised units, so 0.08 is ~5.6 dB (only unmistakable hits) and 0.01 is
+// ~0.7 dB (almost any wobble).
+constexpr float kBassRiseAt0 = 0.08f, kBassRiseAt100 = 0.01f;
+// Springiness -> damping ratio, inverted. Kept clear of 1 so the underdamped
+// solution in Update stays well-conditioned (wd would collapse to zero at 1).
+constexpr float kBassZetaAt0 = 0.95f, kBassZetaAt100 = 0.45f;
+
+float Lerp01(float a, float b, int pct) {
+    return a + (b - a) * std::clamp(pct, 0, 100) / 100.0f;
+}
 
 }  // namespace
 
@@ -173,7 +186,11 @@ void ArtView::Update(float dt, const Input& in) {
         // above a fixed threshold. On a track whose bassline already sits near
         // the threshold, a fixed gate re-fires every debounce period for the
         // whole song, which reads as constant mush rather than distinct hits.
-        const float gate = std::max(kBassHitThreshold, bassFloor_ + kBassHitRise);
+        const float rise = Lerp01(kBassRiseAt0, kBassRiseAt100, in.bassSensitivity);
+        const float zeta = Lerp01(kBassZetaAt0, kBassZetaAt100, in.bassSpringiness);
+        const float strength = std::clamp(in.bassStrength, 10, 200) / 100.0f;
+
+        const float gate = std::max(kBassHitThreshold, bassFloor_ + rise);
         const double now = GetTime();
         if (in.bassEnergy > gate && now - lastBassHit_ > kBassHitDebounce) {
             lastBassHit_ = now;
@@ -182,7 +199,7 @@ void ArtView::Update(float dt, const Input& in) {
             // near-maximum hit below the threshold of visibility. Half linear,
             // half quadratic still ranks hits by strength but keeps a mid-strength
             // one on screen (~0.7px of travel rather than ~0.4px).
-            const float impulse = t * (0.5f + 0.5f * t) * kBassImpulse;
+            const float impulse = t * (0.5f + 0.5f * t) * kBassImpulseAt100 * strength;
             // Already zoomed in or heading there: reverse, so a quick follow-up
             // hit reads as a second beat instead of doubling the first.
             if (bassX_ > 0.003f || bassV_ > 0.24f) bassV_ = -impulse;
@@ -194,12 +211,12 @@ void ArtView::Update(float dt, const Input& in) {
         // stepped because an explicit integrator at this stiffness is unstable
         // below ~90 fps, and because it makes the motion genuinely independent
         // of the frame rate rather than merely sampled at it.
-        const float wd = kBassOmega * std::sqrt(1.0f - kBassZeta * kBassZeta);
-        const float decay = std::exp(-kBassZeta * kBassOmega * dt);
+        const float wd = kBassOmega * std::sqrt(1.0f - zeta * zeta);
+        const float decay = std::exp(-zeta * kBassOmega * dt);
         const float c = std::cos(wd * dt), sn = std::sin(wd * dt);
         const float x = bassX_, v = bassV_;
-        bassX_ = decay * (x * c + (v + kBassZeta * kBassOmega * x) / wd * sn);
-        bassV_ = decay * (v * c - (kBassOmega * kBassOmega * x + 2 * kBassZeta * kBassOmega * v) / wd * sn);
+        bassX_ = decay * (x * c + (v + zeta * kBassOmega * x) / wd * sn);
+        bassV_ = decay * (v * c - (kBassOmega * kBassOmega * x + 2 * zeta * kBassOmega * v) / wd * sn);
         bassX_ = std::clamp(bassX_, -0.03f, 0.04f);
         if (std::fabs(bassX_) < 0.0005f && std::fabs(bassV_) < 0.01f) {
             bassX_ = 0.0f;

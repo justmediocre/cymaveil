@@ -289,6 +289,9 @@ void App::Frame() {
         in.skipIntent = manualSkip_;
         in.vinylEnabled = config_.vinylDisc;
         in.bassShake = config_.bassShake;
+        in.bassStrength = config_.bassStrength;
+        in.bassSensitivity = config_.bassSensitivity;
+        in.bassSpringiness = config_.bassSpringiness;
         in.bassEnergy = visualizer_.BassEnergy();
         if (player_.IsPlaying() && !seekDragging_ && player_.Repeat() != RepeatMode::One) {
             const float remaining = player_.TimeLength() - player_.TimePlayed();

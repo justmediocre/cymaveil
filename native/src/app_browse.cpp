@@ -940,6 +940,30 @@ void App::DrawSettingsView(Rectangle r) {
             toggleRow("s.glass", "Glass Blur", "Frosted backdrop behind panels", &config_.glassBlur);
             toggleRow("s.glow", "Ambient Glow", "Subtle colored underglow around album art edges", &config_.ambientGlow);
             toggleRow("s.bass", "Bass Hit Zoom", "Album art pulses on strong bass hits", &config_.bassShake);
+            {
+                float v = static_cast<float>(config_.bassStrength);
+                if (sliderRow("Hit strength", "How far the art travels on each hit", &v, 10, 200, 5,
+                              TextFormat("%d%%", static_cast<int>(v)), !config_.bassShake)) {
+                    config_.bassStrength = static_cast<int>(v);
+                    config_.Save();
+                }
+            }
+            {
+                float v = static_cast<float>(config_.bassSensitivity);
+                if (sliderRow("Hit sensitivity", "Higher catches softer kicks, but busier basslines set it off", &v,
+                              0, 100, 5, TextFormat("%d", static_cast<int>(v)), !config_.bassShake)) {
+                    config_.bassSensitivity = static_cast<int>(v);
+                    config_.Save();
+                }
+            }
+            {
+                float v = static_cast<float>(config_.bassSpringiness);
+                if (sliderRow("Springiness", "How much the art rings on after a hit", &v, 0, 100, 5,
+                              TextFormat("%d", static_cast<int>(v)), !config_.bassShake)) {
+                    config_.bassSpringiness = static_cast<int>(v);
+                    config_.Save();
+                }
+            }
             toggleRow("s.vinyl", "Vinyl Disc", "Spinning vinyl record", &config_.vinylDisc);
             if (toggleRow("s.mosaic", "Background Mosaic", "Isometric album art grid", &config_.mosaicEnabled)) RebuildMosaic();
             if (toggleRow("s.flat", "Flat mode", config_.mosaicFlat ? "Flat 2D grid" : "Isometric 3D perspective",

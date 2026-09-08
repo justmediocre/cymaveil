@@ -29,6 +29,9 @@ public:
         bool vinylEnabled = true;
         bool bassShake = true;
         float bassEnergy = 0.0f;       // 0..1
+        int bassStrength = 100;        // 10..200 %  } user dials; the mapping to
+        int bassSensitivity = 50;      // 0..100     } spring constants lives in
+        int bassSpringiness = 35;      // 0..100     } artview.cpp
     };
 
     void Update(float dt, const Input& in);

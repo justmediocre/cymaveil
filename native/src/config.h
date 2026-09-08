@@ -20,6 +20,9 @@ struct Config {
     bool glassBlur = true;         // frosted backdrop behind panels
     bool ambientGlow = true;       // accent underglow around the art
     bool bassShake = true;         // bass-hit zoom on the art
+    int bassStrength = 100;        // 10..200 %, how far the art travels per hit
+    int bassSensitivity = 50;      // 0..100, how much of a rise counts as a hit
+    int bassSpringiness = 35;      // 0..100, how much it rings after one
     bool vinylDisc = true;         // spinning record behind the art
     bool mosaicEnabled = true;     // background mosaic
     bool mosaicFlat = false;

@@ -21,6 +21,9 @@ void Config::Load() {
         glassBlur = j.value("glassBlur", glassBlur);
         ambientGlow = j.value("ambientGlow", ambientGlow);
         bassShake = j.value("bassShake", bassShake);
+        bassStrength = std::clamp(j.value("bassStrength", bassStrength), 10, 200);
+        bassSensitivity = std::clamp(j.value("bassSensitivity", bassSensitivity), 0, 100);
+        bassSpringiness = std::clamp(j.value("bassSpringiness", bassSpringiness), 0, 100);
         vinylDisc = j.value("vinylDisc", vinylDisc);
         mosaicEnabled = j.value("mosaicEnabled", mosaicEnabled);
         mosaicFlat = j.value("mosaicFlat", mosaicFlat);
@@ -48,6 +51,9 @@ void Config::Save() const {
         {"glassBlur", glassBlur},
         {"ambientGlow", ambientGlow},
         {"bassShake", bassShake},
+        {"bassStrength", bassStrength},
+        {"bassSensitivity", bassSensitivity},
+        {"bassSpringiness", bassSpringiness},
         {"vinylDisc", vinylDisc},
         {"mosaicEnabled", mosaicEnabled},
         {"mosaicFlat", mosaicFlat},
