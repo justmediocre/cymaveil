@@ -10,9 +10,7 @@
 namespace {
 
 constexpr float kVinylTravel = 65.0f / 340.0f;  // x: 65px at the web's 340px art
-constexpr float kVinylScale = 0.96f;            // web uses 108%, but that pokes past the
-                                                // art; stay inside it even at the bass-zoom
-                                                // minimum (0.97) so only the slide-out shows
+constexpr float kVinylScale = 1.08f;            // width: 108% of the art
 constexpr float kSpinSecondsPerRev = 1.8f;
 constexpr float kRadius = 16.0f;                // rounded-2xl
 constexpr float kBassHitThreshold = 0.6f;
@@ -22,7 +20,8 @@ constexpr float kBassHitDebounce = 0.06f;
 
 bool ArtView::Animating() const {
     return phase_ != Phase::Steady || !slide_.Done() || !discAlpha_.Done() ||
-           std::fabs(zoom_ - 1.0f) > 0.0005f || std::fabs(zoomVel_) > 0.0005f;
+           std::fabs(zoom_ - 1.0f) > 0.0005f || std::fabs(zoomVel_) > 0.0005f ||
+           std::fabs(zoomShown_ - 1.0f) > 0.0005f;
 }
 
 void ArtView::BeginSwap() {
@@ -145,6 +144,7 @@ void ArtView::Update(float dt, const Input& in) {
     if (!in.playing || !in.bassShake) {
         zoom_ = 1.0f;
         zoomVel_ = 0.0f;
+        zoomShown_ = 1.0f;
         tickAccum_ = 0;
     } else {
         tickAccum_ += dt;
@@ -168,6 +168,12 @@ void ArtView::Update(float dt, const Input& in) {
                 zoomVel_ = 0;
             }
         }
+        // The web applies the tick's value through `transition: transform
+        // 100ms ease-out`, which smooths the 30 fps steps out to the frame
+        // rate. Match that with an exponential approach over the same 100ms.
+        const float k = 1.0f - std::exp(-3.0f * dt / 0.1f);
+        zoomShown_ += (zoom_ - zoomShown_) * k;
+        if (std::fabs(zoom_ - zoomShown_) < 0.0002f) zoomShown_ = zoom_;
     }
 }
 
@@ -246,9 +252,12 @@ void ArtView::Draw(const DrawArgs& a) {
     }
     if (!displayed_.Valid()) return;
 
-    // Bass zoom + its motion blur (blur(|zoom-1| * 250px))
-    const float zoomD = std::fabs(zoom_ - 1.0f);
-    scale *= zoom_;
+    // Bass zoom + its motion blur (blur(|zoom-1| * 250px)). The web scales the
+    // *shake wrapper*, which sits inside a fixed-size `overflow-hidden` frame:
+    // the card, its shadow and its corners hold still while the art slides and
+    // blurs behind the clip. So this only feeds the composite, not `dst`.
+    const float bass = zoomShown_;
+    const float zoomD = std::fabs(bass - 1.0f);
     if (zoomD > 0.0005f) blurPx = std::max(blurPx, zoomD * 250.0f);
 
     const Rectangle dst = ui::Scaled(r, scale);
@@ -275,6 +284,11 @@ void ArtView::Draw(const DrawArgs& a) {
     BeginBlendMode(BLEND_CUSTOM_SEPARATE);
     rlPushMatrix();
     rlScalef(s, s, 1.0f);
+    if (zoomD > 0.0005f) {
+        rlTranslatef(size / 2, size / 2, 0);
+        rlScalef(bass, bass, 1.0f);
+        rlTranslatef(-size / 2, -size / 2, 0);
+    }
     const Rectangle local{0, 0, size, size};
     if (coverReady) {
         DrawTexturePro(*a.cover, ui::CoverSrc(*a.cover), local, Vector2{0, 0}, 0, WHITE);

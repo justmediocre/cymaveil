@@ -15,7 +15,9 @@
 // the record, fade/blur/scale the old cover out and the new one in, extend
 // the record again); the bass-hit zoom; and the hover inner glow. The art,
 // visualizer and depth-mask foreground are composited into one offscreen
-// target so the corner clipping, blur and zoom apply to them together.
+// target so the corner clipping, blur and bass zoom apply to them together —
+// the frame itself never resizes on a bass hit, matching the web, where the
+// scaled wrapper lives inside a fixed-size `overflow-hidden` parent.
 class ArtView {
 public:
     struct Input {
@@ -95,8 +97,9 @@ private:
     float phaseT_ = 0;          // exit/enter progress 0..1
     float phaseDur_ = 0.6f;
 
-    // Bass-hit zoom spring (AlbumArt.tsx onTick at ~30fps)
-    float zoom_ = 1.0f, zoomVel_ = 0.0f;
+    // Bass-hit zoom spring (AlbumArt.tsx onTick at ~30fps). `zoomShown_`
+    // trails `zoom_` to stand in for the wrapper's 100ms CSS transition.
+    float zoom_ = 1.0f, zoomVel_ = 0.0f, zoomShown_ = 1.0f;
     double lastBassHit_ = 0;
     float tickAccum_ = 0;
 
