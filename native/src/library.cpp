@@ -10,6 +10,7 @@
 
 #include <fileref.h>
 #include <tag.h>
+#include <tfilestream.h>
 #include <tpropertymap.h>
 
 #include "colorextract.h"
@@ -483,7 +484,15 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
             // path.c_str() is wchar_t* on Windows / char* elsewhere; TagLib's
             // FileName takes the matching overload, so non-ASCII paths open
             // without depending on the process codepage.
-            TagLib::FileRef f(path.c_str(), true, TagLib::AudioProperties::Average);
+            //
+            // Open read-only explicitly: FileRef's path constructor goes
+            // through FileStream's default "rb+" mode, and closing a file that
+            // was opened for writing emits IN_CLOSE_WRITE even when nothing was
+            // written — so every scan tripped the folder watcher into a second
+            // scan. The stream must outlive the FileRef (it does not take
+            // ownership).
+            TagLib::FileStream stream(path.c_str(), /*openReadOnly=*/true);
+            TagLib::FileRef f(&stream, true, TagLib::AudioProperties::Average);
             if (f.isNull() || f.file() == nullptr) continue;
 
             Track t;
