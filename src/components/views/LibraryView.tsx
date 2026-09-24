@@ -14,6 +14,10 @@ import type { Track, Album } from '../../types'
 
 const HEADER_HEIGHT = 36
 
+// localeCompare with an options argument builds collator state on every call,
+// which made sorting 50k titles take over half a second. Build it once.
+const titleCollator = new Intl.Collator(undefined, { sensitivity: 'base' })
+
 function getLetterForTitle(title: string): string {
   const first = title.trimStart().charAt(0).toUpperCase()
   if (first >= 'A' && first <= 'Z') return first
@@ -42,7 +46,7 @@ export default function LibraryView({ onNavigateToNowPlaying }: LibraryViewProps
 
   // Sort tracks alphabetically by title
   const sortedTracks = useMemo(
-    () => [...tracks].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })),
+    () => [...tracks].sort((a, b) => titleCollator.compare(a.title, b.title)),
     [tracks]
   )
 

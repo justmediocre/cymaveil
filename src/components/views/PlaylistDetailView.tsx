@@ -22,7 +22,7 @@ export default function PlaylistDetailView({
   onNavigateToNowPlaying,
   onDeleteNavigate,
 }: PlaylistDetailViewProps) {
-  const { tracks: allTracks, getAlbumForTrack } = useLibraryCtx()
+  const { tracks: allTracks, getTrack, getAlbumForTrack } = useLibraryCtx()
   const {
     playlists, renamePlaylist, deletePlaylist, exportPlaylist,
     removeTrackFromPlaylist, isTrackFavorited, toggleFavorite,
@@ -39,9 +39,9 @@ export default function PlaylistDetailView({
   const playlistTracks = useMemo(() => {
     if (!playlist) return []
     return playlist.trackIds
-      .map((id) => allTracks.find((t) => t.id === id))
+      .map((id) => getTrack(id))
       .filter((t): t is Track => Boolean(t))
-  }, [playlist, allTracks])
+  }, [playlist, getTrack])
 
   const handleClassicSelect = useCallback(
     (idx: number) => selectTrack({ kind: 'playlist', playlistId }, idx),

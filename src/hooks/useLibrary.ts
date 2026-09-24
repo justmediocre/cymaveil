@@ -131,6 +131,17 @@ export default function useLibrary() {
     [albums]
   )
 
+  const trackMap = useMemo(
+    () => new Map(tracks.map((t) => [t.id, t])),
+    [tracks]
+  )
+
+  /** O(1) lookup — use instead of tracks.find() when resolving lists of IDs */
+  const getTrack = useCallback(
+    (id: string): Track | undefined => trackMap.get(id),
+    [trackMap]
+  )
+
   const getAlbumForTrack = useCallback(
     (track: Track | null): Album | null => albumMap.get(track?.albumId ?? '') ?? null,
     [albumMap]
@@ -259,6 +270,7 @@ export default function useLibrary() {
     isScanning,
     scanError,
     scanProgress,
+    getTrack,
     getAlbumForTrack,
     getTracksForAlbum,
     importFolder,

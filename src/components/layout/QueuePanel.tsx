@@ -19,7 +19,7 @@ type PanelMode =
 
 export default function QueuePanel({ show }: QueuePanelProps) {
   const { state, queueActive, currentTrack, currentAlbum, albumTracks, selectTrack, isPlaying, playNowPlaying, clearQueue } = usePlayback()
-  const { tracks, getAlbumForTrack } = useLibraryCtx()
+  const { getTrack, getAlbumForTrack } = useLibraryCtx()
   const { nowPlayingList, clearNowPlaying, removeFromNowPlaying } = usePlaylistCtx()
 
   const isNowPlayingSource = state.queueSource === 'now-playing'
@@ -40,7 +40,7 @@ export default function QueuePanel({ show }: QueuePanelProps) {
 
     if (showNowPlaying) {
       const npTracks = nowPlayingList.trackIds
-        .map((id: string) => tracks.find((t) => t.id === id))
+        .map((id) => getTrack(id))
         .filter((t): t is NonNullable<typeof t> => t !== undefined)
       return {
         kind: 'now-playing',
@@ -51,7 +51,7 @@ export default function QueuePanel({ show }: QueuePanelProps) {
 
     if (queueActive) {
       const qTracks = state.playQueue
-        .map((id) => tracks.find((t) => t.id === id))
+        .map((id) => getTrack(id))
         .filter((t): t is NonNullable<typeof t> => t !== undefined)
       return {
         kind: 'queue',
@@ -76,7 +76,7 @@ export default function QueuePanel({ show }: QueuePanelProps) {
     }
 
     return { kind: 'empty' }
-  }, [isNowPlayingSource, queueActive, cleared, hasNowPlayingTracks, nowPlayingList.trackIds, state.playQueue, state.shuffle, tracks, albumTracks, currentAlbum])
+  }, [isNowPlayingSource, queueActive, cleared, hasNowPlayingTracks, nowPlayingList.trackIds, state.playQueue, state.shuffle, getTrack, albumTracks, currentAlbum])
 
   const panelTracks = panelMode.kind === 'empty' ? [] : panelMode.tracks
   const panelHeader = panelMode.kind === 'empty' ? 'Queue' : panelMode.header

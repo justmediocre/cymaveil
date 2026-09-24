@@ -121,12 +121,15 @@ export default function usePlaylists() {
     )
   }, [])
 
-  const isTrackFavorited = useCallback(
-    (trackId: string): boolean => {
-      const fav = playlists.find((p) => p.id === FAVORITES_ID)
-      return fav ? fav.trackIds.includes(trackId) : false
-    },
+  // Sets so per-row checks in 50k-track lists are O(1) rather than a scan each
+  const favoriteIds = useMemo(
+    () => new Set(playlists.find((p) => p.id === FAVORITES_ID)?.trackIds),
     [playlists]
+  )
+
+  const isTrackFavorited = useCallback(
+    (trackId: string): boolean => favoriteIds.has(trackId),
+    [favoriteIds]
   )
 
   const toggleFavorite = useCallback((trackId: string) => {
@@ -178,9 +181,11 @@ export default function usePlaylists() {
     )
   }, [])
 
+  const nowPlayingIds = useMemo(() => new Set(nowPlayingList.trackIds), [nowPlayingList])
+
   const isInNowPlaying = useCallback(
-    (trackId: string): boolean => nowPlayingList.trackIds.includes(trackId),
-    [nowPlayingList]
+    (trackId: string): boolean => nowPlayingIds.has(trackId),
+    [nowPlayingIds]
   )
 
   const exportPlaylist = useCallback(async (playlist: Playlist, tracks: Track[]): Promise<string | null> => {

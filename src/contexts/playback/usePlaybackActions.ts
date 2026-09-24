@@ -119,7 +119,8 @@ export function usePlaybackActions(
           {
             const playlist = playlists.find((p: Playlist) => p.id === source.playlistId)
             if (!playlist) return
-            const validIds = playlist.trackIds.filter((id: string) => tracks.some((t) => t.id === id))
+            const libraryIds = new Set(tracks.map((t) => t.id))
+            const validIds = playlist.trackIds.filter((id: string) => libraryIds.has(id))
             if (validIds.length === 0) return
             dispatch({ type: 'SET_QUEUE', queue: validIds, index, shuffle: false, source: 'playlist' })
           }

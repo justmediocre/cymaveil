@@ -8,17 +8,17 @@ const LibraryContext = createContext<LibraryContextValue | null>(null)
 export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const {
     albums, tracks, folders, isLoading, isScanning, scanError, scanProgress,
-    getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
+    getTrack, getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
   } = useLibrary()
 
   const value = useMemo<LibraryContextValue>(
     () => ({
       albums, tracks, folders, isLoading, isScanning, scanError, scanProgress,
-      getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
+      getTrack, getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
     }),
     [
       albums, tracks, folders, isLoading, isScanning, scanError, scanProgress,
-      getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
+      getTrack, getAlbumForTrack, getTracksForAlbum, importFolder, removeFolder,
     ],
   )
 
