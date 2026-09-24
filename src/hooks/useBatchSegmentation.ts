@@ -63,6 +63,12 @@ export default function useBatchSegmentation(albums: Album[], tracks: Track[] = 
         }
       }
 
+      // Never batch past the cache's capacity: each put beyond it evicts a mask this
+      // same batch just made, and the next launch would find those uncached and redo
+      // them, forever. Covers left over get a mask on demand when they're played.
+      const room = segmentationCache.capacity - await segmentationCache.count()
+      uncached.splice(Math.max(0, room))
+
       if (uncached.length === 0 || cancelled) return
 
       setProcessing(true)

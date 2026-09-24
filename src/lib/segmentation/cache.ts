@@ -96,11 +96,41 @@ function openDBOnce(): Promise<IDBDatabase> {
   })
 }
 
+/** Key range covering every mask written by the current ALGO_VERSION */
+const currentVersionRange = () => IDBKeyRange.bound(`v${ALGO_VERSION}:`, `v${ALGO_VERSION};`, false, true)
+
+/**
+ * Masks from older ALGO_VERSIONs can never be read again but still count toward
+ * MAX_IDB_ENTRIES. Delete them (user-edited ones are kept) so they don't crowd out
+ * current masks. Only the stale ranges are walked, so this is free once they're gone.
+ */
+function purgeStaleVersions(db: IDBDatabase) {
+  try {
+    const store = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME)
+    const ranges = [
+      IDBKeyRange.upperBound(`v${ALGO_VERSION}:`, true),
+      IDBKeyRange.lowerBound(`v${ALGO_VERSION};`),
+    ]
+    for (const range of ranges) {
+      const cursor = store.openCursor(range)
+      cursor.onsuccess = () => {
+        const c = cursor.result
+        if (!c) return
+        if (!(c.value as IDBRecord).userEdited) c.delete()
+        c.continue()
+      }
+    }
+  } catch {
+    // Non-fatal — eviction still bounds the store
+  }
+}
+
 function getDB(): Promise<IDBDatabase> {
   if (dbInstance) return Promise.resolve(dbInstance)
   if (dbPending) return dbPending
   dbPending = openDBOnce().then((db) => {
     dbInstance = db
+    purgeStaleVersions(db)
     return db
   }).catch((err) => {
     dbPending = null
@@ -308,6 +338,23 @@ export interface UserEditedMaskExport {
 // --- Public API ---
 
 export const segmentationCache = {
+  /** Masks kept on disk before the oldest are evicted */
+  capacity: MAX_IDB_ENTRIES,
+
+  /** Number of current-version masks stored (keys only — no records are read) */
+  async count(): Promise<number> {
+    try {
+      const db = await getDB()
+      return new Promise((resolve) => {
+        const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).count(currentVersionRange())
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => resolve(0)
+      })
+    } catch {
+      return 0
+    }
+  },
+
   async get(artSrc: string, backend: SegmentationBackend): Promise<SegmentationResult | null> {
     const hash = await hashArtSrc(artSrc)
     const key = cacheKey(hash, backend)
