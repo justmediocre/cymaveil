@@ -100,19 +100,9 @@ export default function useMaskEditor(artSrc: string | null): MaskEditorState {
       await withBackend(backendId, modelParams, onProgress, async (backend) => {
         setDownloadProgress(null)
 
-        if (backend.estimateDepth) {
-          const estimation = await backend.estimateDepth(artSrc, resolution, resolution)
-          if (estimation) {
-            const result = await depthToMask(
-              estimation.depthMap, artSrc, estimation.width, estimation.height, true, postProcessParams,
-            )
-            setPreviewSegmentation(result)
-          }
-        } else {
-          const result = await backend.segment(artSrc, resolution, resolution)
-          if (result) {
-            setPreviewSegmentation(result)
-          }
+        const result = await backend.segment(artSrc, resolution, resolution, postProcessParams)
+        if (result) {
+          setPreviewSegmentation(result)
         }
       })
     } catch (err) {

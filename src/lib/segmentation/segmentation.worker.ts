@@ -12,17 +12,22 @@ export {} // ensure this file is treated as a module
 
 // ── Message protocol ──────────────────────────────────────────────────────────
 
-import type { DepthModelSize, DepthModelDtype } from '../../types'
+import type { DepthModelSize, DepthModelDtype, MaskPostProcessParams } from '../../types'
+import { computeMask } from './depthToMask'
 
 export type WorkerRequest =
   | { type: 'loadModel'; params: { modelSize?: DepthModelSize; modelDtype?: DepthModelDtype } }
   | { type: 'estimateDepth'; id: number; imageSrc: string; width: number; height: number }
+  /** Depth estimation plus mask post-processing. `pixels` is the cover already decoded
+   *  at width×height RGBA on the main thread (see loadImagePixels), transferred in. */
+  | { type: 'segment'; id: number; imageSrc: string; pixels: ArrayBuffer; width: number; height: number; params?: Partial<MaskPostProcessParams> }
   | { type: 'dispose' }
 
 export type WorkerResponse =
   | { type: 'progress'; value: number }
   | { type: 'modelLoaded' }
   | { type: 'depthResult'; id: number; depthMap: ArrayBuffer; width: number; height: number }
+  | { type: 'segmentResult'; id: number; depthMap: ArrayBuffer; mask: ArrayBuffer; width: number; height: number }
   | { type: 'error'; id?: number; message: string }
 
 // ── Internal state ────────────────────────────────────────────────────────────
@@ -148,6 +153,15 @@ function extractDepthMap(result: DepthPipelineResult, width: number, height: num
   return depthMap
 }
 
+/** Run the loaded model and return a width×height depth map. Throws on failure. */
+async function estimate(imageSrc: string, width: number, height: number): Promise<Uint8Array> {
+  if (!pipeline) throw new Error('Model not loaded')
+  const result = await pipeline(imageSrc)
+  const depthMap = extractDepthMap(result, width, height)
+  if (!depthMap) throw new Error('Depth estimation returned null')
+  return depthMap
+}
+
 // ── Message handler ───────────────────────────────────────────────────────────
 
 ctx.onmessage = async (e: MessageEvent<WorkerRequest>) => {
@@ -188,26 +202,7 @@ ctx.onmessage = async (e: MessageEvent<WorkerRequest>) => {
 
     case 'estimateDepth': {
       try {
-        if (!pipeline) {
-          ctx.postMessage({
-            type: 'error',
-            id: msg.id,
-            message: 'Model not loaded',
-          } as WorkerResponse)
-          return
-        }
-
-        const result = await pipeline(msg.imageSrc)
-        const depthMap = extractDepthMap(result, msg.width, msg.height)
-
-        if (!depthMap) {
-          ctx.postMessage({
-            type: 'error',
-            id: msg.id,
-            message: 'Depth estimation returned null',
-          } as WorkerResponse)
-          return
-        }
+        const depthMap = await estimate(msg.imageSrc, msg.width, msg.height)
 
         // Transfer the underlying ArrayBuffer (zero-copy)
         const buffer = depthMap.buffer as ArrayBuffer
@@ -220,6 +215,34 @@ ctx.onmessage = async (e: MessageEvent<WorkerRequest>) => {
             height: msg.height,
           } as WorkerResponse,
           [buffer],
+        )
+      } catch (err) {
+        ctx.postMessage({
+          type: 'error',
+          id: msg.id,
+          message: (err as Error).message,
+        } as WorkerResponse)
+      }
+      break
+    }
+
+    case 'segment': {
+      try {
+        const depthMap = await estimate(msg.imageSrc, msg.width, msg.height)
+        const result = computeMask(depthMap, new Uint8ClampedArray(msg.pixels), msg.width, msg.height, true, msg.params)
+
+        const depthBuffer = depthMap.buffer as ArrayBuffer
+        const maskBuffer = result.foregroundMask.data.buffer as ArrayBuffer
+        ctx.postMessage(
+          {
+            type: 'segmentResult',
+            id: msg.id,
+            depthMap: depthBuffer,
+            mask: maskBuffer,
+            width: msg.width,
+            height: msg.height,
+          } as WorkerResponse,
+          [depthBuffer, maskBuffer],
         )
       } catch (err) {
         ctx.postMessage({

@@ -3,7 +3,7 @@ import type { Album, Track, MaskModelParams, MaskPostProcessParams } from '../ty
 import { segmentationCache, hashArtSrc } from '../lib/segmentation/cache'
 import { maskOverrideStore } from '../lib/segmentation/maskOverrideStore'
 import { withBackend } from '../lib/segmentation/registry'
-import { depthToMask, DEFAULT_MASK_PARAMS } from '../lib/segmentation/depthToMask'
+import { DEFAULT_MASK_PARAMS } from '../lib/segmentation/depthToMask'
 import useVisualSettings from './useVisualSettings'
 import { DEFAULT_MODEL_PARAMS } from './useSegmentation'
 
@@ -74,51 +74,41 @@ export default function useBatchSegmentation(albums: Album[], tracks: Track[] = 
       setProcessing(true)
       setProgress({ current: 0, total: uncached.length })
 
-      await withBackend(backendId, DEFAULT_MODEL_PARAMS, null, async (backend) => {
-        for (let i = 0; i < uncached.length; i++) {
-          if (cancelled) return
+      for (let i = 0; i < uncached.length; i++) {
+        if (cancelled) return
 
-          const { art, hash } = uncached[i]!
-          setProgress({ current: i + 1, total: uncached.length })
+        const { art, hash } = uncached[i]!
+        setProgress({ current: i + 1, total: uncached.length })
 
-          // Another run or the now-playing hook may have cached it since the scan above
-          if (await segmentationCache.get(art, backendId)) continue
+        // Resolve per-album override params or use global defaults
+        const override = await maskOverrideStore.get(hash)
+        const postParams: MaskPostProcessParams = override
+          ? override.postProcessParams
+          : { ...DEFAULT_MASK_PARAMS, ...maskDefaultsRef.current }
+        const modelParams: MaskModelParams = override
+          ? override.modelParams
+          : { ...DEFAULT_MODEL_PARAMS }
 
-          // Resolve per-album override params or use global defaults
-          const override = await maskOverrideStore.get(hash)
-          const postParams: MaskPostProcessParams = override
-            ? override.postProcessParams
-            : { ...DEFAULT_MASK_PARAMS, ...maskDefaultsRef.current }
-          const modelParams: MaskModelParams = override
-            ? override.modelParams
-            : { ...DEFAULT_MODEL_PARAMS }
+        // The batch always runs the default model; a custom model config from an
+        // override is handled by useSegmentation on demand
+        const resolution = modelParams.inputResolution || 256
 
-          // If override specifies different model params, skip — withBackend loaded default model
-          // The user's custom model config will be handled by useSegmentation on demand
-          const resolution = modelParams.inputResolution || 256
-
-          try {
-            if (backend.estimateDepth) {
-              const estimation = await backend.estimateDepth(art, resolution, resolution)
-              if (estimation && !cancelled) {
-                const result = await depthToMask(
-                  estimation.depthMap, art, estimation.width, estimation.height, true, postParams,
-                )
-                if (result && !cancelled) {
-                  await segmentationCache.put(art, backendId, result)
-                }
-              }
-            } else {
-              const result = await backend.segment(art, resolution, resolution)
-              if (result && !cancelled) {
-                await segmentationCache.put(art, backendId, result)
-              }
+        try {
+          // Background priority and one cover per lock: the playing cover (and the
+          // mask editor) jump ahead as soon as this cover is done
+          await withBackend(backendId, DEFAULT_MODEL_PARAMS, null, async (backend) => {
+            // Check and write the cache while holding the lock. Otherwise a waiting
+            // job gets the lock before this result is stored and runs the cover again.
+            if (cancelled || await segmentationCache.get(art, backendId)) return
+            const result = await backend.segment(art, resolution, resolution, postParams)
+            if (result && !cancelled) {
+              await segmentationCache.put(art, backendId, result)
             }
-          } catch (err) {
-            if (import.meta.env.DEV) console.warn('[batch-seg] Failed to process album art:', err)
-          }
+          }, 'background')
+        } catch (err) {
+          if (import.meta.env.DEV) console.warn('[batch-seg] Failed to process album art:', err)
         }
-      })
+      }
 
       if (!cancelled) {
         setProcessing(false)

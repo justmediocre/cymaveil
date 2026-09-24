@@ -83,7 +83,7 @@ function histogramPercentile(data: Float32Array, percentile: number): number {
  *   Depth Anything v2 outputs disparity (high = close), so pass true.
  * @param params - optional post-processing parameters (merged over defaults)
  */
-export function depthToMask(
+export async function depthToMask(
   depthMap: Uint8Array,
   imageSrc: string,
   width: number,
@@ -91,81 +91,103 @@ export function depthToMask(
   foregroundIsHigh: boolean,
   params?: Partial<MaskPostProcessParams>,
 ): Promise<SegmentationResult> {
+  const pixels = await loadImagePixels(imageSrc, width, height)
+  return computeMask(depthMap, pixels, width, height, foregroundIsHigh, params)
+}
+
+/**
+ * Decode an image and scale it to width×height RGBA. Main thread only (uses <img>).
+ *
+ * img.decode() does the full-size decode off the main thread, so what's left here
+ * is a cheap 256×256 draw. The mask pipeline is sensitive to how the cover is
+ * resampled, and no worker-side decode (createImageBitmap at any resizeQuality)
+ * reproduces these pixels — so the decode stays here and only the pixels go to
+ * the worker, keeping masks identical to what this path always produced.
+ */
+export async function loadImagePixels(imageSrc: string, width: number, height: number): Promise<Uint8ClampedArray> {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.src = imageSrc
+  try {
+    await img.decode()
+  } catch {
+    throw new Error('Failed to load image for depth mask')
+  }
+  const canvas = new OffscreenCanvas(width, height)
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0, width, height)
+  return ctx.getImageData(0, 0, width, height).data
+}
+
+/**
+ * The depthToMask pipeline on already-decoded pixels. Pure, synchronous and
+ * DOM-free — the worker calls it so none of the filtering runs on the main thread.
+ */
+export function computeMask(
+  depthMap: Uint8Array,
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  foregroundIsHigh: boolean,
+  params?: Partial<MaskPostProcessParams>,
+): SegmentationResult {
   const p = { ...DEFAULT_MASK_PARAMS, ...params }
 
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      try {
-        // Get original pixel data at target resolution
-        const canvas = new OffscreenCanvas(width, height)
-        const ctx = canvas.getContext('2d')!
-        ctx.drawImage(img, 0, 0, width, height)
-        const originalPixels = ctx.getImageData(0, 0, width, height)
+  // 1. Median filter (3x3) — remove impulse noise
+  const denoised = medianFilter(depthMap, width, height)
 
-        // 1. Median filter (3x3) — remove impulse noise
-        const denoised = medianFilter(depthMap, width, height)
+  // 2. Bilateral filter — smooth depth, preserve edges
+  const bilateralSigmaSpace = p.bilateralRadius * 5
+  const smoothed = bilateralFilter(denoised, width, height, p.bilateralRadius, bilateralSigmaSpace, p.bilateralSigmaRange)
 
-        // 2. Bilateral filter — smooth depth, preserve edges
-        const bilateralSigmaSpace = p.bilateralRadius * 5
-        const smoothed = bilateralFilter(denoised, width, height, p.bilateralRadius, bilateralSigmaSpace, p.bilateralSigmaRange)
+  // 3. Otsu threshold → binary mask
+  const threshold = otsuThreshold(smoothed)
+  const alphaMap = new Uint8Array(width * height)
+  for (let i = 0; i < smoothed.length; i++) {
+    const isForeground = foregroundIsHigh
+      ? smoothed[i]! >= threshold
+      : smoothed[i]! <= threshold
+    alphaMap[i] = isForeground ? 255 : 0
+  }
 
-        // 3. Otsu threshold → binary mask
-        const threshold = otsuThreshold(smoothed)
-        const alphaMap = new Uint8Array(width * height)
-        for (let i = 0; i < smoothed.length; i++) {
-          const isForeground = foregroundIsHigh
-            ? smoothed[i]! >= threshold
-            : smoothed[i]! <= threshold
-          alphaMap[i] = isForeground ? 255 : 0
-        }
+  // Compute image gradient once — shared by text promotion and edge refinement
+  const needGrad = p.textPromotionRadius > 0 || p.edgeRefineRadius > 0
+  const imageGrad = needGrad ? computeImageGradient(pixels, width, height) : null
 
-        // Compute image gradient once — shared by text promotion and edge refinement
-        const needGrad = p.textPromotionRadius > 0 || p.edgeRefineRadius > 0
-        const imageGrad = needGrad ? computeImageGradient(originalPixels.data, width, height) : null
+  // 4. Text/logo promotion — recover high-density gradient regions from background
+  if (p.textPromotionRadius > 0 && imageGrad) {
+    textPromotion(alphaMap, imageGrad.grad, width, height, p.textPromotionRadius, p.textPromotionSensitivity)
+  }
 
-        // 4. Text/logo promotion — recover high-density gradient regions from background
-        if (p.textPromotionRadius > 0 && imageGrad) {
-          textPromotion(alphaMap, imageGrad.grad, width, height, p.textPromotionRadius, p.textPromotionSensitivity)
-        }
+  // 5. Edge-guided refinement — nudge mask edges toward strong image gradients
+  if (p.edgeRefineRadius > 0) {
+    edgeRefineWithGrad(alphaMap, imageGrad!, width, height, p.edgeRefineRadius)
+  }
 
-        // 5. Edge-guided refinement — nudge mask edges toward strong image gradients
-        if (p.edgeRefineRadius > 0) {
-          edgeRefineWithGrad(alphaMap, imageGrad!, width, height, p.edgeRefineRadius)
-        }
+  // 6. Morphological close (fill holes) then open (remove islands)
+  // Runs after edge refinement so cleanup isn't undone by boundary snapping
+  if (p.morphCloseRadius > 0) morphClose(alphaMap, width, height, p.morphCloseRadius)
+  if (p.morphOpenRadius > 0) morphOpen(alphaMap, width, height, p.morphOpenRadius)
 
-        // 6. Morphological close (fill holes) then open (remove islands)
-        // Runs after edge refinement so cleanup isn't undone by boundary snapping
-        if (p.morphCloseRadius > 0) morphClose(alphaMap, width, height, p.morphCloseRadius)
-        if (p.morphOpenRadius > 0) morphOpen(alphaMap, width, height, p.morphOpenRadius)
+  // 7. Anti-alias feather
+  if (p.featherRadius > 0) gaussianFeather(alphaMap, width, height, p.featherRadius)
 
-        // 7. Anti-alias feather
-        if (p.featherRadius > 0) gaussianFeather(alphaMap, width, height, p.featherRadius)
+  // Compose foreground mask: RGB from original, A from alphaMap
+  const maskData = new Uint8ClampedArray(width * height * 4)
+  for (let i = 0; i < width * height; i++) {
+    const si = i * 4
+    maskData[si] = pixels[si]!
+    maskData[si + 1] = pixels[si + 1]!
+    maskData[si + 2] = pixels[si + 2]!
+    maskData[si + 3] = alphaMap[i]!
+  }
 
-        // Compose foreground mask: RGB from original, A from alphaMap
-        const maskData = new Uint8ClampedArray(width * height * 4)
-        for (let i = 0; i < width * height; i++) {
-          const si = i * 4
-          maskData[si] = originalPixels.data[si]!
-          maskData[si + 1] = originalPixels.data[si + 1]!
-          maskData[si + 2] = originalPixels.data[si + 2]!
-          maskData[si + 3] = alphaMap[i]!
-        }
-
-        resolve({
-          foregroundMask: new ImageData(maskData, width, height),
-          depthMap,
-          width,
-          height,
-        })
-      } catch (err) {
-        reject(err)
-      }
-    }
-    img.onerror = () => reject(new Error('Failed to load image for depth mask'))
-    img.src = imageSrc
-  })
+  return {
+    foregroundMask: new ImageData(maskData, width, height),
+    depthMap,
+    width,
+    height,
+  }
 }
 
 // ---------------------------------------------------------------------------

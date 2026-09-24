@@ -3,7 +3,7 @@ import type { SegmentationResult, MaskPostProcessParams, MaskModelParams } from 
 import { segmentationCache, hashArtSrc } from '../lib/segmentation/cache'
 import { maskOverrideStore } from '../lib/segmentation/maskOverrideStore'
 import { withBackend } from '../lib/segmentation/registry'
-import { depthToMask, DEFAULT_MASK_PARAMS } from '../lib/segmentation/depthToMask'
+import { DEFAULT_MASK_PARAMS } from '../lib/segmentation/depthToMask'
 import useVisualSettings from './useVisualSettings'
 
 const SEGMENT_SIZE = 256
@@ -131,7 +131,7 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
         return
       }
 
-      // Load backend, run segmentation, then auto-dispose
+      // Foreground priority: jumps ahead of any queued batch covers
       const resolution = modelParams.inputResolution || SEGMENT_SIZE
       const result = await withBackend(backendId, modelParams, null, async (backend) => {
         if (cancelled) return null
@@ -141,31 +141,15 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
         const postLockCached = await segmentationCache.get(artSrc, backendId)
         if (postLockCached) return postLockCached
 
-        let depth: Uint8Array | null = null
-        let seg: SegmentationResult | null = null
-
-        if (backend.estimateDepth) {
-          const estimation = await backend.estimateDepth(artSrc, resolution, resolution)
-          if (cancelled) return null
-          if (estimation) {
-            depth = estimation.depthMap
-            setDepthMap(depth)
-            seg = await depthToMask(depth, artSrc, estimation.width, estimation.height, true, postParams)
-          }
-        } else {
-          seg = await backend.segment(artSrc, resolution, resolution)
-          if (seg) {
-            depth = seg.depthMap
-            setDepthMap(depth)
-          }
-        }
+        const seg = await backend.segment(artSrc, resolution, resolution, postParams)
+        // Store before releasing the lock so a queued batch job sees it, and keep it
+        // even if the track changed meanwhile — the work is done either way
+        if (seg) await segmentationCache.put(artSrc, backendId, seg)
+        if (cancelled) return null
+        if (seg) setDepthMap(seg.depthMap)
         return seg
       })
       if (cancelled) return
-
-      if (result) {
-        await segmentationCache.put(artSrc, backendId, result)
-      }
 
       setSegmentation(result)
       setLoading(false)
