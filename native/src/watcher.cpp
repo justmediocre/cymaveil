@@ -15,9 +15,7 @@
 
 #include "library.h"  // Lower, IsSupportedAudio
 #include "raylib.h"   // TraceLog
-
-// raylib's GLFW backend; safe to call from any thread, wakes WaitEvents.
-extern "C" void glfwPostEmptyEvent(void);
+#include "wake.h"
 
 namespace fs = std::filesystem;
 
@@ -187,7 +185,7 @@ void FolderWatcher::Run() {
             if (elapsed >= kDebounceMs) {
                 pending = false;
                 dirty_ = true;
-                glfwPostEmptyEvent();  // wake the idle main loop
+                wake::Post();  // wake the idle main loop
             }
         }
     }

@@ -16,6 +16,7 @@
 #include "icon_png.h"
 #include "paths.h"
 #include "ui.h"
+#include "wake.h"
 
 namespace {
 
@@ -132,6 +133,7 @@ int App::Run() {
                        ? (FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI)
                        : (hidpi ? (FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI) : FLAG_MSAA_4X_HINT));
     InitWindow(startW_, startH_, "Cymaveil");
+    wake::Install();
     Image icon = LoadImageFromMemory(".png", kIconPng, kIconPngSize);
     if (icon.data != nullptr) {
         ImageFormat(&icon, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
@@ -214,7 +216,13 @@ int App::Run() {
     MarkActivity();
     if (startFullscreen_) ToggleFullscreenMode();
 
-    while (!WindowShouldClose() && !quitRequested_) Frame();
+    while (!WindowShouldClose() && !quitRequested_) {
+        Frame();
+        // Idle: a return from the event wait is not a reason to draw (see
+        // wake.h) — drawing would swap and re-arm the wake. Wait again until
+        // input or a worker actually asks for a frame.
+        while (eventWaiting_ && !wake::Consume() && !WindowShouldClose()) PollInputEvents();
+    }
 
     config_.volume = player_.Volume();
     config_.shuffle = player_.Shuffle();

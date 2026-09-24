@@ -15,6 +15,7 @@
 
 #include "colorextract.h"
 #include "paths.h"
+#include "wake.h"
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -638,4 +639,7 @@ void Library::ScanWorker(unsigned generation, std::vector<std::string> folders,
     }
     scanActive_ = false;
     scanDone_ = true;
+    // The main loop may have gone idle between the two stores above (pacing
+    // only counts an active scan as busy); make sure it picks the results up.
+    wake::Post();
 }

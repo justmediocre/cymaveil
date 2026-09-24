@@ -33,9 +33,7 @@ std::string MprisFileUrl(const std::string& path) {
 #include <vector>
 
 #include "raylib.h"  // TraceLog
-
-// raylib's GLFW backend; safe to call from any thread, wakes WaitEvents.
-extern "C" void glfwPostEmptyEvent(void);
+#include "wake.h"
 
 namespace {
 
@@ -221,7 +219,7 @@ struct Mpris::Impl {
             std::lock_guard lock(reqMutex);
             requests.push_back(std::move(r));
         }
-        glfwPostEmptyEvent();  // break the main loop out of idle event-waiting
+        wake::Post();  // break the main loop out of idle event-waiting
     }
 
     void Worker();

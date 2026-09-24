@@ -14,6 +14,7 @@
 #include "maskpipe.h"
 #include "netfetch.h"
 #include "paths.h"
+#include "wake.h"
 
 namespace {
 
@@ -148,6 +149,7 @@ void DepthEngine::Worker() {
                 status_ = Status::Idle;
             }
         }
+        wake::Post();  // hand the result to the main loop even if it has gone idle
     }
 }
 
