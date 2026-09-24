@@ -36,6 +36,21 @@ npm run electron:dev
 
 This starts the Vite dev server and launches Electron with hot reload.
 
+### Using the dev container
+
+If you'd rather not install Node and Electron's system libraries yourself, open the
+repo in the included [dev container](https://containers.dev/) (in VS Code, run
+**Dev Containers: Reopen in Container**). Dependencies are installed on first start.
+
+- `npm run typecheck`, `npm run build` and `npm run dist:linux` work as usual. Packages
+  land in `release/` on your own machine.
+- Electron draws to a virtual desktop. Open <http://localhost:6080>, click **Connect**,
+  then run `npm run electron:dev` in the container terminal.
+- The container has no GPU or sound card, so the app renders in software and you won't
+  hear anything. That's fine for UI work but not for judging performance.
+- Windows and macOS packages can't be built in the container. Push a tag and let the
+  release workflow build them.
+
 ### Useful commands
 
 | Command | What it does |

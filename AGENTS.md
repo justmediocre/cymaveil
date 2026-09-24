@@ -34,6 +34,16 @@ broken.
 `libcrypt.so.1`, which Fedora no longer provides. Install `libxcrypt-compat`, or let
 CI build the deb. Every other target builds fine locally.
 
+### Dev container
+
+`.devcontainer/` is a Debian trixie image with Node 24. It builds the AppImage and the
+deb with no extra setup, so it's also the workaround for the Fedora problem above.
+Electron gets a display from the `desktop-lite` feature (noVNC on port 6080,
+`DISPLAY=:1`). The Chromium sandbox works *without* `--no-sandbox`. Docker's default
+seccomp profile blocks the user namespaces the sandbox needs, which is what
+`seccomp=unconfined` in `runArgs` is for. Don't remove it.
+`node_modules` and `~/.cache` are named volumes, not part of the bind mount.
+
 ## Verifying a change in the real app
 
 The best signal is running the packaged app, not just the tests. On a Linux box with

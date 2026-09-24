@@ -1,0 +1,48 @@
+{
+  "name": "Cymaveil",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    // Lightweight X desktop reachable from a browser, so Electron has
+    // somewhere to draw. Open http://localhost:6080 to see it.
+    "ghcr.io/devcontainers/features/desktop-lite:1": {
+      "password": "noPassword"
+    }
+  },
+  "runArgs": [
+    // Chromium crashes with Docker's default 64 MB /dev/shm.
+    "--shm-size=1g",
+    // Docker's default seccomp profile blocks the user namespaces Chromium's
+    // sandbox relies on. Without this Electron refuses to start.
+    "--security-opt",
+    "seccomp=unconfined"
+  ],
+  "mounts": [
+    // Keep node_modules off the bind mount: it's much faster on Windows and
+    // macOS hosts, and stops Linux binaries clobbering a host install.
+    "source=cymaveil-node_modules-${devcontainerId},target=${containerWorkspaceFolder}/node_modules,type=volume",
+    // Electron and electron-builder downloads survive container rebuilds.
+    "source=cymaveil-cache-${devcontainerId},target=/home/node/.cache,type=volume"
+  ],
+  "forwardPorts": [6080],
+  "portsAttributes": {
+    "6080": {
+      "label": "Desktop (noVNC)",
+      "onAutoForward": "notify"
+    },
+    "5173": {
+      "label": "Vite",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "remoteUser": "node",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "EditorConfig.EditorConfig"
+      ]
+    }
+  }
+}

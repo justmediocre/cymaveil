@@ -74,6 +74,9 @@ npm run electron:dev
 
 This starts the Vite dev server and launches Electron with hot reload.
 
+Don't want to install the toolchain? The repo includes a dev container. See
+[CONTRIBUTING.md](CONTRIBUTING.md#using-the-dev-container).
+
 ### Build
 
 ```bash
