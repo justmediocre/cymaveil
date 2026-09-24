@@ -246,8 +246,8 @@ export function loadLibrary() {
  * @param {PlaybackState} data
  * @returns {void}
  */
-export function savePlaybackState({ currentTrackIndex, currentTime, playQueue, queueIndex, shuffle }) {
-  playbackStore.set('playbackState', { currentTrackIndex, currentTime, playQueue, queueIndex, shuffle })
+export function savePlaybackState({ currentTrackIndex, currentTime, playQueue, queueIndex, queueSource, shuffle, repeat, playbackActive }) {
+  playbackStore.set('playbackState', { currentTrackIndex, currentTime, playQueue, queueIndex, queueSource, shuffle, repeat, playbackActive })
 }
 
 /**
@@ -255,7 +255,7 @@ export function savePlaybackState({ currentTrackIndex, currentTime, playQueue, q
  * @returns {PlaybackState}
  */
 export function loadPlaybackState() {
-  return playbackStore.get('playbackState', { currentTrackIndex: 0, currentTime: 0, playQueue: [], queueIndex: -1, shuffle: false })
+  return playbackStore.get('playbackState', { currentTrackIndex: 0, currentTime: 0, playQueue: [], queueIndex: -1, queueSource: 'none', shuffle: false, repeat: 'off' })
 }
 
 /**
