@@ -18,7 +18,6 @@ function acquireLock(): Promise<() => void> {
 
 // ── Worker lifecycle ────────────────────────────────────────────────────────
 
-let currentWorker: Worker | null = null
 let nextRequestId = 0
 
 function createWorker(): Worker {
@@ -87,13 +86,6 @@ function sendEstimateDepth(
 
 // ── Public API (unchanged signatures) ───────────────────────────────────────
 
-export function disposeCurrentBackend() {
-  if (currentWorker) {
-    currentWorker.terminate()
-    currentWorker = null
-  }
-}
-
 /**
  * Scoped backend access: acquire lock → spawn worker → load model → run workFn → terminate worker → release.
  * Terminating the worker frees all WASM memory (~94MB) that pipeline.dispose() cannot reclaim.
@@ -152,7 +144,6 @@ export async function withBackend<T>(
   // ── ML backend (Depth Anything v2) — worker + WASM ──────────────────
   const release = await acquireLock()
   const worker = createWorker()
-  currentWorker = worker
 
   try {
     await sendLoadModel(worker, params, onProgress)
@@ -194,7 +185,6 @@ export async function withBackend<T>(
     return await workFn(proxy)
   } finally {
     worker.terminate()
-    currentWorker = null
     release()
   }
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { SegmentationResult, MaskPostProcessParams, MaskModelParams } from '../types'
 import { segmentationCache, hashArtSrc } from '../lib/segmentation/cache'
 import { maskOverrideStore } from '../lib/segmentation/maskOverrideStore'
-import { withBackend, disposeCurrentBackend } from '../lib/segmentation/registry'
+import { withBackend } from '../lib/segmentation/registry'
 import { depthToMask, DEFAULT_MASK_PARAMS } from '../lib/segmentation/depthToMask'
 import useVisualSettings from './useVisualSettings'
 
@@ -50,9 +50,6 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
     setRefreshKey(k => k + 1)
   }, [])
 
-  // Safety net: dispose model if component unmounts while processing
-  useEffect(() => () => disposeCurrentBackend(), [])
-
   useEffect(() => {
     const cacheVer = settings.maskCacheVersion ?? 0
     const key = `${backendId}:${artSrc}:${cacheVer}`
@@ -60,7 +57,6 @@ export default function useSegmentation(artSrc: string | null): SegmentationStat
     prevKeyRef.current = key
 
     if (!artSrc || backendId === 'none' || artSrc.startsWith('data:image/svg+xml')) {
-      disposeCurrentBackend()
       setSegmentation(null)
       setLoading(false)
       setDepthMap(null)
