@@ -1,6 +1,7 @@
 #include "backdrop.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "rlgl.h"
 
@@ -68,6 +69,13 @@ void Backdrop::EnsureSize(int w, int h) {
     SetTextureFilter(scene_.texture, TEXTURE_FILTER_BILINEAR);
     SetTextureFilter(blurA_.texture, TEXTURE_FILTER_BILINEAR);
     SetTextureFilter(blur_.texture, TEXTURE_FILTER_BILINEAR);
+    // Clamp, not raylib's default repeat: the blur taps run past the edges,
+    // and wrapping would bleed the bottom of the mosaic into glass at the top
+    // of the window (and right into left). It also keeps a partial re-blur
+    // local to the dirty region.
+    SetTextureWrap(scene_.texture, TEXTURE_WRAP_CLAMP);
+    SetTextureWrap(blurA_.texture, TEXTURE_WRAP_CLAMP);
+    SetTextureWrap(blur_.texture, TEXTURE_WRAP_CLAMP);
     if (shader_.id == 0) {
         shader_ = LoadShaderFromMemory(nullptr, kBlurFs);
         resLoc_ = GetShaderLocation(shader_, "resolution");
@@ -76,9 +84,26 @@ void Backdrop::EnsureSize(int w, int h) {
     ready_ = true;
 }
 
+void Backdrop::MarkDirtyRegion(Rectangle r) {
+    if (r.width <= 0 || r.height <= 0) return;
+    if (!hasRegion_) {
+        region_ = r;
+        hasRegion_ = true;
+        return;
+    }
+    const float x0 = std::min(region_.x, r.x), y0 = std::min(region_.y, r.y);
+    const float x1 = std::max(region_.x + region_.width, r.x + r.width);
+    const float y1 = std::max(region_.y + region_.height, r.y + r.height);
+    region_ = Rectangle{x0, y0, x1 - x0, y1 - y0};
+}
+
 void Backdrop::BeginScene() {
     if (!ready_) return;
     BeginTextureMode(scene_);
+    if (PartialRender()) {
+        BeginScissorMode(static_cast<int>(region_.x), static_cast<int>(region_.y),
+                         static_cast<int>(region_.width), static_cast<int>(region_.height));
+    }
     // Translucent draws (tiles at mosaic opacity, the vignette) must not eat
     // into the target's alpha: blend colour normally but keep alpha at
     // dst + src·(1-dst), so the capture stays opaque. With the default
@@ -93,17 +118,45 @@ void Backdrop::BeginScene() {
 
 void Backdrop::EndScene() {
     if (!ready_) return;
+    const bool partial = PartialRender();
     EndBlendMode();
+    if (partial) EndScissorMode();
     EndTextureMode();
-    Blur();
+    Blur(partial);
     dirty_ = false;  // scene_/blur_ now match the latest mosaic
+    hasRegion_ = false;
 }
 
-void Backdrop::Blur() {
+void Backdrop::Blur(bool partial) {
     const float fw = static_cast<float>(w_), fh = static_cast<float>(h_);
     const float bw = static_cast<float>(blur_.texture.width);
     const float bh = static_cast<float>(blur_.texture.height);
     const Rectangle bdst{0, 0, bw, bh};
+
+    // A partial capture only changed region_, so only blurred pixels within
+    // the kernel's reach of it can differ. In blur-texture pixels: the
+    // horizontal pass reads kSpread*4 scene px either side and a little
+    // vertically for the downsample; the vertical pass reads kSpread*4 of
+    // its own texels up and down. Pad a little beyond that.
+    int ax = 0, ay = 0, aw = 0, ah = 0, bx = 0, by = 0, bwi = 0, bhi = 0;
+    if (partial) {
+        const int bwMax = blur_.texture.width, bhMax = blur_.texture.height;
+        const int reachH = static_cast<int>(std::ceil(kSpread * 4 / kDownscale)) + 2;
+        const int reachV = static_cast<int>(std::ceil(kSpread * 4)) + 2;
+        const int x0 = static_cast<int>(std::floor(region_.x / kDownscale)) - reachH;
+        const int y0 = static_cast<int>(std::floor(region_.y / kDownscale)) - 2;
+        const int x1 = static_cast<int>(std::ceil((region_.x + region_.width) / kDownscale)) + reachH;
+        const int y1 = static_cast<int>(std::ceil((region_.y + region_.height) / kDownscale)) + 2;
+        ax = std::max(0, x0);
+        ay = std::max(0, y0);
+        aw = std::min(bwMax, x1) - ax;
+        ah = std::min(bhMax, y1) - ay;
+        bx = std::max(0, x0 - 1);
+        by = std::max(0, y0 - reachV);
+        bwi = std::min(bwMax, x1 + 1) - bx;
+        bhi = std::min(bhMax, y1 + reachV) - by;
+        if (aw <= 0 || ah <= 0 || bwi <= 0 || bhi <= 0) return;
+    }
 
     BeginShaderMode(shader_);
     // Horizontal pass: downsample the full-res scene into blurA_.
@@ -112,7 +165,9 @@ void Backdrop::Blur() {
     SetShaderValue(shader_, resLoc_, &sceneRes, SHADER_UNIFORM_VEC2);
     SetShaderValue(shader_, dirLoc_, &horiz, SHADER_UNIFORM_VEC2);
     BeginTextureMode(blurA_);
+    if (partial) BeginScissorMode(ax, ay, aw, ah);
     DrawTexturePro(scene_.texture, Rectangle{0, 0, fw, -fh}, bdst, Vector2{0, 0}, 0, WHITE);
+    if (partial) EndScissorMode();
     EndTextureMode();
 
     // Vertical pass: blurA_ -> blur_, both at the downsampled resolution.
@@ -121,7 +176,9 @@ void Backdrop::Blur() {
     SetShaderValue(shader_, resLoc_, &blurRes, SHADER_UNIFORM_VEC2);
     SetShaderValue(shader_, dirLoc_, &vert, SHADER_UNIFORM_VEC2);
     BeginTextureMode(blur_);
+    if (partial) BeginScissorMode(bx, by, bwi, bhi);
     DrawTexturePro(blurA_.texture, Rectangle{0, 0, bw, -bh}, bdst, Vector2{0, 0}, 0, WHITE);
+    if (partial) EndScissorMode();
     EndTextureMode();
     EndShaderMode();
 }

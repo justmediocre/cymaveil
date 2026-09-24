@@ -199,7 +199,10 @@ Done in this first slice:
 - [x] Background mosaic: isometric drifting grid of album art with flip /
       shrink-grow / cross-fade / fade / iris tile transitions and the radial
       vignette, ported from `AlbumArtBackground.tsx`. Drift and tile swaps only
-      run during playback, so the idle state stays at zero cost. The pool
+      run during playback, so the idle state stays at zero cost. The settled
+      grid is rendered once into a cached layer that slides with the drift;
+      a tile mid-swap is drawn live on top, and only its rectangle of the
+      frosted backdrop is recomposed and re-blurred. The pool
       includes per-track covers, and every tunable is in Settings → Visuals.
 - [x] Playlists: Favorites and Now Playing system playlists plus user playlists
       (inline rename, two-step delete), persisted to `playlists.json`; M3U8 import

@@ -18,13 +18,20 @@ public:
     // caller flags the source as changed via MarkDirty(). When false, the cached
     // scene_/blur_ textures still hold a valid image and the (expensive) offscreen
     // render + Gaussian blur can be skipped entirely.
-    bool NeedsRender() const { return ready_ && dirty_; }
-    // Flags the cached scene as stale (mosaic animating, art decoding, theme
+    bool NeedsRender() const { return ready_ && (dirty_ || hasRegion_); }
+    // Flags the cached scene as stale (mosaic moved, art decoding, theme
     // changed, …) so the next captured frame re-renders and re-blurs.
     void MarkDirty() { dirty_ = true; }
+    // Flags only part of the scene as stale (screen units). Unless something
+    // marks the whole scene dirty as well, the next capture is clipped to the
+    // union of these rectangles and only the blur around them is refreshed.
+    void MarkDirtyRegion(Rectangle r);
+    // True when the pending capture only covers the dirty region.
+    bool PartialRender() const { return !dirty_ && hasRegion_; }
     // Render the scene (mosaic) between these; everything drawn lands in the
-    // offscreen scene texture instead of the screen. EndScene clears the dirty
-    // flag, so only call this pair when NeedsRender() reports the scene is stale.
+    // offscreen scene texture instead of the screen, clipped to the dirty
+    // region for a partial capture. EndScene clears the dirty state, so only
+    // call this pair when NeedsRender() reports the scene is stale.
     void BeginScene();
     void EndScene();  // ends capture and refreshes the blurred copy
 
@@ -41,7 +48,9 @@ public:
     bool Ready() const { return ready_; }
 
 private:
-    void Blur();  // runs the two-pass blur from scene_ into blur_
+    // Runs the two-pass blur from scene_ into blur_; with `partial`, only
+    // where region_ can have changed it.
+    void Blur(bool partial);
 
     int w_ = 0, h_ = 0;
     RenderTexture2D scene_{};  // full-res sharp capture of the mosaic
@@ -52,4 +61,6 @@ private:
     int dirLoc_ = -1;
     bool ready_ = false;
     bool dirty_ = true;  // cached scene/blur stale; re-render on next capture
+    bool hasRegion_ = false;       // part of the scene stale (see MarkDirtyRegion)
+    Rectangle region_{0, 0, 0, 0};  // union of the stale parts, scene pixels
 };

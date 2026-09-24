@@ -15,6 +15,14 @@ namespace {
 constexpr float kGap = 12.0f;
 constexpr float kIsoSquash = 0.574f;  // cos(55 deg), the CSS rotateX(55deg) under ortho
 constexpr float kIsoAngle = -15.0f;   // CSS rotateZ(-15deg)
+// The cached layer extends this far past each screen edge, so the drift can
+// slide it this far before it has to be re-rendered (the drift peaks at a few
+// px/s, so that is every ten seconds or so at most).
+constexpr float kLayerMargin = 48.0f;
+// While only drifting, recompose once the layer has slid this far since the
+// last composition. The drift is well under a pixel per frame, so composing
+// every frame spends a full-screen pass plus a blur on invisible motion.
+constexpr float kRedrawStep = 0.25f;
 
 float Smooth(float t) { return t * t * (3.0f - 2.0f * t); }  // ease-in-out
 
@@ -131,6 +139,7 @@ void Mosaic::Rebuild(const std::vector<const Art*>& arts, const MosaicSettings& 
     columns_ = std::max(2, s.density);
     rows_ = static_cast<int>(std::ceil(columns_ * 1.5f));
     tiles_.assign(static_cast<size_t>(columns_) * rows_, Tile{});
+    layerDirty_ = true;
     if (artIds_.empty()) return;
     for (auto& tile : tiles_) {
         tile.front = GetRandomValue(0, static_cast<int>(artIds_.size()) - 1);
@@ -138,8 +147,9 @@ void Mosaic::Rebuild(const std::vector<const Art*>& arts, const MosaicSettings& 
 }
 
 bool Mosaic::Animating() const {
-    // The whole grid drifts continuously while playing, so the backdrop must
-    // re-capture every frame to track it — not just while a tile is mid-swap.
+    // Something on screen moves: the grid drifts continuously while playing,
+    // and swaps finish even when paused. Drives frame pacing; whether the
+    // backdrop needs re-capturing is Prepare()'s call.
     if (drifting_) return true;
     return std::any_of(tiles_.begin(), tiles_.end(), [](const Tile& t) { return t.active; });
 }
@@ -163,6 +173,7 @@ void Mosaic::Trigger(const MosaicSettings& s) {
     else tile.tr = static_cast<Tr>(GetRandomValue(0, 4));
     tile.t = 0;
     tile.active = true;
+    layerDirty_ = true;  // the tile leaves the layer and is drawn live
 }
 
 void Mosaic::Update(float dt, bool playing, const MosaicSettings& s) {
@@ -177,6 +188,7 @@ void Mosaic::Update(float dt, bool playing, const MosaicSettings& s) {
             tile.front = tile.back;
             tile.t = 0;
             tile.active = false;
+            layerDirty_ = true;  // settled again: back into the layer
         }
     }
     if (!playing) return;
@@ -228,45 +240,177 @@ void Mosaic::DrawTile(const Tile& tile, Rectangle rc, ArtCache& art, float opaci
     }
 }
 
-void Mosaic::Draw(Rectangle screen, ArtCache& art, const MosaicSettings& s, Color bg) {
-    if (!s.enabled || tiles_.empty() || artIds_.empty()) return;
-
+Mosaic::Geometry Mosaic::Layout(Rectangle screen, const MosaicSettings& s) const {
+    Geometry g;
     const float W = screen.width, H = screen.height;
-    const float gridW = W * (s.flat ? 1.7f : 2.6f);
-    const float tileSz = (gridW - (columns_ - 1) * kGap) / columns_;
-    const float step = tileSz + kGap;
-    const float gridH = rows_ * step - kGap;
+    g.flat = s.flat;
+    g.gridW = W * (s.flat ? 1.7f : 2.6f);
+    g.tileSz = (g.gridW - (columns_ - 1) * kGap) / columns_;
+    g.step = g.tileSz + kGap;
+    g.gridH = rows_ * g.step - kGap;
     // CSS iso wrapper insets (-75% top, -45% bottom) put the plane center high
-    const Vector2 center{screen.x + W / 2, screen.y + (s.flat ? H / 2 : H * 0.35f)};
-    const Vector2 drift{gridW * 0.022f * std::sin(driftT_ * 2 * PI / 120.0f),
-                        gridH * 0.014f * std::sin(driftT_ * 2 * PI / 97.0f + 1.3f)};
+    g.center = Vector2{screen.x + W / 2, screen.y + (s.flat ? H / 2 : H * 0.35f)};
     const float rad = kIsoAngle * DEG2RAD;
-    const float cosA = std::cos(rad), sinA = std::sin(rad);
-    const float squash = s.flat ? 1.0f : kIsoSquash;
-    const float cullMargin = tileSz * 1.6f;
+    g.cosA = std::cos(rad);
+    g.sinA = std::sin(rad);
+    g.squash = s.flat ? 1.0f : kIsoSquash;
+    return g;
+}
 
+Vector2 Mosaic::Drift(const Geometry& g) const {
+    return Vector2{g.gridW * 0.022f * std::sin(driftT_ * 2 * PI / 120.0f),
+                   g.gridH * 0.014f * std::sin(driftT_ * 2 * PI / 97.0f + 1.3f)};
+}
+
+Vector2 Mosaic::PlaneToScreen(const Geometry& g, Vector2 d) {
+    if (g.flat) return d;
+    return Vector2{d.x * g.cosA - d.y * g.sinA, g.squash * (d.x * g.sinA + d.y * g.cosA)};
+}
+
+void Mosaic::DrawTiles(const Geometry& g, Vector2 drift, Rectangle bounds, ArtCache& art, float opacity,
+                       bool active) const {
+    const float cullMargin = g.tileSz * 1.6f;
     rlPushMatrix();
-    rlTranslatef(center.x, center.y, 0);
-    rlScalef(1.0f, squash, 1.0f);
-    if (!s.flat) rlRotatef(kIsoAngle, 0, 0, 1);
+    rlTranslatef(g.center.x, g.center.y, 0);
+    rlScalef(1.0f, g.squash, 1.0f);
+    if (!g.flat) rlRotatef(kIsoAngle, 0, 0, 1);
     rlTranslatef(drift.x, drift.y, 0);
-
     for (int row = 0; row < rows_; row++) {
         for (int col = 0; col < columns_; col++) {
-            const Rectangle rc{col * step - gridW / 2, row * step - gridH / 2, tileSz, tileSz};
-            // Cull against the screen using the same transform applied manually
-            const float gx = rc.x + tileSz / 2 + drift.x;
-            const float gy = rc.y + tileSz / 2 + drift.y;
-            const float sx = center.x + (s.flat ? gx : gx * cosA - gy * sinA);
-            const float sy = center.y + squash * (s.flat ? gy : gx * sinA + gy * cosA);
-            if (sx < screen.x - cullMargin || sx > screen.x + W + cullMargin ||
-                sy < screen.y - cullMargin || sy > screen.y + H + cullMargin) {
+            const Tile& tile = tiles_[static_cast<size_t>(row) * columns_ + col];
+            if (tile.active != active) continue;
+            const Rectangle rc{col * g.step - g.gridW / 2, row * g.step - g.gridH / 2, g.tileSz, g.tileSz};
+            // Cull against the bounds using the same transform applied manually
+            const Vector2 c = PlaneToScreen(g, Vector2{rc.x + g.tileSz / 2 + drift.x, rc.y + g.tileSz / 2 + drift.y});
+            const float sx = g.center.x + c.x, sy = g.center.y + c.y;
+            if (sx < bounds.x - cullMargin || sx > bounds.x + bounds.width + cullMargin ||
+                sy < bounds.y - cullMargin || sy > bounds.y + bounds.height + cullMargin) {
                 continue;
             }
-            DrawTile(tiles_[static_cast<size_t>(row) * columns_ + col], rc, art, s.opacity);
+            DrawTile(tile, rc, art, opacity);
         }
     }
     rlPopMatrix();
+}
+
+Mosaic::Change Mosaic::Prepare(Rectangle screen, ArtCache& art, const MosaicSettings& s, Color bg) {
+    Change ch;
+    if (!s.enabled || tiles_.empty() || artIds_.empty()) {
+        if (layer_.id != 0) UnloadRenderTexture(layer_);
+        layer_ = RenderTexture2D{};
+        layerDirty_ = true;
+        return ch;
+    }
+    const int lw = static_cast<int>(std::ceil(screen.width + 2 * kLayerMargin));
+    const int lh = static_cast<int>(std::ceil(screen.height + 2 * kLayerMargin));
+    if (layer_.id == 0 || layer_.texture.width != lw || layer_.texture.height != lh) {
+        if (layer_.id != 0) UnloadRenderTexture(layer_);
+        layer_ = LoadRenderTexture(lw, lh);
+        SetTextureFilter(layer_.texture, TEXTURE_FILTER_BILINEAR);
+        layerDirty_ = true;
+    }
+
+    const Geometry g = Layout(screen, s);
+    const Vector2 drift = Drift(g);
+    const Vector2 shift = PlaneToScreen(g, Vector2{drift.x - layerDrift_.x, drift.y - layerDrift_.y});
+    const bool bgChanged = bg.r != layerBg_.r || bg.g != layerBg_.g || bg.b != layerBg_.b || bg.a != layerBg_.a;
+    if (std::fabs(shift.x) > kLayerMargin - 1 || std::fabs(shift.y) > kLayerMargin - 1 ||
+        s.opacity != layerOpacity_ || s.flat != layerFlat_ || bgChanged) {
+        layerDirty_ = true;
+    }
+
+    if (layerDirty_) {
+        BeginTextureMode(layer_);
+        ClearBackground(bg);
+        // Same separate alpha blend as the backdrop capture (see
+        // Backdrop::BeginScene): translucent tiles must leave the layer opaque,
+        // so it covers the scene exactly when it is drawn there.
+        rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA,
+                                  RL_FUNC_ADD, RL_FUNC_ADD);
+        BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+        rlPushMatrix();
+        rlTranslatef(kLayerMargin - screen.x, kLayerMargin - screen.y, 0);
+        DrawTiles(g, drift, Rectangle{screen.x - kLayerMargin, screen.y - kLayerMargin, screen.width + 2 * kLayerMargin,
+                                      screen.height + 2 * kLayerMargin},
+                  art, s.opacity, false);
+        rlPopMatrix();
+        EndBlendMode();
+        EndTextureMode();
+        layerDrift_ = drift;
+        layerOpacity_ = s.opacity;
+        layerFlat_ = s.flat;
+        layerBg_ = bg;
+        layerDirty_ = false;
+        ch.full = true;
+        return ch;
+    }
+    if (std::fabs(shift.x - drawnShift_.x) >= kRedrawStep || std::fabs(shift.y - drawnShift_.y) >= kRedrawStep) {
+        ch.full = true;
+        return ch;
+    }
+
+    // Only swaps in flight: refresh the screen bounds of their tiles, placed
+    // at the drift the rest of the capture was composed at. A transition
+    // never draws outside its tile's rectangle.
+    const Rectangle bounds = screen;
+    bool any = false;
+    float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    for (int row = 0; row < rows_; row++) {
+        for (int col = 0; col < columns_; col++) {
+            if (!tiles_[static_cast<size_t>(row) * columns_ + col].active) continue;
+            const float px = col * g.step - g.gridW / 2 + drawnDrift_.x;
+            const float py = row * g.step - g.gridH / 2 + drawnDrift_.y;
+            float tx0 = 1e9f, ty0 = 1e9f, tx1 = -1e9f, ty1 = -1e9f;
+            for (int k = 0; k < 4; k++) {
+                const Vector2 c = PlaneToScreen(g, Vector2{px + (k & 1) * g.tileSz, py + (k >> 1) * g.tileSz});
+                tx0 = std::min(tx0, g.center.x + c.x);
+                tx1 = std::max(tx1, g.center.x + c.x);
+                ty0 = std::min(ty0, g.center.y + c.y);
+                ty1 = std::max(ty1, g.center.y + c.y);
+            }
+            if (tx1 < bounds.x || ty1 < bounds.y || tx0 > bounds.x + bounds.width || ty0 > bounds.y + bounds.height) {
+                continue;  // off screen: nothing visible changes
+            }
+            x0 = any ? std::min(x0, tx0) : tx0;
+            y0 = any ? std::min(y0, ty0) : ty0;
+            x1 = any ? std::max(x1, tx1) : tx1;
+            y1 = any ? std::max(y1, ty1) : ty1;
+            any = true;
+        }
+    }
+    if (any) {
+        // Pad for anti-aliased edges, and snap out to whole pixels.
+        x0 = std::floor(std::max(bounds.x, x0 - 2));
+        y0 = std::floor(std::max(bounds.y, y0 - 2));
+        x1 = std::ceil(std::min(bounds.x + bounds.width, x1 + 2));
+        y1 = std::ceil(std::min(bounds.y + bounds.height, y1 + 2));
+        ch.partial = true;
+        ch.region = Rectangle{x0, y0, x1 - x0, y1 - y0};
+    }
+    return ch;
+}
+
+void Mosaic::Draw(Rectangle screen, ArtCache& art, const MosaicSettings& s, Color bg, bool partial) {
+    if (!s.enabled || tiles_.empty() || artIds_.empty() || layer_.id == 0) return;
+
+    const float W = screen.width, H = screen.height;
+    const Geometry g = Layout(screen, s);
+    if (!partial) {
+        drawnDrift_ = Drift(g);
+        drawnShift_ = PlaneToScreen(g, Vector2{drawnDrift_.x - layerDrift_.x, drawnDrift_.y - layerDrift_.y});
+    }
+    const float lw = static_cast<float>(layer_.texture.width);
+    const float lh = static_cast<float>(layer_.texture.height);
+    // The layer is opaque and replaces whatever is under it; blending it
+    // would only cost a full-screen read of the target.
+    rlDrawRenderBatchActive();
+    rlDisableColorBlend();
+    DrawTexturePro(layer_.texture, Rectangle{0, 0, lw, -lh},
+                   Rectangle{screen.x - kLayerMargin + drawnShift_.x, screen.y - kLayerMargin + drawnShift_.y, lw, lh},
+                   Vector2{0, 0}, 0, WHITE);
+    rlDrawRenderBatchActive();
+    rlEnableColorBlend();
+    DrawTiles(g, drawnDrift_, screen, art, s.opacity, true);
 
     // Gentle vignette: the mosaic stays visible across most of the screen and
     // only dims toward the farthest corners, so it still reads through the
@@ -312,6 +456,9 @@ void Mosaic::Draw(Rectangle screen, ArtCache& art, const MosaicSettings& s, Colo
 }
 
 void Mosaic::Unload() {
+    if (layer_.id != 0) UnloadRenderTexture(layer_);
+    layer_ = RenderTexture2D{};
+    layerDirty_ = true;
     if (vignette_.id != 0) UnloadTexture(vignette_);
     vignette_ = Texture2D{};
 }

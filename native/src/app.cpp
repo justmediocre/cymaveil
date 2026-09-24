@@ -282,7 +282,10 @@ void App::Frame() {
     }
     visualizer_.Update(GetFrameTime(), player_.IsPlaying());
     mosaic_.Update(GetFrameTime(), player_.IsPlaying(), MosaicCfg());
-    if (art_.HasPendingWork()) backdrop_.MarkDirty();
+    if (art_.HasPendingWork()) {
+        backdrop_.MarkDirty();
+        mosaic_.MarkDirty();  // tiles may have been drawn as placeholders
+    }
     art_.ProcessQueue(2);
 
     // Now Playing art sequencing follows the current track's art; a track
@@ -385,11 +388,14 @@ void App::Frame() {
     ui::BlockInput(menu_.open || brush_.open);
 
     backdrop_.EnsureSize(static_cast<int>(W), static_cast<int>(H));
-    if (mosaic_.Animating()) backdrop_.MarkDirty();
+    const Mosaic::Change mosaicChange = mosaic_.Prepare(Rectangle{0, 0, W, H}, art_, MosaicCfg(), ui::theme.bg);
+    if (mosaicChange.full) backdrop_.MarkDirty();
+    else if (mosaicChange.partial) backdrop_.MarkDirtyRegion(mosaicChange.region);
     if (backdrop_.NeedsRender()) {
+        const bool partial = backdrop_.PartialRender();
         backdrop_.BeginScene();
-        ClearBackground(ui::theme.bg);
-        mosaic_.Draw(Rectangle{0, 0, W, H}, art_, MosaicCfg(), ui::theme.bg);
+        if (!mosaic_.CoversScreen()) ClearBackground(ui::theme.bg);
+        mosaic_.Draw(Rectangle{0, 0, W, H}, art_, MosaicCfg(), ui::theme.bg, partial);
         backdrop_.EndScene();
     }
 
