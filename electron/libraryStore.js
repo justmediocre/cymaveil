@@ -9,6 +9,8 @@
 /** @typedef {import('./types').PersistedTrack} PersistedTrack */
 /** @typedef {import('./types').ArtUrlUpdates} ArtUrlUpdates */
 /** @typedef {import('./types').StoreSchema} StoreSchema */
+/** @typedef {import('./types').PlaybackStoreSchema} PlaybackStoreSchema */
+/** @typedef {import('./types').PlaylistStoreSchema} PlaylistStoreSchema */
 
 import { app } from 'electron'
 import path from 'path'
@@ -23,9 +25,31 @@ const store = new Store({
     folders: [],
     albums: [],
     tracks: [],
-    playlists: [],
   }),
 })
+
+// Playback state and playlists change far more often than the library. electron-store
+// rewrites the whole file on every set, so while they lived in library.json each track
+// change or favorite toggle re-serialized the entire library on the main process
+// (~200 ms at 20k tracks). They get their own small files.
+/** @type {Store<PlaybackStoreSchema>} */
+const playbackStore = new Store({ name: 'playback' })
+/** @type {Store<PlaylistStoreSchema>} */
+const playlistStore = new Store({ name: 'playlists' })
+
+/**
+ * One-time move out of library.json for installs from before the split. Copies
+ * first, then deletes, so a crash in between loses nothing.
+ * @param {'playbackState' | 'playlists'} key
+ * @param {Store<any>} target
+ */
+function migrateKey(key, target) {
+  if (!store.has(key)) return
+  if (!target.has(key)) target.set(key, store.get(key))
+  store.delete(key)
+}
+migrateKey('playbackState', playbackStore)
+migrateKey('playlists', playlistStore)
 
 const artworkDir = path.join(app.getPath('userData'), 'artwork')
 
@@ -158,9 +182,13 @@ export function saveLibrary({ albums, tracks, folders }) {
       return rest
     })
 
-    store.set('albums', /** @type {PersistedAlbum[]} */ (persistedAlbums))
-    store.set('tracks', /** @type {PersistedTrack[]} */ (persistedTracks))
-    store.set('folders', folders || [])
+    // One assignment, one write — separate sets would serialize and rewrite the file three times
+    store.store = {
+      ...store.store,
+      albums: /** @type {PersistedAlbum[]} */ (persistedAlbums),
+      tracks: /** @type {PersistedTrack[]} */ (persistedTracks),
+      folders: folders || [],
+    }
   } catch (err) {
     console.error('Failed to save library:', err)
   }
@@ -219,7 +247,7 @@ export function loadLibrary() {
  * @returns {void}
  */
 export function savePlaybackState({ currentTrackIndex, currentTime, playQueue, queueIndex, shuffle }) {
-  store.set('playbackState', { currentTrackIndex, currentTime, playQueue, queueIndex, shuffle })
+  playbackStore.set('playbackState', { currentTrackIndex, currentTime, playQueue, queueIndex, shuffle })
 }
 
 /**
@@ -227,7 +255,7 @@ export function savePlaybackState({ currentTrackIndex, currentTime, playQueue, q
  * @returns {PlaybackState}
  */
 export function loadPlaybackState() {
-  return store.get('playbackState', { currentTrackIndex: 0, currentTime: 0, playQueue: [], queueIndex: -1, shuffle: false })
+  return playbackStore.get('playbackState', { currentTrackIndex: 0, currentTime: 0, playQueue: [], queueIndex: -1, shuffle: false })
 }
 
 /**
@@ -236,7 +264,7 @@ export function loadPlaybackState() {
  * @returns {void}
  */
 export function savePlaylists(playlists) {
-  store.set('playlists', playlists)
+  playlistStore.set('playlists', playlists)
 }
 
 /**
@@ -244,7 +272,7 @@ export function savePlaylists(playlists) {
  * @returns {Playlist[]}
  */
 export function loadPlaylists() {
-  return store.get('playlists', [])
+  return playlistStore.get('playlists', [])
 }
 
 /**
@@ -255,6 +283,8 @@ export function clearLibrary() {
   try {
     store.clear()
     store.set('schemaVersion', 1)
+    playbackStore.clear()
+    playlistStore.clear()
 
     // Remove all artwork files — per-file try/catch so one locked file
     // doesn't leave the rest orphaned on disk.

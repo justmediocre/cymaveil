@@ -149,6 +149,18 @@ export interface StoreSchema {
   folders: string[]
   albums: PersistedAlbum[]
   tracks: PersistedTrack[]
-  playlists: Playlist[]
+  /** Legacy: moved to playlists.json. Only present in files from before the split. */
+  playlists?: Playlist[]
+  /** Legacy: moved to playback.json. Only present in files from before the split. */
   playbackState?: PlaybackState
+}
+
+/** playback.json */
+export interface PlaybackStoreSchema {
+  playbackState?: PlaybackState
+}
+
+/** playlists.json */
+export interface PlaylistStoreSchema {
+  playlists?: Playlist[]
 }
