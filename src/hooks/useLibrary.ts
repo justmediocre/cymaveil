@@ -2,6 +2,53 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { Album, Track, ScanProgress, WatcherEvent } from '../types'
 import { selectAndImportFolder } from '../lib/musicLibrary'
 
+/** True when filePath is inside folder — a bare startsWith would also match "Album 2" for "Album". */
+function isInFolder(filePath: string, folder: string): boolean {
+  if (!filePath.startsWith(folder)) return false
+  if (/[\\/]$/.test(folder)) return true
+  const next = filePath[folder.length]
+  return next === '/' || next === '\\'
+}
+
+/**
+ * Add scanned tracks to the library. Tracks match on file path and albums on title,
+ * not ID: libraries scanned before IDs were stable hold `imported-N` IDs that playlists
+ * reference, so existing entries keep theirs and new tracks join the existing album.
+ * Returns the input arrays untouched when nothing is new.
+ */
+function mergeScanned(
+  albums: Album[],
+  tracks: Track[],
+  scanned: { album: Album; track: Track }[]
+): { albums: Album[]; tracks: Track[] } {
+  const albumIdByTitle = new Map(albums.map((a) => [a.title, a.id]))
+  const knownPaths = new Set(tracks.map((t) => t.filePath))
+  // Cover of each album added by this merge, keyed by title
+  const addedArt = new Map<string, string | null>()
+  const newAlbums: Album[] = []
+  const newTracks: Track[] = []
+
+  for (const { album, track } of scanned) {
+    if (knownPaths.has(track.filePath)) continue
+    knownPaths.add(track.filePath)
+
+    let albumId = albumIdByTitle.get(album.title)
+    if (!albumId) {
+      albumId = album.id
+      albumIdByTitle.set(album.title, albumId)
+      addedArt.set(album.title, album.art)
+      newAlbums.push(album)
+    }
+    // Single-file scans hand back the track's art on both album and track; when the
+    // album is new here it already carries that cover, so drop the per-track copy.
+    const art = track.art && addedArt.get(album.title) === track.art ? null : track.art
+    newTracks.push({ ...track, albumId, art })
+  }
+
+  if (newTracks.length === 0) return { albums, tracks }
+  return { albums: [...albums, ...newAlbums], tracks: [...tracks, ...newTracks] }
+}
+
 export default function useLibrary() {
   const [albums, setAlbums] = useState<Album[]>([])
   const [tracks, setTracks] = useState<Track[]>([])
@@ -14,11 +61,31 @@ export default function useLibrary() {
   // Refs to prevent saving the initial empty state or re-persisting freshly loaded data
   const hasLoadedRef = useRef<boolean>(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedFoldersRef = useRef(folders)
   const isScanningRef = useRef<boolean>(false)
   const tracksRef = useRef(tracks)
   tracksRef.current = tracks
   const albumsRef = useRef(albums)
   albumsRef.current = albums
+  const foldersRef = useRef(folders)
+  foldersRef.current = folders
+
+  // Update refs along with state, so an event handled before React re-renders (a burst
+  // of watcher events when an album is copied in or deleted) builds on this change
+  // instead of overwriting it.
+  const commitLibrary = useCallback((nextAlbums: Album[], nextTracks: Track[]) => {
+    albumsRef.current = nextAlbums
+    tracksRef.current = nextTracks
+    setAlbums(nextAlbums)
+    setTracks(nextTracks)
+  }, [])
+
+  /** Drop tracks failing `keep`, and any album left without tracks */
+  const keepTracks = useCallback((keep: (t: Track) => boolean) => {
+    const remaining = tracksRef.current.filter(keep)
+    const albumIdsWithTracks = new Set(remaining.map((t) => t.albumId))
+    commitLibrary(albumsRef.current.filter((a) => albumIdsWithTracks.has(a.id)), remaining)
+  }, [commitLibrary])
 
   // Load persisted library on mount, then reconcile with filesystem
   useEffect(() => {
@@ -48,28 +115,17 @@ export default function useLibrary() {
             }
 
             if (added.length > 0) {
-              const existingTrackIds = new Set(tracks.map((t) => t.id))
-              const existingAlbumIds = new Set(albums.map((a) => a.id))
-              for (const result of added) {
-                // When the album from the same scan is also added, it already
-                // carries this track's art — drop the per-track copy.
-                const albumIsNew = !existingAlbumIds.has(result.album.id)
-                if (!existingTrackIds.has(result.track.id)) {
-                  tracks.push(albumIsNew ? { ...result.track, art: null } : result.track)
-                  existingTrackIds.add(result.track.id)
-                }
-                if (albumIsNew) {
-                  albums.push(result.album)
-                  existingAlbumIds.add(result.album.id)
-                }
-              }
+              ({ albums, tracks } = mergeScanned(albums, tracks, added))
             }
           } catch (err) {
             console.error('Failed to reconcile library:', err)
           }
         }
 
-        if (albums.length > 0 || tracks.length > 0) {
+        // Keep folders even if every track in them is gone, so they stay removable.
+        // An all-empty load (fresh install or read failure) sets nothing and so never
+        // triggers a save that would overwrite the file.
+        if (albums.length > 0 || tracks.length > 0 || loadedFolders.length > 0) {
           setAlbums(albums)
           setTracks(tracks)
           setFolders(loadedFolders)
@@ -86,17 +142,16 @@ export default function useLibrary() {
     load()
   }, [])
 
-  // Debounced auto-save when albums/tracks/folders change
+  // Auto-save when albums/tracks/folders change (debounced unless folders changed)
   useEffect(() => {
     // Don't save until initial load is complete
     if (!hasLoadedRef.current) return
     if (!window.electronAPI?.saveLibrary) return
 
-    // Don't save empty library (prevents wiping data on fresh mount before load)
-    if (albums.length === 0 && tracks.length === 0 && folders.length === 0) return
-
+    // No empty-library guard here: hasLoadedRef already blocks the pre-load mount, and
+    // removing the last folder must persist an empty library or it comes back on restart.
     clearTimeout(saveTimerRef.current!)
-    saveTimerRef.current = setTimeout(() => {
+    const save = () => {
       window.electronAPI!.saveLibrary({ albums, tracks, folders }).then((artUpdates) => {
         // When base64 data URIs are externalized to artwork:// URLs on disk,
         // update in-memory albums/tracks so caches (e.g. segmentation) use
@@ -121,8 +176,17 @@ export default function useLibrary() {
       }).catch((err: unknown) => {
         console.error('Failed to save library:', err)
       })
-    }, 500)
+    }
 
+    // Adding or removing a folder is rare and should survive quitting straight
+    // afterwards, so skip the debounce. Watcher and art updates still batch up.
+    if (folders !== savedFoldersRef.current) {
+      savedFoldersRef.current = folders
+      save()
+      return
+    }
+
+    saveTimerRef.current = setTimeout(save, 500)
     return () => clearTimeout(saveTimerRef.current!)
   }, [albums, tracks, folders])
 
@@ -178,17 +242,13 @@ export default function useLibrary() {
       }
 
       // Merge new imports into existing library (additive)
-      setAlbums((prev) => {
-        const existingKeys = new Set(prev.map((a) => a.title))
-        const newAlbums = result.albums.filter((a) => !existingKeys.has(a.title))
-        return [...prev, ...newAlbums]
-      })
-
-      setTracks((prev) => {
-        const existingIds = new Set(prev.map((t) => t.id))
-        const newTracks = result.tracks.filter((t) => !existingIds.has(t.id))
-        return [...prev, ...newTracks]
-      })
+      const scannedAlbums = new Map(result.albums.map((a) => [a.id, a]))
+      const merged = mergeScanned(
+        albumsRef.current,
+        tracksRef.current,
+        result.tracks.map((track) => ({ album: scannedAlbums.get(track.albumId)!, track }))
+      )
+      commitLibrary(merged.albums, merged.tracks)
 
       // Track the imported folder path
       if (result.folderPath) {
@@ -208,17 +268,14 @@ export default function useLibrary() {
       setScanProgress(null)
       unsubscribe?.()
     }
-  }, [])
+  }, [commitLibrary])
 
   const removeFolder = useCallback((folderPath: string) => {
-    // Compute album IDs to keep from the ref (avoids stale closure from
-    // nesting setAlbums inside setTracks updater — audit #9)
-    const remaining = tracksRef.current.filter((t) => !t.filePath.startsWith(folderPath))
-    const albumIdsWithTracks = new Set(remaining.map((t) => t.albumId))
-    setTracks(remaining)
-    setAlbums((prev) => prev.filter((a) => albumIdsWithTracks.has(a.id)))
-    setFolders((prev) => prev.filter((f) => f !== folderPath))
-  }, [])
+    // Tracks still covered by another imported folder (e.g. a parent) stay.
+    const otherFolders = foldersRef.current.filter((f) => f !== folderPath)
+    keepTracks((t) => !isInFolder(t.filePath, folderPath) || otherFolders.some((f) => isInFolder(t.filePath, f)))
+    setFolders(otherFolders)
+  }, [keepTracks])
 
   // File watcher — start/stop when folders change
   useEffect(() => {
@@ -234,25 +291,13 @@ export default function useLibrary() {
     const unsubscribe = window.electronAPI.onWatcherEvent((event: WatcherEvent) => {
       if (event.type === 'add') {
         window.electronAPI!.scanSingleFile(event.filePath).then((result) => {
-          // Merge new track into library. If the album is also new it already
-          // carries this track's art, so drop the per-track copy.
-          const albumIsNew = !albumsRef.current.some((a) => a.id === result.album.id)
-          setTracks((prev) => {
-            if (prev.some((t) => t.id === result.track.id)) return prev
-            return [...prev, albumIsNew ? { ...result.track, art: null } : result.track]
-          })
-          setAlbums((prev) => {
-            if (prev.some((a) => a.id === result.album.id)) return prev
-            return [...prev, result.album]
-          })
+          const merged = mergeScanned(albumsRef.current, tracksRef.current, [result])
+          commitLibrary(merged.albums, merged.tracks)
         }).catch((err: unknown) => {
           console.error('Failed to scan new file:', err)
         })
       } else if (event.type === 'unlink') {
-        const remaining = tracksRef.current.filter((t) => t.filePath !== event.filePath)
-        const albumIdsWithTracks = new Set(remaining.map((t) => t.albumId))
-        setTracks(remaining)
-        setAlbums((prev) => prev.filter((a) => albumIdsWithTracks.has(a.id)))
+        keepTracks((t) => t.filePath !== event.filePath)
       }
     })
 
@@ -260,7 +305,7 @@ export default function useLibrary() {
       unsubscribe()
       window.electronAPI!.stopWatching()
     }
-  }, [folders])
+  }, [folders, commitLibrary, keepTracks])
 
   return {
     albums,

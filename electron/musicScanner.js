@@ -230,7 +230,7 @@ export async function scanMusicFolder(folderPath, onProgress) {
     const albumKey = file.album
 
     if (!albumMap.has(albumKey)) {
-      const albumId = `imported-${albumMap.size + 1}`
+      const albumId = albumIdFor(albumKey)
       const colors = generateColors(albumKey)
       albumMap.set(albumKey, {
         id: albumId,
@@ -279,7 +279,6 @@ export async function scanMusicFolder(folderPath, onProgress) {
   const albums = []
   /** @type {Track[]} */
   const tracks = []
-  let trackCounter = 0
 
   for (const [, albumEntry] of albumMap) {
     // Sort tracks by track number, then by title
@@ -307,9 +306,8 @@ export async function scanMusicFolder(folderPath, onProgress) {
 
     for (let i = 0; i < albumEntry.tracks.length; i++) {
       const t = albumEntry.tracks[i]
-      trackCounter++
       tracks.push({
-        id: `imported-t-${trackCounter}`,
+        id: trackIdFor(t.filePath),
         title: t.title,
         artist: t.artist,
         albumId: albumEntry.id,
@@ -336,6 +334,14 @@ function stableId(input) {
   return createHash('sha256').update(input).digest('hex').slice(0, 12)
 }
 
+// Folder scans, single-file scans and reconcile must agree on IDs, or importing a second
+// folder collides with the first and the same file gets a different ID depending on how
+// it was found. Albums are grouped by name only, so the name is the album's identity.
+/** @param {string} albumName */
+const albumIdFor = (albumName) => `album-${stableId(albumName)}`
+/** @param {string} filePath */
+const trackIdFor = (filePath) => `track-${stableId(filePath)}`
+
 /**
  * Scan a single audio file and return { album, track } with deterministic IDs.
  * The same file will always produce the same IDs.
@@ -346,8 +352,8 @@ export async function scanSingleFile(filePath) {
   const parsed = await parseAudioFile(filePath)
 
   const albumKey = parsed.album
-  const albumId = `album-${stableId(albumKey)}`
-  const trackId = `track-${stableId(filePath)}`
+  const albumId = albumIdFor(albumKey)
+  const trackId = trackIdFor(filePath)
 
   const colors = generateColors(albumKey)
   const art = parsed.artDataUri || generateFallbackArt(parsed.album, parsed.artist)
